@@ -143,12 +143,26 @@ const KALYCHAIN_TOKENS: Token[] = [
 // Helper functions for wrap/unwrap detection
 const isWrapOperation = (fromToken: Token | null, toToken: Token | null): boolean => {
   if (!fromToken || !toToken) return false;
-  return (fromToken.isNative === true) && toToken.symbol === 'wKLC';
+
+  // Check if wrapping KLC to WKLC
+  // Use case-insensitive symbol check and also verify WKLC address
+  const WKLC_ADDRESS = '0x069255299Bb729399f3CECaBdc73d15d3D10a2A3';
+  const isToWKLC = toToken.symbol.toUpperCase() === 'WKLC' ||
+                   toToken.address.toLowerCase() === WKLC_ADDRESS.toLowerCase();
+
+  return (fromToken.isNative === true) && isToWKLC;
 };
 
 const isUnwrapOperation = (fromToken: Token | null, toToken: Token | null): boolean => {
   if (!fromToken || !toToken) return false;
-  return fromToken.symbol === 'wKLC' && (toToken.isNative === true);
+
+  // Check if unwrapping WKLC to KLC
+  // Use case-insensitive symbol check and also verify WKLC address
+  const WKLC_ADDRESS = '0x069255299Bb729399f3CECaBdc73d15d3D10a2A3';
+  const isFromWKLC = fromToken.symbol.toUpperCase() === 'WKLC' ||
+                     fromToken.address.toLowerCase() === WKLC_ADDRESS.toLowerCase();
+
+  return isFromWKLC && (toToken.isNative === true);
 };
 
 const isWrapOrUnwrapOperation = (fromToken: Token | null, toToken: Token | null): boolean => {

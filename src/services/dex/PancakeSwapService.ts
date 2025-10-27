@@ -2,7 +2,7 @@
 // Handles all PancakeSwap-specific operations on BSC
 
 import { BaseDexService } from './BaseDexService';
-import { SwapParams, Token } from '@/config/dex/types';
+import { SwapParams, Token, QuoteResult } from '@/config/dex/types';
 import { PANCAKESWAP_CONFIG } from '@/config/dex/pancakeswap';
 import { DexError, SwapFailedError } from './IDexService';
 import { getContract, parseUnits, createPublicClient, http } from 'viem';
@@ -11,6 +11,9 @@ import { bsc } from 'viem/chains';
 import { chainRpcUrls } from '@/config/wagmi.config';
 
 export class PancakeSwapService extends BaseDexService {
+  // WBNB contract address on BSC
+  private readonly WBNB_ADDRESS = '0xbb4CdB9CBd36B01bD1cBaEBF2De08d9173bc095c';
+
   constructor() {
     super(PANCAKESWAP_CONFIG);
   }
@@ -23,24 +26,51 @@ export class PancakeSwapService extends BaseDexService {
     return 56; // BSC
   }
 
+  /**
+   * Check if this is a wrap operation (BNB → WBNB)
+   */
+  private isWrapOperation(tokenIn: Token, tokenOut: Token): boolean {
+    const isFromBNB = tokenIn.isNative === true;
+    const isToWBNB = tokenOut.symbol.toUpperCase() === 'WBNB' ||
+                     tokenOut.address.toLowerCase() === this.WBNB_ADDRESS.toLowerCase();
+    return isFromBNB && isToWBNB;
+  }
+
+  /**
+   * Check if this is an unwrap operation (WBNB → BNB)
+   */
+  private isUnwrapOperation(tokenIn: Token, tokenOut: Token): boolean {
+    const isFromWBNB = tokenIn.symbol.toUpperCase() === 'WBNB' ||
+                       tokenIn.address.toLowerCase() === this.WBNB_ADDRESS.toLowerCase();
+    const isToBNB = tokenOut.isNative === true;
+    return isFromWBNB && isToBNB;
+  }
+
+  /**
+   * Override getQuote to handle wrap/unwrap operations with 1:1 ratio
+   */
+  async getQuote(tokenIn: Token, tokenOut: Token, amountIn: string, publicClient: PublicClient): Promise<QuoteResult> {
+    // Check if this is a wrap or unwrap operation
+    if (this.isWrapOperation(tokenIn, tokenOut) || this.isUnwrapOperation(tokenIn, tokenOut)) {
+      console.log('🔄 Wrap/Unwrap operation detected - returning 1:1 ratio');
+
+      return {
+        amountOut: amountIn, // 1:1 ratio
+        route: [tokenIn.address, tokenOut.address],
+        priceImpact: '0',
+        executionPrice: '1.0'
+      };
+    }
+
+    // For regular swaps, use the base implementation
+    return super.getQuote(tokenIn, tokenOut, amountIn, publicClient);
+  }
+
   async executeSwap(params: SwapParams, walletClient: WalletClient): Promise<string> {
     try {
       if (!walletClient) {
         throw new DexError('Wallet client not available', 'NO_WALLET', this.getName());
       }
-
-      // Get swap route
-      const route = params.route || await this.getSwapRoute(params.tokenIn, params.tokenOut, walletClient as any);
-      if (route.length === 0) {
-        throw new SwapFailedError(this.getName(), 'No swap route available');
-      }
-
-      // Convert amounts to proper units
-      const amountIn = parseUnits(params.amountIn, params.tokenIn.decimals);
-      const amountOutMin = parseUnits(params.amountOutMin, params.tokenOut.decimals);
-
-      // Calculate deadline (current time + deadline minutes)
-      const deadline = Math.floor(Date.now() / 1000) + (params.deadline * 60);
 
       // Get account from wallet client
       const account = walletClient.account;
@@ -48,7 +78,88 @@ export class PancakeSwapService extends BaseDexService {
         throw new DexError('No account found in wallet client', 'NO_ACCOUNT', this.getName());
       }
 
+      // Convert amounts to proper units
+      const amountIn = parseUnits(params.amountIn, params.tokenIn.decimals);
+
       let txHash: string;
+
+      // Check if this is a wrap or unwrap operation
+      const isWrap = this.isWrapOperation(params.tokenIn, params.tokenOut);
+      const isUnwrap = this.isUnwrapOperation(params.tokenIn, params.tokenOut);
+
+      if (isWrap) {
+        // BNB → WBNB: Call deposit() with BNB value
+        console.log('🔄 Wrapping BNB to WBNB via WBNB contract...');
+
+        // WBNB ABI for deposit function
+        const WBNB_ABI = [
+          {
+            "inputs": [],
+            "name": "deposit",
+            "outputs": [],
+            "stateMutability": "payable",
+            "type": "function"
+          }
+        ] as const;
+
+        txHash = await walletClient.writeContract({
+          address: this.WBNB_ADDRESS as `0x${string}`,
+          abi: WBNB_ABI,
+          functionName: 'deposit',
+          args: [],
+          value: amountIn,
+          account,
+          chain: undefined
+        });
+
+        console.log(`✅ Wrap transaction sent: ${txHash}`);
+        return txHash;
+
+      } else if (isUnwrap) {
+        // WBNB → BNB: Call withdraw()
+        console.log('🔄 Unwrapping WBNB to BNB via WBNB contract...');
+
+        // WBNB ABI for withdraw function
+        const WBNB_ABI = [
+          {
+            "inputs": [
+              {
+                "internalType": "uint256",
+                "name": "wad",
+                "type": "uint256"
+              }
+            ],
+            "name": "withdraw",
+            "outputs": [],
+            "stateMutability": "nonpayable",
+            "type": "function"
+          }
+        ] as const;
+
+        txHash = await walletClient.writeContract({
+          address: this.WBNB_ADDRESS as `0x${string}`,
+          abi: WBNB_ABI,
+          functionName: 'withdraw',
+          args: [amountIn],
+          account,
+          chain: undefined
+        });
+
+        console.log(`✅ Unwrap transaction sent: ${txHash}`);
+        return txHash;
+      }
+
+      // Regular DEX swap logic
+      // Get swap route
+      const route = params.route || await this.getSwapRoute(params.tokenIn, params.tokenOut, walletClient as any);
+      if (route.length === 0) {
+        throw new SwapFailedError(this.getName(), 'No swap route available');
+      }
+
+      const amountOutMin = parseUnits(params.amountOutMin, params.tokenOut.decimals);
+
+      // Calculate deadline (current time + deadline minutes)
+      const deadline = Math.floor(Date.now() / 1000) + (params.deadline * 60);
 
       // Handle different swap scenarios
       if (params.tokenIn.isNative) {
