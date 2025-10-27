@@ -57,8 +57,7 @@ export class KalySwapService extends BaseDexService {
       return {
         amountOut: amountIn, // 1:1 ratio
         route: [tokenIn.address, tokenOut.address],
-        priceImpact: '0',
-        executionPrice: '1.0'
+        priceImpact: 0
       };
     }
 
