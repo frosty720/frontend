@@ -96,6 +96,15 @@ export const KALYCHAIN_TOKENS: Token[] = [
     name: 'Clisha Coin',
     symbol: 'CLISHA',
     logoURI: '/tokens/clisha.png'
+  },
+  // KNetwork token
+  {
+    chainId: 3888,
+    address: '0xdbba43d094bc683f7420d4b5a44cd9d6bf4f1773',
+    decimals: 18,
+    name: 'KNETWORK',
+    symbol: 'KNT',
+    logoURI: '/tokens/knt.png'
   }
 ];
 

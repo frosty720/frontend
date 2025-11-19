@@ -58,13 +58,8 @@ export abstract class BaseDexService implements IDexService {
   // Common quote implementation using router contract
   async getQuote(tokenIn: Token, tokenOut: Token, amountIn: string, publicClient: PublicClient): Promise<QuoteResult> {
     try {
-      // Validate tokens
-      if (!this.isTokenSupported(tokenIn.address) && !tokenIn.isNative) {
-        throw new UnsupportedTokenError(this.getName(), tokenIn.address);
-      }
-      if (!this.isTokenSupported(tokenOut.address) && !tokenOut.isNative) {
-        throw new UnsupportedTokenError(this.getName(), tokenOut.address);
-      }
+      // NOTE: Removed token validation - any token with a valid pair should be tradeable
+      // The router contract will revert if the pair doesn't exist anyway
 
       // Get swap route
       const route = await this.getSwapRoute(tokenIn, tokenOut, publicClient);
