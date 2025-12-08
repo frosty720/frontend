@@ -99,31 +99,31 @@ export const internalWalletConnector = createConnector((config) => {
     name: 'KalySwap Internal Wallet',
     type: 'internalWallet' as const,
     icon: '/icons/kalyswap-wallet.svg',
-  
-  async connect({ chainId } = {}) {
-    try {
-      // Initialize client state if not already done
-      initializeClientState()
 
-      // Check if user is authenticated
-      if (typeof window === 'undefined') {
-        throw new Error('Internal wallet can only be used on the client side')
-      }
+    async connect({ chainId } = {}) {
+      try {
+        // Initialize client state if not already done
+        initializeClientState()
 
-      const token = localStorage.getItem('auth_token')
-      if (!token) {
-        throw new Error('Please login to access your internal wallets')
-      }
+        // Check if user is authenticated
+        if (typeof window === 'undefined') {
+          throw new Error('Internal wallet can only be used on the client side')
+        }
 
-      // Fetch user's internal wallets
-      const response = await fetch('/api/graphql', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`,
-        },
-        body: JSON.stringify({
-          query: `
+        const token = localStorage.getItem('auth_token')
+        if (!token) {
+          throw new Error('Please login to access your internal wallets')
+        }
+
+        // Fetch user's internal wallets
+        const response = await fetch('/api/graphql', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`,
+          },
+          body: JSON.stringify({
+            query: `
             query Me {
               me {
                 id
@@ -135,249 +135,249 @@ export const internalWalletConnector = createConnector((config) => {
               }
             }
           `,
-        }),
-      })
+          }),
+        })
 
-      const result = await response.json()
-      if (result.errors) {
-        throw new Error(result.errors[0].message)
+        const result = await response.json()
+        if (result.errors) {
+          throw new Error(result.errors[0].message)
+        }
+
+        const wallets = result.data.me.wallets
+        if (!wallets || wallets.length === 0) {
+          throw new Error('No internal wallets found. Please create a wallet first.')
+        }
+
+        // Update internal state
+        internalWalletState.availableWallets = wallets.map((wallet: any) => ({
+          id: wallet.id,
+          address: wallet.address as Address,
+          chainId: wallet.chainId
+        }))
+
+        // If no active wallet, show selection modal
+        if (!internalWalletState.activeWallet) {
+          const selectedWallet = await showWalletSelectionModal(internalWalletState.availableWallets)
+          internalWalletState.activeWallet = selectedWallet
+        }
+
+        internalWalletState.isConnected = true
+
+        // Save state to localStorage
+        saveStateToStorage(internalWalletState)
+
+        // Emit connect event
+        eventTarget.dispatchEvent(new CustomEvent('connect', {
+          detail: {
+            accounts: [internalWalletState.activeWallet!.address],
+            chainId: chainId || internalWalletState.activeWallet!.chainId
+          }
+        }))
+
+        return {
+          accounts: [internalWalletState.activeWallet!.address] as const,
+          chainId: chainId || internalWalletState.activeWallet!.chainId
+        }
+      } catch (error) {
+        throw new Error(`Failed to connect internal wallet: ${error instanceof Error ? error.message : String(error)}`)
       }
+    },
 
-      const wallets = result.data.me.wallets
-      if (!wallets || wallets.length === 0) {
-        throw new Error('No internal wallets found. Please create a wallet first.')
-      }
-
-      // Update internal state
-      internalWalletState.availableWallets = wallets.map((wallet: any) => ({
-        id: wallet.id,
-        address: wallet.address as Address,
-        chainId: wallet.chainId
-      }))
-
-      // If no active wallet, show selection modal
-      if (!internalWalletState.activeWallet) {
-        const selectedWallet = await showWalletSelectionModal(internalWalletState.availableWallets)
-        internalWalletState.activeWallet = selectedWallet
-      }
-
-      internalWalletState.isConnected = true
+    async disconnect() {
+      internalWalletState.isConnected = false
+      internalWalletState.activeWallet = null
+      internalWalletState.availableWallets = []
 
       // Save state to localStorage
       saveStateToStorage(internalWalletState)
 
-      // Emit connect event
-      eventTarget.dispatchEvent(new CustomEvent('connect', {
-        detail: {
-          accounts: [internalWalletState.activeWallet!.address],
-          chainId: chainId || internalWalletState.activeWallet!.chainId
-        }
-      }))
+      // Emit disconnect event
+      eventTarget.dispatchEvent(new CustomEvent('disconnect'))
+    },
 
-      return {
-        accounts: [internalWalletState.activeWallet!.address],
-        chainId: chainId || internalWalletState.activeWallet!.chainId
+    async getAccounts() {
+      // Initialize client state if not already done
+      initializeClientState()
+
+      // Return account if we have an active wallet, regardless of connection state
+      if (internalWalletState.activeWallet) {
+        return [internalWalletState.activeWallet.address]
       }
-    } catch (error) {
-      throw new Error(`Failed to connect internal wallet: ${error instanceof Error ? error.message : String(error)}`)
-    }
-  },
+      return []
+    },
 
-  async disconnect() {
-    internalWalletState.isConnected = false
-    internalWalletState.activeWallet = null
-    internalWalletState.availableWallets = []
+    async getChainId() {
+      return internalWalletState.activeWallet?.chainId || kalychain.id
+    },
 
-    // Save state to localStorage
-    saveStateToStorage(internalWalletState)
-
-    // Emit disconnect event
-    eventTarget.dispatchEvent(new CustomEvent('disconnect'))
-  },
-
-  async getAccounts() {
-    // Initialize client state if not already done
-    initializeClientState()
-
-    // Return account if we have an active wallet, regardless of connection state
-    if (internalWalletState.activeWallet) {
-      return [internalWalletState.activeWallet.address]
-    }
-    return []
-  },
-
-  async getChainId() {
-    return internalWalletState.activeWallet?.chainId || kalychain.id
-  },
-
-  async getProvider() {
-    // Return a minimal provider-like object for compatibility
-    return {
-      request: async ({ method, params }: { method: string; params?: any[] }) => {
-        if (method === 'eth_chainId') {
-          return `0x${(internalWalletState.activeWallet?.chainId || kalychain.id).toString(16)}`
-        }
-        if (method === 'eth_accounts') {
-          return internalWalletState.activeWallet ? [internalWalletState.activeWallet.address] : []
-        }
-        if (method === 'eth_sendTransaction') {
-          // Handle eth_sendTransaction by using our internal sendTransaction method
-          if (!params || !params[0]) {
-            throw new Error('Transaction parameters required')
+    async getProvider() {
+      // Return a minimal provider-like object for compatibility
+      return {
+        request: async ({ method, params }: { method: string; params?: any[] }) => {
+          if (method === 'eth_chainId') {
+            return `0x${(internalWalletState.activeWallet?.chainId || kalychain.id).toString(16)}`
           }
-
-          const txParams = params[0]
-          const transactionRequest: TransactionRequest = {
-            to: txParams.to,
-            value: txParams.value ? BigInt(txParams.value) : undefined,
-            data: txParams.data,
-            gas: txParams.gas ? BigInt(txParams.gas) : undefined,
-            gasPrice: txParams.gasPrice ? BigInt(txParams.gasPrice) : undefined,
+          if (method === 'eth_accounts') {
+            return internalWalletState.activeWallet ? [internalWalletState.activeWallet.address] : []
           }
+          if (method === 'eth_sendTransaction') {
+            // Handle eth_sendTransaction by using our internal sendTransaction method
+            if (!params || !params[0]) {
+              throw new Error('Transaction parameters required')
+            }
 
-          // Use the connector's sendTransaction method
-          const connector = this as any // Type assertion to access sendTransaction
-          return await connector.sendTransaction(transactionRequest)
-        }
-        throw new Error(`Method ${method} not supported by internal wallet`)
-      },
-      on: () => {},
-      removeListener: () => {},
-    }
-  },
+            const txParams = params[0]
+            const transactionRequest: TransactionRequest = {
+              to: txParams.to,
+              value: txParams.value ? BigInt(txParams.value) : undefined,
+              data: txParams.data,
+              gas: txParams.gas ? BigInt(txParams.gas) : undefined,
+              gasPrice: txParams.gasPrice ? BigInt(txParams.gasPrice) : undefined,
+            }
 
-  async isAuthorized() {
-    // Initialize client state if not already done
-    initializeClientState()
+            // Use the connector's sendTransaction method
+            const connector = this as any // Type assertion to access sendTransaction
+            return await connector.sendTransaction(transactionRequest)
+          }
+          throw new Error(`Method ${method} not supported by internal wallet`)
+        },
+        on: () => { },
+        removeListener: () => { },
+      }
+    },
 
-    // Only check authorization on client side
-    if (typeof window === 'undefined') return false
+    async isAuthorized() {
+      // Initialize client state if not already done
+      initializeClientState()
 
-    const token = localStorage.getItem('auth_token')
-    // Check if we have a valid auth token and persisted wallet state
-    if (!token) return false
+      // Only check authorization on client side
+      if (typeof window === 'undefined') return false
 
-    // Always restore connection if we have a persisted active wallet
-    if (internalWalletState.activeWallet) {
-      // Ensure connection state is set
-      internalWalletState.isConnected = true
+      const token = localStorage.getItem('auth_token')
+      // Check if we have a valid auth token and persisted wallet state
+      if (!token) return false
+
+      // Always restore connection if we have a persisted active wallet
+      if (internalWalletState.activeWallet) {
+        // Ensure connection state is set
+        internalWalletState.isConnected = true
+        saveStateToStorage(internalWalletState)
+
+        // Always emit connect event to ensure wagmi knows about the connection
+        setTimeout(() => {
+          eventTarget.dispatchEvent(new CustomEvent('connect', {
+            detail: {
+              accounts: [internalWalletState.activeWallet!.address],
+              chainId: internalWalletState.activeWallet!.chainId
+            }
+          }))
+        }, 0)
+      }
+
+      return !!token && !!internalWalletState.activeWallet
+    },
+
+    async switchChain({ chainId }) {
+      // Check if chain is supported
+      const targetChain = getChainById(chainId)
+      if (!targetChain) {
+        throw new Error(`Unsupported chain: ${chainId}. Supported chains: ${SUPPORTED_CHAINS.map(c => c.name).join(', ')}`)
+      }
+
+      // Check if user has a wallet for this chain
+      const walletForChain = internalWalletState.availableWallets.find(w => w.chainId === chainId)
+
+      if (!walletForChain) {
+        throw new Error(`No wallet found for ${targetChain.name}. Please create a wallet for this chain first.`)
+      }
+
+      // Switch to wallet for the requested chain
+      internalWalletState.activeWallet = walletForChain
       saveStateToStorage(internalWalletState)
 
-      // Always emit connect event to ensure wagmi knows about the connection
+      // Emit chain changed event
+      eventTarget.dispatchEvent(new CustomEvent('chainChanged', {
+        detail: { chainId }
+      }))
+
+      // Also emit connect event to force wagmi to re-sync
       setTimeout(() => {
         eventTarget.dispatchEvent(new CustomEvent('connect', {
           detail: {
-            accounts: [internalWalletState.activeWallet!.address],
-            chainId: internalWalletState.activeWallet!.chainId
+            accounts: [walletForChain.address],
+            chainId: chainId
           }
         }))
       }, 0)
-    }
 
-    return !!token && !!internalWalletState.activeWallet
-  },
+      return targetChain
+    },
 
-  async switchChain({ chainId }) {
-    // Check if chain is supported
-    const targetChain = getChainById(chainId)
-    if (!targetChain) {
-      throw new Error(`Unsupported chain: ${chainId}. Supported chains: ${SUPPORTED_CHAINS.map(c => c.name).join(', ')}`)
-    }
+    onAccountsChanged(accounts) {
+      if (accounts.length === 0) {
+        this.disconnect()
+      } else {
+        eventTarget.dispatchEvent(new CustomEvent('accountsChanged', { detail: accounts }))
+      }
+    },
 
-    // Check if user has a wallet for this chain
-    const walletForChain = internalWalletState.availableWallets.find(w => w.chainId === chainId)
+    onChainChanged(chainId) {
+      eventTarget.dispatchEvent(new CustomEvent('chainChanged', { detail: chainId }))
+    },
 
-    if (!walletForChain) {
-      throw new Error(`No wallet found for ${targetChain.name}. Please create a wallet for this chain first.`)
-    }
+    onConnect(connectInfo) {
+      eventTarget.dispatchEvent(new CustomEvent('connect', { detail: connectInfo }))
+    },
 
-    // Switch to wallet for the requested chain
-    internalWalletState.activeWallet = walletForChain
-    saveStateToStorage(internalWalletState)
+    onDisconnect(error) {
+      eventTarget.dispatchEvent(new CustomEvent('disconnect', { detail: error }))
+    },
 
-    // Emit chain changed event
-    eventTarget.dispatchEvent(new CustomEvent('chainChanged', {
-      detail: { chainId }
-    }))
+    onMessage(message) {
+      // Handle provider messages if needed
+    },
 
-    // Also emit connect event to force wagmi to re-sync
-    setTimeout(() => {
-      eventTarget.dispatchEvent(new CustomEvent('connect', {
-        detail: {
-          accounts: [walletForChain.address],
-          chainId: chainId
-        }
-      }))
-    }, 0)
-
-    return targetChain
-  },
-
-  onAccountsChanged(accounts) {
-    if (accounts.length === 0) {
-      this.disconnect()
-    } else {
-      eventTarget.dispatchEvent(new CustomEvent('accountsChanged', { detail: accounts }))
-    }
-  },
-
-  onChainChanged(chainId) {
-    eventTarget.dispatchEvent(new CustomEvent('chainChanged', { detail: chainId }))
-  },
-
-  onConnect(connectInfo) {
-    eventTarget.dispatchEvent(new CustomEvent('connect', { detail: connectInfo }))
-  },
-
-  onDisconnect(error) {
-    eventTarget.dispatchEvent(new CustomEvent('disconnect', { detail: error }))
-  },
-
-  onMessage(message) {
-    // Handle provider messages if needed
-  },
-
-  async sendTransaction(parameters: TransactionRequest) {
-    if (!internalWalletState.activeWallet) {
-      throw new Error('No wallet connected')
-    }
-
-    // Get password from user
-    const password = await promptForPassword()
-    if (!password) {
-      throw new Error('Password required for transaction signing')
-    }
-
-    try {
-      const token = localStorage.getItem('auth_token')
-      if (!token) {
-        throw new Error('Authentication required')
+    async sendTransaction(parameters: TransactionRequest) {
+      if (!internalWalletState.activeWallet) {
+        throw new Error('No wallet connected')
       }
 
-      // Check if this is a contract call (has data field) or simple transfer
-      const isContractCall = parameters.data && parameters.data !== '0x'
+      // Get password from user
+      const password = await promptForPassword()
+      if (!password) {
+        throw new Error('Password required for transaction signing')
+      }
 
-      if (isContractCall) {
-        // Handle contract interaction
-        const contractInput = {
-          walletId: internalWalletState.activeWallet.id,
-          toAddress: parameters.to,
-          value: parameters.value?.toString() || '0',
-          data: parameters.data,
-          password: password,
-          chainId: internalWalletState.activeWallet.chainId,
-          gasLimit: parameters.gas?.toString(),
-          gasPrice: parameters.gasPrice?.toString()
+      try {
+        const token = localStorage.getItem('auth_token')
+        if (!token) {
+          throw new Error('Authentication required')
         }
 
-        const response = await fetch('/api/graphql', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${token}`,
-          },
-          body: JSON.stringify({
-            query: `
+        // Check if this is a contract call (has data field) or simple transfer
+        const isContractCall = parameters.data && parameters.data !== '0x'
+
+        if (isContractCall) {
+          // Handle contract interaction
+          const contractInput = {
+            walletId: internalWalletState.activeWallet.id,
+            toAddress: parameters.to,
+            value: parameters.value?.toString() || '0',
+            data: parameters.data,
+            password: password,
+            chainId: internalWalletState.activeWallet.chainId,
+            gasLimit: parameters.gas?.toString(),
+            gasPrice: parameters.gasPrice?.toString()
+          }
+
+          const response = await fetch('/api/graphql', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${token}`,
+            },
+            body: JSON.stringify({
+              query: `
               mutation SendContractTransaction($input: SendContractTransactionInput!) {
                 sendContractTransaction(input: $input) {
                   id
@@ -386,40 +386,40 @@ export const internalWalletConnector = createConnector((config) => {
                 }
               }
             `,
-            variables: { input: contractInput }
-          }),
-        })
+              variables: { input: contractInput }
+            }),
+          })
 
-        const result = await response.json()
-        if (result.errors) {
-          throw new Error(result.errors[0].message)
-        }
+          const result = await response.json()
+          if (result.errors) {
+            throw new Error(result.errors[0].message)
+          }
 
-        return result.data.sendContractTransaction.hash as Hash
-      } else {
-        // Handle simple transfer with chain-specific native token
-        const chain = getChainById(internalWalletState.activeWallet.chainId)
-        const nativeTokenSymbol = chain?.nativeCurrency.symbol || 'ETH'
+          return result.data.sendContractTransaction.hash as Hash
+        } else {
+          // Handle simple transfer with chain-specific native token
+          const chain = getChainById(internalWalletState.activeWallet.chainId)
+          const nativeTokenSymbol = chain?.nativeCurrency.symbol || 'ETH'
 
-        const transactionInput = {
-          walletId: internalWalletState.activeWallet.id,
-          toAddress: parameters.to,
-          amount: parameters.value?.toString() || '0',
-          asset: nativeTokenSymbol, // Use chain-specific native token
-          password: password,
-          chainId: internalWalletState.activeWallet.chainId,
-          gasLimit: parameters.gas?.toString(),
-          gasPrice: parameters.gasPrice?.toString()
-        }
+          const transactionInput = {
+            walletId: internalWalletState.activeWallet.id,
+            toAddress: parameters.to,
+            amount: parameters.value?.toString() || '0',
+            asset: nativeTokenSymbol, // Use chain-specific native token
+            password: password,
+            chainId: internalWalletState.activeWallet.chainId,
+            gasLimit: parameters.gas?.toString(),
+            gasPrice: parameters.gasPrice?.toString()
+          }
 
-        const response = await fetch('/api/graphql', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${token}`,
-          },
-          body: JSON.stringify({
-            query: `
+          const response = await fetch('/api/graphql', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${token}`,
+            },
+            body: JSON.stringify({
+              query: `
               mutation SendTransaction($input: SendTransactionInput!) {
                 sendTransaction(input: $input) {
                   id
@@ -428,37 +428,37 @@ export const internalWalletConnector = createConnector((config) => {
                 }
               }
             `,
-            variables: { input: transactionInput }
-          }),
-        })
+              variables: { input: transactionInput }
+            }),
+          })
 
-        const result = await response.json()
-        if (result.errors) {
-          throw new Error(result.errors[0].message)
+          const result = await response.json()
+          if (result.errors) {
+            throw new Error(result.errors[0].message)
+          }
+
+          return result.data.sendTransaction.hash as Hash
         }
-
-        return result.data.sendTransaction.hash as Hash
+      } catch (error) {
+        throw new Error(`Transaction failed: ${error instanceof Error ? error.message : String(error)}`)
       }
-    } catch (error) {
-      throw new Error(`Transaction failed: ${error instanceof Error ? error.message : String(error)}`)
-    }
-  },
+    },
 
-  async signMessage({ message }: { message: string }) {
-    if (!internalWalletState.activeWallet) {
-      throw new Error('No wallet connected')
-    }
+    async signMessage({ message }: { message: string }) {
+      if (!internalWalletState.activeWallet) {
+        throw new Error('No wallet connected')
+      }
 
-    // Get password from user
-    const password = await promptForPassword()
-    if (!password) {
-      throw new Error('Password required for message signing')
-    }
+      // Get password from user
+      const password = await promptForPassword()
+      if (!password) {
+        throw new Error('Password required for message signing')
+      }
 
-    // TODO: Implement message signing via backend
-    throw new Error('Message signing not yet implemented for internal wallets')
+      // TODO: Implement message signing via backend
+      throw new Error('Message signing not yet implemented for internal wallets')
+    }
   }
-}
 })
 
 // Helper function to show wallet selection modal
@@ -472,8 +472,8 @@ async function showWalletSelectionModal(wallets: Array<{ id: string; address: Ad
         <h3 class="text-lg font-semibold mb-4">Select Internal Wallet</h3>
         <div class="space-y-2">
           ${wallets.map((wallet, index) => {
-            const chain = getChainById(wallet.chainId)
-            return `
+      const chain = getChainById(wallet.chainId)
+      return `
             <button
               class="w-full p-3 text-left border rounded-lg hover:bg-gray-50 wallet-option"
               data-wallet-index="${index}"
@@ -482,7 +482,7 @@ async function showWalletSelectionModal(wallets: Array<{ id: string; address: Ad
               <div class="text-sm text-gray-500">${chain?.name || `Chain ${wallet.chainId}`}</div>
             </button>
             `
-          }).join('')}
+    }).join('')}
         </div>
         <button class="mt-4 w-full px-4 py-2 bg-gray-200 rounded-lg cancel-btn">Cancel</button>
       </div>
