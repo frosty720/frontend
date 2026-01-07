@@ -59,14 +59,23 @@ class TokenListService {
 
       console.log(`🔍 Fetching token list from ${url}`);
 
-      // Fetch from URL using existing networkUtils
-      // Use absolute URL for backend API calls
+      // For /api/ URLs, use relative paths in browser (Next.js rewrites handle proxying)
+      // For server-side, use the configured API URL
       let apiUrl: string;
       if (url.startsWith('/api/')) {
-        apiUrl = `https://app.kalyswap.io${url}`;
+        if (typeof window !== 'undefined') {
+          // In browser: use relative URL - Next.js rewrites will proxy to backend
+          apiUrl = url;
+        } else {
+          // Server-side: need absolute URL
+          const baseUrl = process.env.NEXT_PUBLIC_API_URL?.replace(/\/api$/, '') || 'https://app.kalyswap.io';
+          apiUrl = `${baseUrl}${url}`;
+        }
       } else {
         apiUrl = url;
       }
+
+      console.log(`🔍 Resolved API URL: ${apiUrl}`);
 
       const tokenList = await fetchJSON<TokenList>(apiUrl, {
         timeout: this.REQUEST_TIMEOUT,

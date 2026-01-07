@@ -105,6 +105,15 @@ export const KALYCHAIN_TOKENS: Token[] = [
     name: 'KNETWORK',
     symbol: 'KNT',
     logoURI: '/tokens/knt.png'
+  },
+  // KUSD Stablecoin
+  {
+    chainId: 3888,
+    address: '0xCd02480926317748e95c5bBBbb7D1070b2327f1A',
+    decimals: 18,
+    name: 'Kusd Stablecoin',
+    symbol: 'KUSD',
+    logoURI: '/tokens/kusd.png'
   }
 ];
 

@@ -11,9 +11,9 @@ import {
   DialogTrigger,
 } from '@/components/ui/dialog';
 import { ChevronDown, Search, Plus } from 'lucide-react';
-import { useTokens } from '@/hooks/useTokens';
+import { useTokenLists } from '@/hooks/useTokenLists';
 import { getContract, isAddress } from 'viem';
-import { usePublicClient } from 'wagmi';
+import { usePublicClient, useChainId } from 'wagmi';
 import { ERC20_ABI } from '@/config/abis';
 
 interface Token {
@@ -44,7 +44,18 @@ export default function TokenSelector({
   const [customTokens, setCustomTokens] = useState<Token[]>([]);
   const [isLoadingCustomToken, setIsLoadingCustomToken] = useState(false);
   const [customTokenError, setCustomTokenError] = useState<string | null>(null);
-  const { tokens, loading } = useTokens();
+
+  // Get current chain ID from wagmi, fallback to KalyChain (3888)
+  let chainId = 3888;
+  try {
+    const wagmiChainId = useChainId();
+    if (wagmiChainId) chainId = wagmiChainId;
+  } catch (error) {
+    // Wagmi not available, use default
+  }
+
+  // Use useTokenLists hook (same as swaps page) for consistent token list
+  const { tokens, loading } = useTokenLists({ chainId });
 
   let publicClient = null;
   try {

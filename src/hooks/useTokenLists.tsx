@@ -1,6 +1,6 @@
 /**
  * Token Lists Hook - Dynamic token list management
- * Replaces hardcoded token arrays with dynamic token list loading
+ * Uses local token lists for KalyChain, fetches from external sources for other chains
  * Maintains compatibility with existing useTokens hook interface
  */
 
@@ -9,6 +9,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { tokenListService } from '@/services/tokenListService';
 import { Token } from '@/config/dex/types';
+import { KALYCHAIN_TOKENS } from '@/config/dex/tokens/kalychain';
 
 // Enhanced token interface with additional metadata from subgraph
 export interface EnhancedToken extends Token {
@@ -250,22 +251,30 @@ export function useTokenLists(options: UseTokenListsOptions = {}): UseTokenLists
 
       console.log(`🚀 Loading tokens for chain ${chainId}`);
 
-      // Fetch tokens from token lists
-      let tokenListTokens = await tokenListService.getTokensForChain(chainId);
+      let tokenListTokens: Token[];
 
-      // For BSC, ensure BUSD is included (it was deprecated but still has liquidity)
-      if (chainId === 56) {
-        const hasBUSD = tokenListTokens.some(t => t.symbol === 'BUSD');
-        if (!hasBUSD) {
-          console.log('⚠️ BUSD not in token list, adding manually');
-          tokenListTokens.push({
-            chainId: 56,
-            address: '0xe9e7CEA3DedcA5984780Bafc599bD69ADd087D56',
-            decimals: 18,
-            name: 'BUSD Token',
-            symbol: 'BUSD',
-            logoURI: '/tokens/busd.png'
-          });
+      // For KalyChain, use local token list directly (no network calls needed)
+      if (chainId === 3888) {
+        tokenListTokens = [...KALYCHAIN_TOKENS];
+        console.log(`📋 Using local KalyChain token list: ${tokenListTokens.length} tokens`);
+      } else {
+        // For other chains, fetch from external sources
+        tokenListTokens = await tokenListService.getTokensForChain(chainId);
+
+        // For BSC, ensure BUSD is included (it was deprecated but still has liquidity)
+        if (chainId === 56) {
+          const hasBUSD = tokenListTokens.some(t => t.symbol === 'BUSD');
+          if (!hasBUSD) {
+            console.log('⚠️ BUSD not in token list, adding manually');
+            tokenListTokens.push({
+              chainId: 56,
+              address: '0xe9e7CEA3DedcA5984780Bafc599bD69ADd087D56',
+              decimals: 18,
+              name: 'BUSD Token',
+              symbol: 'BUSD',
+              logoURI: '/tokens/busd.png'
+            });
+          }
         }
       }
 
@@ -285,9 +294,16 @@ export function useTokenLists(options: UseTokenListsOptions = {}): UseTokenLists
       console.error('❌ Error loading tokens:', err);
       setError(err instanceof Error ? err.message : 'Failed to load tokens');
 
-      // Fallback: try to get tokens from token lists only
+      // Fallback: use local tokens for KalyChain, or try service for other chains
       try {
-        const fallbackTokens = await tokenListService.getTokensForChain(chainId);
+        let fallbackTokens: Token[];
+        if (chainId === 3888) {
+          fallbackTokens = [...KALYCHAIN_TOKENS];
+          console.log(`⚠️ Using local KalyChain tokens as fallback: ${fallbackTokens.length} tokens`);
+        } else {
+          fallbackTokens = await tokenListService.getTokensForChain(chainId);
+        }
+
         const enhancedFallbackTokens = fallbackTokens.map(token => ({
           ...token,
           tradeVolumeUSD: undefined,

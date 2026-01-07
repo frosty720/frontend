@@ -36,7 +36,7 @@
     "graphql-request": "^7.2.0",
     "lightweight-charts": "^5.0.7",
     "lucide-react": "^0.511.0",
-    "next": "^15.3.6",
+    "next": "^15.3.8",
     "pino-pretty": "^13.0.0",
     "postcss": "^8.5.3",
     "react": "^19.0.1",
@@ -48,6 +48,9 @@
     "wagmi": "^2.15.6",
     "zod": "^3.25.3",
     "zustand": "^4.5.7"
+  },
+  "overrides": {
+    "form-data": "^4.0.0"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3",
