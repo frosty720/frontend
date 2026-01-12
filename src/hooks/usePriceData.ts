@@ -379,18 +379,36 @@ export function useTokenPrice(symbol: string) {
   return { price, change24h, isLoading };
 }
 
-// Utility function to format price based on token
+// Utility function to format price based on token and price magnitude
 export function formatTokenPrice(price: number, symbol: string): string {
-  if (symbol === 'KLC' || symbol === 'wKLC') {
+  // Handle zero or invalid prices
+  if (!price || price === 0 || !isFinite(price)) {
+    return '0.0000';
+  }
+
+  // For stablecoins, always use 4 decimals
+  if (['USDT', 'USDC', 'DAI', 'BUSD', 'KUSD'].includes(symbol)) {
+    return price.toFixed(4);
+  }
+
+  // For high-value tokens like BTC/ETH, use 2 decimals
+  if (['WBTC', 'BTC', 'ETH', 'WETH'].includes(symbol)) {
+    return price.toFixed(2);
+  }
+
+  // Dynamic precision based on price magnitude
+  // This ensures very small prices are still visible
+  if (price >= 1000) {
+    return price.toFixed(2);
+  } else if (price >= 1) {
+    return price.toFixed(4);
+  } else if (price >= 0.0001) {
+    return price.toFixed(6);
+  } else if (price >= 0.00000001) {
     return price.toFixed(8);
-  } else if (['USDT', 'USDC', 'DAI'].includes(symbol)) {
-    return price.toFixed(4);
-  } else if (symbol === 'WBTC') {
-    return price.toFixed(2);
-  } else if (symbol === 'ETH') {
-    return price.toFixed(2);
   } else {
-    return price.toFixed(4);
+    // For extremely small prices, use scientific notation
+    return price.toExponential(4);
   }
 }
 
