@@ -712,15 +712,16 @@ export default function MultichainSwapInterface({
                       const num = parseFloat(swapState.toAmount);
                       if (isNaN(num)) return '0.0';
 
-                      // Format based on magnitude
+                      // Format based on magnitude - always human readable, no scientific notation
                       if (num >= 1000000) {
-                        return num.toExponential(4); // Scientific notation for very large numbers
+                        return num.toLocaleString('en-US', { maximumFractionDigits: 2 });
                       } else if (num >= 1) {
                         return num.toLocaleString('en-US', { maximumFractionDigits: 6, minimumFractionDigits: 2 });
                       } else if (num >= 0.0001) {
                         return num.toFixed(6);
                       } else if (num > 0) {
-                        return num.toExponential(4); // Scientific notation for very small numbers
+                        // For very small numbers, show up to 10 decimal places
+                        return num.toFixed(10).replace(/\.?0+$/, '');
                       }
                       return '0.0';
                     })()

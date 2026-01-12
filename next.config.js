@@ -14,6 +14,10 @@ const nextConfig = {
           source: '/api/:path*',
           destination: 'http://localhost:3000/api/:path*', // Proxy to backend
         },
+        {
+          source: '/subgraphs/:path*',
+          destination: 'https://app.kalyswap.io/subgraphs/:path*', // Proxy subgraph to avoid CORS
+        },
       ];
     }
     return [];

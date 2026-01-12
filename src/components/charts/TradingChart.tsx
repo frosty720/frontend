@@ -96,7 +96,7 @@ export default function TradingChart({
     if (!currentTokenA || !currentTokenB) return currentTokenA;
 
     // Stablecoins should never be the base token for formatting
-    const stablecoins = ['USDT', 'USDC', 'DAI', 'BUSD'];
+    const stablecoins = ['USDT', 'USDC', 'DAI', 'BUSD', 'KUSD'];
 
     if (stablecoins.includes(currentTokenA.symbol)) {
       return currentTokenB; // Use tokenB as base

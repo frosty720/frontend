@@ -1102,9 +1102,18 @@ export default function SwapInterface({ fromToken: propFromToken, toToken: propT
           {/* Amount input and token selector row */}
           <div className="flex gap-2">
             <Input
-              type="number"
+              type="text"
               placeholder="0.0"
-              value={swapState.toAmount}
+              value={(() => {
+                if (!swapState.toAmount || swapState.toAmount === '0.0') return '';
+                const num = parseFloat(swapState.toAmount);
+                if (isNaN(num)) return '';
+                if (num >= 1000000) return num.toLocaleString('en-US', { maximumFractionDigits: 2 });
+                if (num >= 1) return num.toLocaleString('en-US', { maximumFractionDigits: 6, minimumFractionDigits: 2 });
+                if (num >= 0.0001) return num.toFixed(6);
+                if (num > 0) return num.toFixed(10).replace(/\.?0+$/, '');
+                return '0.0';
+              })()}
               readOnly
               className="flex-1 text-lg h-12 bg-gray-900/30 text-white placeholder:text-gray-400 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
               style={{ borderColor: 'rgba(59, 130, 246, 0.2)' }}
@@ -1123,7 +1132,12 @@ export default function SwapInterface({ fromToken: propFromToken, toToken: propT
             <div className="flex items-center gap-1 text-xs text-gray-300">
               <Info className="h-3 w-3" />
               <span>
-                1 {swapState.fromToken?.symbol} = {(parseFloat(swapState.toAmount) / parseFloat(swapState.fromAmount)).toFixed(6)} {swapState.toToken?.symbol}
+                1 {swapState.fromToken?.symbol} = {(() => {
+                  const rate = parseFloat(swapState.toAmount) / parseFloat(swapState.fromAmount);
+                  if (rate >= 1) return rate.toFixed(6);
+                  if (rate >= 0.0001) return rate.toFixed(6);
+                  return rate.toFixed(10).replace(/\.?0+$/, '');
+                })()} {swapState.toToken?.symbol}
               </span>
             </div>
           </div>

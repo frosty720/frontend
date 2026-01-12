@@ -219,17 +219,55 @@ export abstract class BaseDexService implements IDexService {
   // Common price impact calculation
   async calculatePriceImpact(tokenIn: Token, tokenOut: Token, amountIn: string, publicClient: PublicClient): Promise<number> {
     try {
-      const pairInfo = await this.getPairInfo(tokenIn, tokenOut, publicClient);
-      if (!pairInfo) {
+      const pairAddress = await this.getPairAddress(tokenIn, tokenOut, publicClient);
+      if (!pairAddress) {
         return 0; // No liquidity, can't calculate impact
       }
 
-      const amountInWei = parseFloat(amountIn);
-      const reserve0 = parseFloat(formatUnits(BigInt(pairInfo.reserve0), tokenIn.decimals));
-      const reserve1 = parseFloat(formatUnits(BigInt(pairInfo.reserve1), tokenOut.decimals));
+      // Get the pair contract to read token0 address and reserves
+      const pairContract = getContract({
+        address: pairAddress as `0x${string}`,
+        abi: [
+          {
+            "inputs": [],
+            "name": "getReserves",
+            "outputs": [
+              {"internalType": "uint112", "name": "_reserve0", "type": "uint112"},
+              {"internalType": "uint112", "name": "_reserve1", "type": "uint112"},
+              {"internalType": "uint32", "name": "_blockTimestampLast", "type": "uint32"}
+            ],
+            "stateMutability": "view",
+            "type": "function"
+          },
+          {
+            "inputs": [],
+            "name": "token0",
+            "outputs": [{"internalType": "address", "name": "", "type": "address"}],
+            "stateMutability": "view",
+            "type": "function"
+          }
+        ],
+        client: publicClient,
+      });
+
+      const [reserves, token0Address] = await Promise.all([
+        pairContract.read.getReserves() as Promise<[bigint, bigint, number]>,
+        pairContract.read.token0() as Promise<string>
+      ]);
+
+      // Determine which reserve corresponds to tokenIn
+      const tokenInAddress = tokenIn.isNative ? this.getWethAddress() : tokenIn.address;
+      const isTokenInToken0 = token0Address.toLowerCase() === tokenInAddress.toLowerCase();
+
+      // Get the correct reserve for tokenIn based on actual pair ordering
+      const reserveIn = isTokenInToken0 ? reserves[0] : reserves[1];
+      const reserveInFormatted = parseFloat(formatUnits(reserveIn, tokenIn.decimals));
+
+      const amountInValue = parseFloat(amountIn);
 
       // Calculate price impact using constant product formula
-      const priceImpact = (amountInWei / (reserve0 + amountInWei)) * 100;
+      // Impact = amountIn / (reserveIn + amountIn) * 100
+      const priceImpact = (amountInValue / (reserveInFormatted + amountInValue)) * 100;
       return Math.min(priceImpact, 100); // Cap at 100%
     } catch (error) {
       console.error('Price impact calculation error:', error);

@@ -113,24 +113,14 @@ export function getRecommendedSlippage(tokenASymbol: string, tokenBSymbol: strin
 
 /**
  * Format number with appropriate decimal places for display
+ * Always human-readable - no scientific notation
  * @param value - Number to format
  * @param maxDecimals - Maximum decimal places
  * @returns Formatted string
  */
 export function formatDisplayNumber(value: number, maxDecimals: number = 6): string {
   if (value === 0) return '0';
-  if (value < 0.000001) return '< 0.000001';
-  
-  // Use scientific notation for very small numbers
-  if (value < 0.0001) {
-    return value.toExponential(2);
-  }
-  
-  // Use appropriate decimal places based on magnitude
-  if (value < 1) return value.toFixed(Math.min(6, maxDecimals));
-  if (value < 1000) return value.toFixed(Math.min(4, maxDecimals));
-  if (value < 1000000) return value.toFixed(Math.min(2, maxDecimals));
-  
+
   // Use compact notation for large numbers
   if (value >= 1000000000) {
     return (value / 1000000000).toFixed(2) + 'B';
@@ -139,8 +129,19 @@ export function formatDisplayNumber(value: number, maxDecimals: number = 6): str
     return (value / 1000000).toFixed(2) + 'M';
   }
   if (value >= 1000) {
-    return (value / 1000).toFixed(2) + 'K';
+    return value.toLocaleString('en-US', { maximumFractionDigits: 2 });
   }
-  
+  if (value >= 1) {
+    return value.toFixed(Math.min(4, maxDecimals));
+  }
+  if (value >= 0.0001) {
+    return value.toFixed(Math.min(6, maxDecimals));
+  }
+
+  // For very small numbers, show full decimal (up to 10 places), trim trailing zeros
+  if (value > 0) {
+    return value.toFixed(10).replace(/\.?0+$/, '');
+  }
+
   return value.toFixed(2);
 }

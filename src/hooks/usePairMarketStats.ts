@@ -45,16 +45,30 @@ export function usePairMarketStats(tokenA?: Token, tokenB?: Token): PairMarketSt
 
   // Normalize token order to ensure consistent stats regardless of swap direction
   // This ensures KLC/USDT and USDT/KLC show the same price/volume/liquidity
+  // IMPORTANT: Stablecoins should always be normalizedTokenB (quote token)
+  // so price shows "stablecoin per token" = USD price of the token
   const [normalizedTokenA, normalizedTokenB] = useMemo(() => {
     if (!tokenA || !tokenB) return [tokenA, tokenB];
 
-    // Sort tokens by address (lowercase for case-insensitive comparison)
+    const stablecoins = ['USDT', 'USDC', 'DAI', 'BUSD', 'KUSD'];
+    const isTokenAStable = stablecoins.includes(tokenA.symbol);
+    const isTokenBStable = stablecoins.includes(tokenB.symbol);
+
+    // If tokenA is a stablecoin and tokenB is not, swap them
+    // so the stablecoin is always the quote (normalizedTokenB)
+    if (isTokenAStable && !isTokenBStable) {
+      return [tokenB, tokenA];
+    }
+    // If tokenB is a stablecoin and tokenA is not, keep order
+    if (isTokenBStable && !isTokenAStable) {
+      return [tokenA, tokenB];
+    }
+
+    // If both or neither are stablecoins, sort by address for consistency
     const addrA = tokenA.address.toLowerCase();
     const addrB = tokenB.address.toLowerCase();
-
-    // Return tokens in consistent order
     return addrA < addrB ? [tokenA, tokenB] : [tokenB, tokenA];
-  }, [tokenA?.address, tokenB?.address]);
+  }, [tokenA?.address, tokenA?.symbol, tokenB?.address, tokenB?.symbol]);
 
   // Convert native KLC to WKLC address
   const getTokenAddress = useCallback((token: Token): string => {
