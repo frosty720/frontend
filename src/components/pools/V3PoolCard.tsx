@@ -93,6 +93,15 @@ export default function V3PoolCard({ pool, onUpdate }: V3PoolCardProps) {
     return num.toFixed(decimals);
   };
 
+  const formatUSD = (value: string) => {
+    const num = parseFloat(value);
+    if (!isFinite(num) || num === 0) return '$0';
+    if (num < 0.01) return '<$0.01';
+    if (num >= 1000000) return `$${(num / 1000000).toFixed(2)}M`;
+    if (num >= 1000) return `$${(num / 1000).toFixed(2)}K`;
+    return `$${num.toFixed(2)}`;
+  };
+
   return (
     <Card className={`pool-card ${pool.userHasPosition ? 'user-position' : ''}`}>
       <CardContent className="p-6">
@@ -121,6 +130,16 @@ export default function V3PoolCard({ pool, onUpdate }: V3PoolCardProps) {
               </div>
               <p className="text-sm text-gray-300">Liquidity Pool</p>
             </div>
+          </div>
+        </div>
+
+        {/* Total Value Locked (USD) */}
+        <div className="pool-info-card p-3 mb-4">
+          <div className="flex items-center justify-between">
+            <span className="text-sm font-medium text-white">Total Value Locked</span>
+            <span className="text-lg font-bold text-white break-all text-right min-w-0">
+              {formatUSD(pool.totalValueLockedUSD)}
+            </span>
           </div>
         </div>
 
