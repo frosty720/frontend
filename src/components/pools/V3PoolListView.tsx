@@ -4,7 +4,6 @@ import { useState } from 'react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
 import {
   Search,
   Filter,
@@ -13,22 +12,22 @@ import {
   ArrowDown,
   RefreshCw,
   AlertCircle,
-  Loader2
+  Loader2,
 } from 'lucide-react';
-import { usePoolDiscovery, PoolData } from '@/hooks/usePoolDiscovery';
-import PoolCard from './PoolCard';
+import { useV3PoolDiscovery } from '@/hooks/useV3PoolDiscovery';
+import V3PoolCard from './V3PoolCard';
 import ProtocolVersionToggle from '@/components/swap/ProtocolVersionToggle';
-import { useProtocolVersion } from '@/contexts/ProtocolVersionContext';
-import V3PoolListView from './V3PoolListView';
 
-interface PoolListProps {
-  onAddLiquidity?: (pool: PoolData) => void;
-}
-
-export default function PoolList({ onAddLiquidity }: PoolListProps) {
+/**
+ * V3 pools browse view — the V3 counterpart of the V2 grid in `PoolList`.
+ * Shows ALL V3 pools (not just the connected wallet's positions) and surfaces
+ * Manage/Collect on pools the wallet has a position in, exactly like V2.
+ */
+export default function V3PoolListView() {
   const {
     pools,
     allPools,
+    userPoolsCount,
     loading,
     error,
     searchTerm,
@@ -36,60 +35,20 @@ export default function PoolList({ onAddLiquidity }: PoolListProps) {
     sortOrder,
     setSearchTerm,
     setSorting,
-    refetch
-  } = usePoolDiscovery();
-
-  const { isV3 } = useProtocolVersion();
+    refetch,
+  } = useV3PoolDiscovery();
 
   const [showFilters, setShowFilters] = useState(false);
   const [showOnlyUserPools, setShowOnlyUserPools] = useState(false);
 
-  // Show loading state if no pools and not in error state
-  if (!loading && !error && allPools.length === 0 && !isV3) {
-    return (
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <div className="space-y-6">
-          <div className="flex items-center justify-between">
-            <div>
-              <h2 className="text-2xl font-bold text-white">Liquidity Pools</h2>
-              <p className="text-gray-300 mt-1">
-                Discover and provide liquidity to earn trading fees
-              </p>
-            </div>
-            <ProtocolVersionToggle />
-          </div>
-          <Card className="pools-card">
-            <CardContent className="p-8">
-              <div className="flex items-center justify-center space-x-3">
-                <Loader2 className="h-6 w-6 animate-spin text-blue-400" />
-                <span className="text-gray-300">Connecting to blockchain...</span>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-      </div>
-    );
-  }
-
-  // If V3, show the V3 pools browse view: ALL pools, with Manage/Collect on
-  // pools the connected wallet has a position in (mirrors the V2 grid below).
-  if (isV3) {
-    return <V3PoolListView />;
-  }
-
-  // Filter pools based on user preference
   const filteredPools = showOnlyUserPools
-    ? pools.filter(pool => pool.userHasPosition)
+    ? pools.filter((pool) => pool.userHasPosition)
     : pools;
-
-  const userPoolsCount = pools.filter(pool => pool.userHasPosition).length;
 
   const handleSortChange = (newSortBy: 'liquidity' | 'name') => {
     if (sortBy === newSortBy) {
-      // Toggle sort order if same column
       setSorting(newSortBy, sortOrder === 'asc' ? 'desc' : 'asc');
     } else {
-      // Default to descending for new column
       setSorting(newSortBy, 'desc');
     }
   };
@@ -159,7 +118,6 @@ export default function PoolList({ onAddLiquidity }: PoolListProps) {
         <Card className="pools-card">
           <CardContent className="p-4">
             <div className="flex flex-col sm:flex-row gap-4">
-              {/* Search */}
               <div className="flex-1 relative">
                 <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
                 <Input
@@ -170,7 +128,6 @@ export default function PoolList({ onAddLiquidity }: PoolListProps) {
                 />
               </div>
 
-              {/* Filter Toggle */}
               <Button
                 variant="outline"
                 onClick={() => setShowFilters(!showFilters)}
@@ -182,10 +139,8 @@ export default function PoolList({ onAddLiquidity }: PoolListProps) {
               </Button>
             </div>
 
-            {/* Filter and Sort Options */}
             {showFilters && (
               <div className="mt-4 pt-4 border-t border-gray-600 space-y-4">
-                {/* Pool Filter */}
                 <div className="flex flex-wrap gap-2">
                   <span className="text-sm font-medium text-white mr-2">Show:</span>
 
@@ -210,7 +165,6 @@ export default function PoolList({ onAddLiquidity }: PoolListProps) {
                   </Button>
                 </div>
 
-                {/* Sort Options */}
                 <div className="flex flex-wrap gap-2">
                   <span className="text-sm font-medium text-white mr-2">Sort by:</span>
 
@@ -221,7 +175,7 @@ export default function PoolList({ onAddLiquidity }: PoolListProps) {
                     className={`flex items-center space-x-1 ${sortBy === 'liquidity' ? 'continue-button' : 'bg-gray-900/30 text-white hover:bg-gray-800/50'}`}
                     style={sortBy !== 'liquidity' ? { borderColor: 'rgba(245, 158, 11, 0.3)' } : {}}
                   >
-                    <span>Liquidity</span>
+                    <span>Activity</span>
                     {getSortIcon('liquidity')}
                   </Button>
 
@@ -280,16 +234,12 @@ export default function PoolList({ onAddLiquidity }: PoolListProps) {
         {!loading && filteredPools.length > 0 && (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {filteredPools.map((pool) => (
-              <PoolCard
-                key={pool.id}
-                pool={pool}
-                onAddLiquidity={onAddLiquidity}
-              />
+              <V3PoolCard key={pool.id} pool={pool} onUpdate={refetch} />
             ))}
           </div>
         )}
 
-        {/* Empty State */}
+        {/* Empty State (search/filter returned nothing) */}
         {!loading && filteredPools.length === 0 && allPools.length > 0 && (
           <Card className="pools-card">
             <CardContent className="p-8">
@@ -298,9 +248,8 @@ export default function PoolList({ onAddLiquidity }: PoolListProps) {
                 <h3 className="text-lg font-semibold text-white mb-2">No pools found</h3>
                 <p className="text-gray-300 mb-4">
                   {showOnlyUserPools
-                    ? "You don't have any liquidity positions yet. Start by adding liquidity to a pool."
-                    : "No pools match your search criteria. Try adjusting your search terms."
-                  }
+                    ? "You don't have any V3 positions yet. Add liquidity to a pool to get started."
+                    : 'No pools match your search criteria. Try adjusting your search terms.'}
                 </p>
                 <div className="flex gap-2 justify-center">
                   {!showOnlyUserPools && (
@@ -337,10 +286,10 @@ export default function PoolList({ onAddLiquidity }: PoolListProps) {
                 <AlertCircle className="h-12 w-12 text-gray-400 mx-auto mb-4" />
                 <h3 className="text-lg font-semibold text-white mb-2">No pools available</h3>
                 <p className="text-gray-300 mb-4">
-                  There are currently no liquidity pools available. Be the first to create one!
+                  There are currently no V3 liquidity pools available. Be the first to create one!
                 </p>
                 <Button
-                  onClick={() => window.location.href = '/pools'}
+                  onClick={() => (window.location.href = '/pools')}
                   className="continue-button"
                 >
                   Create First Pool

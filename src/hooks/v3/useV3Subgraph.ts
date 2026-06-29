@@ -1,13 +1,17 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { request, gql } from 'graphql-request';
-import { KALYSWAP_V3_TESTNET_CONFIG } from '@/config/dex/v3-config';
-import { DexConfig } from '@/config/dex/types';
+import { useAccount } from 'wagmi';
+import { request, gql, ClientError } from 'graphql-request';
+import { getV3Config } from '@/config/dex/v3-config';
+import { CHAIN_IDS } from '@/config/chains';
 
-// Use the testnet config by default or logic to switch based on chainId if needed
-// For now, defaulting to the config that has the URL we just verified.
-const SUBGRAPH_URL = KALYSWAP_V3_TESTNET_CONFIG.subgraphUrl;
+// Resolve the V3 subgraph URL for a given chain. Falls back to KalyChain
+// mainnet when no wallet is connected so logged-out visitors see all pools.
+function getSubgraphUrl(chainId?: number): string {
+    const config = getV3Config(chainId ?? CHAIN_IDS.KALYCHAIN);
+    return config?.subgraphUrl || '';
+}
 
 export interface V3Pool {
     id: string;
@@ -25,13 +29,11 @@ export interface V3Pool {
     };
     feeTier: string;
     liquidity: string;
-    sqrtPriceX96: string;
-    tick: string;
+    sqrtPrice: string;
+    tick: string | null;
     token0Price: string;
     token1Price: string;
     volumeUSD: string;
-    volumeToken0: string;
-    volumeToken1: string;
     txCount: string;
     totalValueLockedUSD: string;
     totalValueLockedToken0: string;
@@ -67,19 +69,41 @@ export interface V3Position {
 }
 
 export function useV3Pools() {
+    const { chainId } = useAccount();
     const [pools, setPools] = useState<V3Pool[]>([]);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
+    const [reloadKey, setReloadKey] = useState(0);
+
+    const refetch = () => setReloadKey((k) => k + 1);
 
     useEffect(() => {
+        const subgraphUrl = getSubgraphUrl(chainId);
+
         const fetchPools = async () => {
+            if (!subgraphUrl) {
+                setError('V3 subgraph URL not configured for this chain');
+                setPools([]);
+                return;
+            }
+
             setLoading(true);
             setError(null);
 
             try {
+                // `subgraphError: allow` lets us read pool data even while the
+                // subgraph is flagged unhealthy (e.g. USD pricing derivation
+                // errors). Without it Graph Node returns `indexing_error` and no
+                // data. Fields selected are limited to those the subgraph serves
+                // reliably — broken USD/liquidity fields are omitted on purpose.
                 const query = gql`
           {
-            pools(first: 100, orderBy: totalValueLockedUSD, orderDirection: desc) {
+            pools(
+              first: 100
+              subgraphError: allow
+              orderBy: txCount
+              orderDirection: desc
+            ) {
               id
               token0 {
                 id
@@ -95,13 +119,11 @@ export function useV3Pools() {
               }
               feeTier
               liquidity
-              sqrtPriceX96
+              sqrtPrice
               tick
               token0Price
               token1Price
               volumeUSD
-              volumeToken0
-              volumeToken1
               txCount
               totalValueLockedUSD
               totalValueLockedToken0
@@ -110,9 +132,21 @@ export function useV3Pools() {
           }
         `;
 
-                const data = await request<{ pools: V3Pool[] }>(SUBGRAPH_URL, query);
+                const data = await request<{ pools: V3Pool[] }>(subgraphUrl, query);
                 setPools(data.pools);
             } catch (err) {
+                // graphql-request throws when the response carries ANY GraphQL
+                // errors, even alongside valid data. While the subgraph is
+                // unhealthy it returns `indexing_error` together with the pool
+                // data, so salvage that partial data from the ClientError.
+                if (err instanceof ClientError) {
+                    const salvaged = err.response?.data as { pools?: V3Pool[] } | undefined;
+                    if (salvaged?.pools) {
+                        setPools(salvaged.pools);
+                        setError(null);
+                        return;
+                    }
+                }
                 console.error('Failed to fetch V3 pools:', err);
                 setError(err instanceof Error ? err.message : 'Failed to fetch V3 pools');
             } finally {
@@ -121,12 +155,13 @@ export function useV3Pools() {
         };
 
         fetchPools();
-    }, []);
+    }, [chainId, reloadKey]);
 
-    return { pools, loading, error };
+    return { pools, loading, error, refetch };
 }
 
 export function useUserV3Positions(userAddress: string | undefined | null) {
+    const { chainId } = useAccount();
     const [positions, setPositions] = useState<V3Position[]>([]);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
@@ -137,7 +172,15 @@ export function useUserV3Positions(userAddress: string | undefined | null) {
             return;
         }
 
+        const subgraphUrl = getSubgraphUrl(chainId);
+
         const fetchPositions = async () => {
+            if (!subgraphUrl) {
+                setError('V3 subgraph URL not configured for this chain');
+                setPositions([]);
+                return;
+            }
+
             setLoading(true);
             setError(null);
 
@@ -146,6 +189,7 @@ export function useUserV3Positions(userAddress: string | undefined | null) {
           {
             positions(
               where: { owner: "${userAddress.toLowerCase()}" }
+              subgraphError: allow
               orderBy: liquidity
               orderDirection: desc
             ) {
@@ -178,7 +222,7 @@ export function useUserV3Positions(userAddress: string | undefined | null) {
           }
         `;
 
-                const data = await request<{ positions: V3Position[] }>(SUBGRAPH_URL, query);
+                const data = await request<{ positions: V3Position[] }>(subgraphUrl, query);
                 setPositions(data.positions);
             } catch (err) {
                 console.error('Failed to fetch V3 positions:', err);
@@ -189,7 +233,7 @@ export function useUserV3Positions(userAddress: string | undefined | null) {
         };
 
         fetchPositions();
-    }, [userAddress]);
+    }, [userAddress, chainId]);
 
     return { positions, loading, error };
 }
