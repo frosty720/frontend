@@ -110,7 +110,7 @@ export const KALYSWAP_V3_MAINNET_CONFIG: V3DexConfig = {
     migrator: V3_MAINNET_CONTRACTS.V3_MIGRATOR,
     tickLens: V3_MAINNET_CONTRACTS.V3_TICK_LENS,
     staker: V3_MAINNET_CONTRACTS.V3_STAKER,
-    subgraphUrl: process.env.NEXT_PUBLIC_V3_MAINNET_SUBGRAPH_URL || '',
+    subgraphUrl: process.env.NEXT_PUBLIC_V3_MAINNET_SUBGRAPH_URL || 'https://app.kalyswap.io/subgraphs/name/v3-subgraph-kalychain-mainnet',
 };
 
 // Get V3 config for a given chain ID (returns null for unsupported chains)
