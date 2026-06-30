@@ -4,26 +4,22 @@ import React from 'react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Gift, Coins } from 'lucide-react'
-import { REWARD_TOKENS } from '@/config/dex/v3-incentives'
 
 interface V3ClaimRewardsProps {
     pendingRewards: Record<string, bigint>;
     onClaim: (rewardToken: string) => void;
     isLoading: boolean;
+    /** Address (lowercased) -> token symbol, sourced dynamically from the subgraph. */
+    rewardTokenSymbols?: Record<string, string>;
 }
 
 /**
- * Map known reward token addresses to symbols
+ * Resolve a reward token address to a symbol using the dynamic map from the
+ * subgraph, falling back to a truncated address when unknown.
  */
-function getTokenSymbol(address: string): string {
-    const lowerAddress = address.toLowerCase()
-    for (const [name, addr] of Object.entries(REWARD_TOKENS)) {
-        if (addr.toLowerCase() === lowerAddress) {
-            // Convert "KSWAP_TESTNET" -> "KSWAP"
-            return name.split('_')[0]
-        }
-    }
-    // Truncated address as fallback
+function getTokenSymbol(address: string, symbols?: Record<string, string>): string {
+    const symbol = symbols?.[address.toLowerCase()]
+    if (symbol) return symbol
     return `${address.slice(0, 6)}...${address.slice(-4)}`
 }
 
@@ -40,7 +36,7 @@ function formatRewardAmount(amount: bigint, decimals: number = 18): string {
     return whole.toString()
 }
 
-export default function V3ClaimRewards({ pendingRewards, onClaim, isLoading }: V3ClaimRewardsProps) {
+export default function V3ClaimRewards({ pendingRewards, onClaim, isLoading, rewardTokenSymbols }: V3ClaimRewardsProps) {
     const rewardEntries = Object.entries(pendingRewards).filter(([, amount]) => amount > 0n)
 
     if (rewardEntries.length === 0) return null
@@ -70,7 +66,7 @@ export default function V3ClaimRewards({ pendingRewards, onClaim, isLoading }: V
                                 <Coins className="w-5 h-5 text-amber-400" />
                                 <div>
                                     <p className="text-white font-medium">
-                                        {formatRewardAmount(amount)} {getTokenSymbol(tokenAddress)}
+                                        {formatRewardAmount(amount)} {getTokenSymbol(tokenAddress, rewardTokenSymbols)}
                                     </p>
                                     <p className="text-xs text-gray-500 font-mono">
                                         {tokenAddress.slice(0, 10)}...{tokenAddress.slice(-6)}

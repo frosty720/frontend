@@ -52,12 +52,17 @@ vi.mock('@/services/dex/V3StakingService', () => ({
     }),
 }));
 
-// Mock incentives config — start with empty to avoid background fetches interfering
-vi.mock('@/config/dex/v3-incentives', () => ({
-    KNOWN_INCENTIVES: [],
-    REWARD_TOKENS: {
-        KSWAP_TESTNET: '0x7659567Bc5057e7284856aAF331C4dea22AEd73E',
-    },
+// Mock the staking subgraph hook — incentive list now comes from here.
+// Empty by default to avoid background fetches interfering with assertions.
+vi.mock('@/hooks/v3/useV3StakingSubgraph', () => ({
+    useV3StakingSubgraph: () => ({
+        incentives: [],
+        userStakes: [],
+        rewardClaims: [],
+        isLoading: false,
+        error: null,
+        refetch: vi.fn(),
+    }),
 }));
 
 vi.mock('@/lib/logger', () => ({
