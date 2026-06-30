@@ -42,6 +42,7 @@ export default function FarmPage() {
   const {
     incentives: v3Incentives,
     pendingRewards: v3PendingRewards,
+    rewardTokenSymbols: v3RewardTokenSymbols,
     claimReward: v3ClaimReward,
     isLoading: v3Loading,
     error: v3Error,
@@ -382,6 +383,7 @@ export default function FarmPage() {
                   pendingRewards={v3PendingRewards}
                   onClaim={handleV3ClaimReward}
                   isLoading={isClaimingReward}
+                  rewardTokenSymbols={v3RewardTokenSymbols}
                 />
               )}
 

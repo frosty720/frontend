@@ -10,24 +10,35 @@ import { useAccount, usePublicClient, useWalletClient } from 'wagmi';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { CHAIN_IDS } from '@/config/chains';
 import { getV3StakingService } from '@/services/dex/V3StakingService';
-import { KNOWN_INCENTIVES, KNOWN_INCENTIVE_CONFIGS, REWARD_TOKENS } from '@/config/dex/v3-incentives';
+import { useV3StakingSubgraph } from '@/hooks/v3/useV3StakingSubgraph';
 import { dexLogger as logger } from '@/lib/logger';
 import type { IncentiveKey, V3Incentive, V3Deposit } from '@/services/dex/v3-staking-types';
 
+/** UI metadata for an incentive, derived from the subgraph (pool/reward token). */
+interface IncentiveMeta {
+    poolToken0Symbol?: string;
+    poolToken1Symbol?: string;
+    poolFee?: number;
+    rewardTokenSymbol?: string;
+    rewardTokenDecimals?: number;
+}
+
 /**
- * Fetch on-chain info for all known incentives
+ * Fetch on-chain info for the given incentives (list sourced from the subgraph).
+ * Live numbers (totalRewardUnclaimed, numberOfStakes, active window) are read
+ * on-chain so they are always accurate; the subgraph only supplies the list +
+ * display metadata.
  */
 async function fetchIncentives(
     chainId: number,
+    incentiveList: { key: IncentiveKey; meta: IncentiveMeta }[],
 ): Promise<V3Incentive[]> {
     const service = getV3StakingService(chainId);
     const now = Math.floor(Date.now() / 1000);
 
     const results: V3Incentive[] = [];
 
-    for (let i = 0; i < KNOWN_INCENTIVES.length; i++) {
-        const key = KNOWN_INCENTIVES[i];
-        const config = KNOWN_INCENTIVE_CONFIGS[i];
+    for (const { key, meta: config } of incentiveList) {
         try {
             const info = await service.getIncentiveInfo(key);
             const incentiveId = service.encodeIncentiveKey(key);
@@ -63,14 +74,12 @@ async function fetchIncentives(
 async function fetchPendingRewards(
     chainId: number,
     address: string,
+    rewardTokens: string[],
 ): Promise<Record<string, bigint>> {
     const service = getV3StakingService(chainId);
     const rewards: Record<string, bigint> = {};
 
-    // Check rewards for all known reward tokens
-    const rewardTokenAddresses = Object.values(REWARD_TOKENS);
-
-    for (const token of rewardTokenAddresses) {
+    for (const token of rewardTokens) {
         try {
             const amount = await service.getAccumulatedRewards(token, address);
             if (amount > 0n) {
@@ -92,20 +101,66 @@ export function useV3Staking(chainId: number = CHAIN_IDS.KALYCHAIN) {
 
     const service = useMemo(() => getV3StakingService(chainId), [chainId]);
 
+    // Incentive list comes from the subgraph (dynamic) rather than a hardcoded
+    // config. The subgraph tracks the V3 staker's IncentiveCreated events.
+    const { incentives: subgraphIncentives } = useV3StakingSubgraph(chainId);
+
+    const incentiveList = useMemo(
+        () =>
+            subgraphIncentives.map((si) => ({
+                key: {
+                    rewardToken: si.rewardToken.id,
+                    pool: si.pool.id,
+                    startTime: BigInt(si.startTime),
+                    endTime: BigInt(si.endTime),
+                    refundee: si.refundee,
+                } as IncentiveKey,
+                meta: {
+                    poolToken0Symbol: si.pool.token0.symbol,
+                    poolToken1Symbol: si.pool.token1.symbol,
+                    poolFee: Number(si.pool.feeTier),
+                    rewardTokenSymbol: si.rewardToken.symbol,
+                    rewardTokenDecimals: Number(si.rewardToken.decimals),
+                } as IncentiveMeta,
+            })),
+        [subgraphIncentives],
+    );
+
+    // Unique reward-token addresses (lowercased) to check for claimable rewards.
+    const rewardTokens = useMemo(
+        () => Array.from(new Set(subgraphIncentives.map((si) => si.rewardToken.id.toLowerCase()))),
+        [subgraphIncentives],
+    );
+
+    // Map reward-token address -> symbol for UI labelling (no hardcoded list).
+    const rewardTokenSymbols = useMemo(
+        () =>
+            subgraphIncentives.reduce<Record<string, string>>((acc, si) => {
+                acc[si.rewardToken.id.toLowerCase()] = si.rewardToken.symbol;
+                return acc;
+            }, {}),
+        [subgraphIncentives],
+    );
+
+    // Stable key fragment so the query refetches when the incentive set changes.
+    const incentiveListKey = incentiveList
+        .map((i) => `${i.key.pool}-${i.key.rewardToken}-${i.key.startTime.toString()}`)
+        .join(',');
+
     // ========== Queries ==========
 
     const incentivesQuery = useQuery({
-        queryKey: ['v3-staking-incentives', chainId],
-        queryFn: () => fetchIncentives(chainId),
-        enabled: KNOWN_INCENTIVES.length > 0,
+        queryKey: ['v3-staking-incentives', chainId, incentiveListKey],
+        queryFn: () => fetchIncentives(chainId, incentiveList),
+        enabled: incentiveList.length > 0,
         staleTime: 60 * 1000, // 1 minute
         refetchInterval: 5 * 60 * 1000, // 5 minutes
     });
 
     const rewardsQuery = useQuery({
-        queryKey: ['v3-staking-rewards', chainId, address],
-        queryFn: () => fetchPendingRewards(chainId, address!),
-        enabled: !!address,
+        queryKey: ['v3-staking-rewards', chainId, address, rewardTokens.join(',')],
+        queryFn: () => fetchPendingRewards(chainId, address!, rewardTokens),
+        enabled: !!address && rewardTokens.length > 0,
         staleTime: 30 * 1000,
         refetchInterval: 60 * 1000,
     });
@@ -275,6 +330,7 @@ export function useV3Staking(chainId: number = CHAIN_IDS.KALYCHAIN) {
         // Data
         incentives: incentivesQuery.data ?? [],
         pendingRewards: rewardsQuery.data ?? {},
+        rewardTokenSymbols,
 
         // Actions
         depositAndStake,
