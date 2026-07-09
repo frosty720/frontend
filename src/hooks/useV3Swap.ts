@@ -8,10 +8,20 @@ import { encodeFunctionData, parseUnits, getContract, maxUint256 } from 'viem';
 import { Token, QuoteResult, ExactOutputQuoteResult, SwapParams } from '@/config/dex/types';
 import { getKalySwapV3Service } from '@/services/dex/KalySwapV3Service';
 import { V3QuoteResult } from '@/services/dex/IV3DexService';
-import { ERC20_ABI } from '@/config/abis';
+import { ERC20_ABI, WKLC_ABI } from '@/config/abis';
 import { useState, useCallback, useMemo } from 'react';
 import { swapLogger as logger } from '@/lib/logger';
 import { CHAIN_IDS } from '@/config/chains';
+
+// Helper to check if tokens are Native <-> Wrapped Native (same as useDexSwap)
+const isWrapOperation = (tokenIn: Token, tokenOut: Token, wethAddress: string) => {
+    const isNativeIn = tokenIn.isNative;
+    const isWethIn = tokenIn.address.toLowerCase() === wethAddress.toLowerCase();
+    const isNativeOut = tokenOut.isNative;
+    const isWethOut = tokenOut.address.toLowerCase() === wethAddress.toLowerCase();
+
+    return (isNativeIn && isWethOut) || (isWethIn && isNativeOut);
+};
 
 // Extended return type for V3 with additional V3-specific data
 interface UseV3SwapReturn {
@@ -117,6 +127,16 @@ export function useV3Swap(chainId: number = CHAIN_IDS.KALYCHAIN): UseV3SwapRetur
             if (!service) throw new Error('V3 not available on this chain');
             if (!publicClient) throw new Error('Public client not available');
 
+            // Wrap/Unwrap is always 1:1 — never route KLC<->WKLC through pools
+            if (isWrapOperation(tokenIn, tokenOut, service.getWethAddress())) {
+                return {
+                    amountOut: amountIn,
+                    priceImpact: 0,
+                    route: [tokenIn.address, tokenOut.address],
+                    gasEstimate: '50000'
+                };
+            }
+
             // Use the service's getQuote which tries all fee tiers
             const quote = await service.getQuote(tokenIn, tokenOut, amountIn, publicClient);
 
@@ -146,6 +166,16 @@ export function useV3Swap(chainId: number = CHAIN_IDS.KALYCHAIN): UseV3SwapRetur
 
             if (!service) throw new Error('V3 not available on this chain');
             if (!publicClient) throw new Error('Public client not available');
+
+            // Wrap/Unwrap is always 1:1
+            if (isWrapOperation(tokenIn, tokenOut, service.getWethAddress())) {
+                return {
+                    amountIn: amountOut,
+                    priceImpact: 0,
+                    route: [tokenIn.address, tokenOut.address],
+                    gasEstimate: '50000'
+                };
+            }
 
             const quote = await service.getQuoteExactOutput(tokenIn, tokenOut, amountOut, publicClient);
 
@@ -275,6 +305,33 @@ export function useV3Swap(chainId: number = CHAIN_IDS.KALYCHAIN): UseV3SwapRetur
                 amountIn: params.amountIn,
                 slippage: params.slippageTolerance,
             });
+
+            // Wrap/Unwrap goes straight to the WKLC contract, not the router
+            const wethAddress = service.getWethAddress();
+            if (isWrapOperation(params.tokenIn, params.tokenOut, wethAddress)) {
+                const amountWei = parseUnits(params.amountIn, params.tokenIn.decimals);
+
+                if (params.tokenIn.isNative) {
+                    // Deposit (Wrap)
+                    return await walletClient.writeContract({
+                        address: wethAddress as `0x${string}`,
+                        abi: WKLC_ABI,
+                        functionName: 'deposit',
+                        args: [],
+                        value: amountWei,
+                        gas: 100000n,
+                    });
+                } else {
+                    // Withdraw (Unwrap)
+                    return await walletClient.writeContract({
+                        address: wethAddress as `0x${string}`,
+                        abi: WKLC_ABI,
+                        functionName: 'withdraw',
+                        args: [amountWei],
+                        gas: 100000n,
+                    });
+                }
+            }
 
             // Check and handle approval for non-native tokens
             if (!params.tokenIn.isNative) {
