@@ -1,7 +1,7 @@
 // Interface for DEX service implementations
 // This provides a common interface for all DEX protocols (KalySwap, PancakeSwap, Uniswap V2)
 
-import { Token, QuoteResult, SwapParams, PairInfo, AddLiquidityParams, RemoveLiquidityParams, LiquidityPosition } from '@/config/dex/types';
+import { Token, QuoteResult, ExactOutputQuoteResult, SwapParams, PairInfo, AddLiquidityParams, RemoveLiquidityParams, LiquidityPosition } from '@/config/dex/types';
 import type { PublicClient, WalletClient } from 'viem';
 
 export interface IDexService {
@@ -24,6 +24,7 @@ export interface IDexService {
    * @returns Quote result with expected output amount and price impact
    */
   getQuote(tokenIn: Token, tokenOut: Token, amountIn: string, publicClient: PublicClient): Promise<QuoteResult>;
+  getQuoteExactOutput(tokenIn: Token, tokenOut: Token, amountOut: string, publicClient: PublicClient): Promise<ExactOutputQuoteResult>;
 
   /**
    * Execute a token swap

@@ -2,7 +2,7 @@
 
 import { usePublicClient, useWalletClient, useAccount } from 'wagmi';
 import { parseUnits, getContract, maxUint256 } from 'viem';
-import { Token, QuoteResult, SwapParams } from '@/config/dex/types';
+import { Token, QuoteResult, ExactOutputQuoteResult, SwapParams } from '@/config/dex/types';
 import { DexService } from '@/services/dex/DexService';
 import { ERC20_ABI } from '@/config/abis';
 import { useState, useCallback } from 'react';
@@ -21,6 +21,7 @@ const isWrapOperation = (tokenIn: Token, tokenOut: Token, wethAddress: string) =
 
 interface UseDexSwapReturn {
   getQuote: (tokenIn: Token, tokenOut: Token, amountIn: string) => Promise<QuoteResult>;
+  getQuoteExactOutput: (tokenIn: Token, tokenOut: Token, amountOut: string) => Promise<ExactOutputQuoteResult>;
   executeSwap: (params: SwapParams) => Promise<string>;
   checkApproval: (token: Token, amount: string, spender: string) => Promise<boolean>;
   approveToken: (token: Token, spender: string, amount?: string) => Promise<string>;
@@ -67,6 +68,42 @@ export function useDexSwap(chainId: number): UseDexSwapReturn {
       return quote;
     } catch (err: any) {
       const errorMessage = err.message || 'Failed to get quote';
+      setError(errorMessage);
+      throw err;
+    }
+  }, [chainId, publicClient]);
+
+  /**
+   * Reverse quote: required input for an exact output (quote-only)
+   */
+  const getQuoteExactOutput = useCallback(async (
+    tokenIn: Token,
+    tokenOut: Token,
+    amountOut: string
+  ): Promise<ExactOutputQuoteResult> => {
+    try {
+      setError(null);
+
+      if (!publicClient) {
+        throw new Error('Public client not available');
+      }
+
+      const service = await DexService.getDexService(chainId);
+
+      // Wrap/Unwrap is always 1:1
+      const wethAddress = await service.getWethAddress();
+      if (isWrapOperation(tokenIn, tokenOut, wethAddress)) {
+        return {
+          amountIn: amountOut,
+          priceImpact: 0,
+          route: [tokenIn.address, tokenOut.address],
+          gasEstimate: '50000'
+        };
+      }
+
+      return await service.getQuoteExactOutput(tokenIn, tokenOut, amountOut, publicClient);
+    } catch (err: any) {
+      const errorMessage = err.message || 'Failed to get exact-output quote';
       setError(errorMessage);
       throw err;
     }
@@ -256,6 +293,7 @@ export function useDexSwap(chainId: number): UseDexSwapReturn {
 
   return {
     getQuote,
+    getQuoteExactOutput,
     executeSwap,
     checkApproval,
     approveToken,

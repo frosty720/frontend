@@ -19,10 +19,11 @@ import {
     V3Route,
     V3MultiHopSwapParams,
 } from './IV3DexService';
-import { DexError, PairNotFoundError, SwapFailedError } from './IDexService';
+import { DexError, PairNotFoundError, InsufficientLiquidityError, SwapFailedError } from './IDexService';
 import {
     Token,
     QuoteResult,
+    ExactOutputQuoteResult,
     SwapParams,
     PairInfo,
     AddLiquidityParams,
@@ -1071,6 +1072,186 @@ export abstract class BaseV3Service implements IV3DexService {
         }
 
         return bestResult;
+    }
+
+    /**
+     * Reverse quote: how much tokenIn is needed to receive exactly amountOut.
+     * Mirrors findBestRoute (direct pools first, then 2-hop) and picks the
+     * route requiring the LEAST input. Quote-only — execution stays exact-input.
+     */
+    async getQuoteExactOutput(
+        tokenIn: Token,
+        tokenOut: Token,
+        amountOut: string,
+        publicClient: PublicClient
+    ): Promise<ExactOutputQuoteResult> {
+        const best = await this.findBestRouteExactOutput(tokenIn, tokenOut, amountOut, publicClient);
+
+        if (!best) {
+            // Distinguish "no pool at all" from "pool exists but can't fill this amount"
+            for (const fee of this.getFeeTiers()) {
+                const pool = await this.getV3PoolAddress(tokenIn, tokenOut, fee, publicClient);
+                if (pool) {
+                    throw new InsufficientLiquidityError(this.getName(), tokenIn.symbol, tokenOut.symbol);
+                }
+            }
+            throw new PairNotFoundError(this.getName(), tokenIn.symbol, tokenOut.symbol);
+        }
+
+        const amountIn = formatUnits(best.amountInWei, tokenIn.decimals);
+
+        // Price impact via marginal probe, same approach as getQuote
+        let priceImpact = 0;
+        try {
+            const probeOut = (parseFloat(amountOut) / 100).toFixed(tokenOut.decimals);
+            if (parseFloat(probeOut) > 0) {
+                const probeInWei = await this.quoteExactOutputForRoute(
+                    tokenIn, tokenOut, probeOut, best.route, publicClient
+                );
+                priceImpact = computePriceImpactFromProbe(
+                    amountIn,
+                    amountOut,
+                    formatUnits(probeInWei, tokenIn.decimals),
+                    probeOut
+                );
+            }
+        } catch (error) {
+            logger.warn('Exact-output price impact probe failed, reporting 0:', error);
+        }
+
+        return {
+            amountIn,
+            priceImpact,
+            route: best.route.tokenPath,
+        };
+    }
+
+    /**
+     * Find the exact-output route needing the least input.
+     * NOTE: route.encodedPath here is the QUOTER path, encoded in reverse
+     * order (tokenOut → tokenIn) as V3 exact-output requires — do not pass
+     * it to exact-input execution.
+     */
+    async findBestRouteExactOutput(
+        tokenIn: Token,
+        tokenOut: Token,
+        amountOut: string,
+        publicClient: PublicClient
+    ): Promise<{ route: V3Route; amountInWei: bigint } | null> {
+        const feeTiers = this.getFeeTiers();
+        const effectiveIn = this.getEffectiveTokenAddress(tokenIn);
+        const effectiveOut = this.getEffectiveTokenAddress(tokenOut);
+        let best: { route: V3Route; amountInWei: bigint } | null = null;
+
+        // 1. Direct pools (single-hop)
+        for (const fee of feeTiers) {
+            try {
+                const pool = await this.getV3PoolAddress(tokenIn, tokenOut, fee, publicClient);
+                if (!pool) continue;
+
+                const route: V3Route = {
+                    tokenPath: [effectiveIn, effectiveOut],
+                    fees: [fee],
+                    // reverse order for exact-output quoting
+                    encodedPath: this.encodePath([effectiveOut, effectiveIn], [fee]),
+                };
+
+                const amountInWei = await this.quoteExactOutputForRoute(
+                    tokenIn, tokenOut, amountOut, route, publicClient
+                );
+
+                if (!best || amountInWei < best.amountInWei) {
+                    best = { route, amountInWei };
+                }
+            } catch {
+                continue;
+            }
+        }
+
+        // 2. 2-hop routes through intermediate tokens
+        const intermediateTokens = this.getIntermediateTokens();
+        const addressIn = effectiveIn.toLowerCase();
+        const addressOut = effectiveOut.toLowerCase();
+
+        for (const intermediate of intermediateTokens) {
+            if (intermediate.toLowerCase() === addressIn || intermediate.toLowerCase() === addressOut) {
+                continue;
+            }
+
+            for (const fee1 of feeTiers) {
+                for (const fee2 of feeTiers) {
+                    try {
+                        const [pool1, pool2] = await Promise.all([
+                            this.getV3PoolAddress(tokenIn, { address: intermediate } as Token, fee1, publicClient),
+                            this.getV3PoolAddress({ address: intermediate } as Token, tokenOut, fee2, publicClient),
+                        ]);
+
+                        if (!pool1 || !pool2) continue;
+
+                        const route: V3Route = {
+                            tokenPath: [effectiveIn, intermediate, effectiveOut],
+                            fees: [fee1, fee2],
+                            // reverse order for exact-output quoting: out → mid → in
+                            encodedPath: this.encodePath(
+                                [effectiveOut, intermediate, effectiveIn],
+                                [fee2, fee1]
+                            ),
+                        };
+
+                        const amountInWei = await this.quoteExactOutputForRoute(
+                            tokenIn, tokenOut, amountOut, route, publicClient
+                        );
+
+                        if (!best || amountInWei < best.amountInWei) {
+                            best = { route, amountInWei };
+                        }
+                    } catch {
+                        continue;
+                    }
+                }
+            }
+        }
+
+        return best;
+    }
+
+    /**
+     * Raw exact-output quoter call for a route built by findBestRouteExactOutput.
+     * Returns the required input amount in wei.
+     */
+    private async quoteExactOutputForRoute(
+        tokenIn: Token,
+        tokenOut: Token,
+        amountOut: string,
+        route: V3Route,
+        publicClient: PublicClient
+    ): Promise<bigint> {
+        const quoterAddress = this.getQuoterAddress();
+        const amountOutWei = parseUnits(amountOut, tokenOut.decimals);
+
+        if (route.tokenPath.length === 2) {
+            const result = await publicClient.readContract({
+                address: quoterAddress as `0x${string}`,
+                abi: this.config.quoterABI,
+                functionName: 'quoteExactOutputSingle',
+                args: [{
+                    tokenIn: this.getEffectiveTokenAddress(tokenIn) as `0x${string}`,
+                    tokenOut: this.getEffectiveTokenAddress(tokenOut) as `0x${string}`,
+                    amount: amountOutWei,
+                    fee: route.fees[0],
+                    sqrtPriceLimitX96: BigInt(0),
+                }],
+            }) as [bigint, bigint, number, bigint];
+            return result[0];
+        }
+
+        const result = await publicClient.readContract({
+            address: quoterAddress as `0x${string}`,
+            abi: this.config.quoterABI,
+            functionName: 'quoteExactOutput',
+            args: [route.encodedPath, amountOutWei],
+        }) as [bigint, bigint[], number[], bigint];
+        return result[0];
     }
 
     /**

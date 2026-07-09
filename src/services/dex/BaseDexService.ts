@@ -2,8 +2,8 @@ import { dexLogger } from '@/lib/logger';
 // Base DEX service with common functionality
 // This provides shared logic for all DEX implementations
 
-import { IDexService, DexError, PairNotFoundError, SwapFailedError } from './IDexService';
-import { Token, QuoteResult, SwapParams, PairInfo, DexConfig, AddLiquidityParams, RemoveLiquidityParams, LiquidityPosition } from '@/config/dex/types';
+import { IDexService, DexError, PairNotFoundError, InsufficientLiquidityError, SwapFailedError } from './IDexService';
+import { Token, QuoteResult, ExactOutputQuoteResult, SwapParams, PairInfo, DexConfig, AddLiquidityParams, RemoveLiquidityParams, LiquidityPosition } from '@/config/dex/types';
 import { getContract, parseUnits, formatUnits, maxUint256 } from 'viem';
 import type { PublicClient, WalletClient } from 'viem';
 
@@ -191,6 +191,54 @@ export abstract class BaseDexService implements IDexService {
         throw error;
       }
       throw new DexError(`Failed to get quote: ${error}`, 'QUOTE_FAILED', this.getName());
+    }
+  }
+
+  // Reverse quote: how much tokenIn is needed to receive exactly amountOut.
+  // Quote-only — execution stays exact-input.
+  async getQuoteExactOutput(tokenIn: Token, tokenOut: Token, amountOut: string, publicClient: PublicClient): Promise<ExactOutputQuoteResult> {
+    try {
+      const route = await this.getSwapRoute(tokenIn, tokenOut, publicClient);
+      if (route.length === 0) {
+        throw new PairNotFoundError(this.getName(), tokenIn.symbol, tokenOut.symbol);
+      }
+
+      if (!publicClient) {
+        throw new DexError('Public client not available', 'NO_CLIENT', this.getName());
+      }
+
+      const amountOutWei = parseUnits(amountOut, tokenOut.decimals);
+
+      const routerContract = getContract({
+        address: this.config.router as `0x${string}`,
+        abi: this.config.routerABI,
+        client: publicClient,
+      });
+
+      // getAmountsIn returns [requiredIn, ..., amountOut] along the forward path.
+      // It reverts when the reserves can't provide the requested output.
+      let amounts: bigint[];
+      try {
+        amounts = await routerContract.read.getAmountsIn([amountOutWei, route]) as bigint[];
+      } catch {
+        throw new InsufficientLiquidityError(this.getName(), tokenIn.symbol, tokenOut.symbol);
+      }
+      const amountIn = formatUnits(amounts[0], tokenIn.decimals);
+
+      const priceImpact = await this.calculatePriceImpact(tokenIn, tokenOut, amountIn, publicClient);
+
+      return {
+        amountIn,
+        priceImpact,
+        route,
+        gasEstimate: '200000',
+      };
+    } catch (error) {
+      dexLogger.error('Exact-output quote error:', error);
+      if (error instanceof DexError) {
+        throw error;
+      }
+      throw new DexError(`Failed to get exact-output quote: ${error}`, 'QUOTE_FAILED', this.getName());
     }
   }
 

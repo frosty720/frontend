@@ -44,6 +44,14 @@ export interface QuoteResult {
   gasEstimate?: string;
 }
 
+// Reverse (exact-output) quote: how much input is needed for a desired output
+export interface ExactOutputQuoteResult {
+  amountIn: string;
+  priceImpact: number;
+  route: string[];
+  gasEstimate?: string;
+}
+
 export interface SwapParams {
   tokenIn: Token;
   tokenOut: Token;
