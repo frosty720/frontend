@@ -5,7 +5,7 @@
 
 import { usePublicClient, useWalletClient, useAccount } from 'wagmi';
 import { encodeFunctionData, parseUnits, getContract, maxUint256 } from 'viem';
-import { Token, QuoteResult, SwapParams } from '@/config/dex/types';
+import { Token, QuoteResult, ExactOutputQuoteResult, SwapParams } from '@/config/dex/types';
 import { getKalySwapV3Service } from '@/services/dex/KalySwapV3Service';
 import { V3QuoteResult } from '@/services/dex/IV3DexService';
 import { ERC20_ABI } from '@/config/abis';
@@ -17,6 +17,7 @@ import { CHAIN_IDS } from '@/config/chains';
 interface UseV3SwapReturn {
     // Standard swap operations
     getQuote: (tokenIn: Token, tokenOut: Token, amountIn: string) => Promise<QuoteResult>;
+    getQuoteExactOutput: (tokenIn: Token, tokenOut: Token, amountOut: string) => Promise<ExactOutputQuoteResult>;
     executeSwap: (params: SwapParams) => Promise<string>;
     checkApproval: (token: Token, amount: string) => Promise<boolean>;
     approveToken: (token: Token, amount?: string) => Promise<string>;
@@ -127,6 +128,35 @@ export function useV3Swap(chainId: number = CHAIN_IDS.KALYCHAIN): UseV3SwapRetur
             return quote;
         } catch (err: any) {
             const errorMessage = err.message || 'Failed to get quote';
+            setError(errorMessage);
+            throw err;
+        }
+    }, [service, publicClient]);
+
+    /**
+     * Reverse quote: required input for an exact output (quote-only)
+     */
+    const getQuoteExactOutput = useCallback(async (
+        tokenIn: Token,
+        tokenOut: Token,
+        amountOut: string
+    ): Promise<ExactOutputQuoteResult> => {
+        try {
+            setError(null);
+
+            if (!service) throw new Error('V3 not available on this chain');
+            if (!publicClient) throw new Error('Public client not available');
+
+            const quote = await service.getQuoteExactOutput(tokenIn, tokenOut, amountOut, publicClient);
+
+            logger.debug('V3 exact-output quote:', {
+                amountIn: quote.amountIn,
+                priceImpact: quote.priceImpact,
+            });
+
+            return quote;
+        } catch (err: any) {
+            const errorMessage = err.message || 'Failed to get exact-output quote';
             setError(errorMessage);
             throw err;
         }
@@ -275,6 +305,7 @@ export function useV3Swap(chainId: number = CHAIN_IDS.KALYCHAIN): UseV3SwapRetur
 
     return {
         getQuote,
+        getQuoteExactOutput,
         executeSwap,
         checkApproval,
         approveToken,

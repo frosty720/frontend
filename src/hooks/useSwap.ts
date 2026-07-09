@@ -4,7 +4,7 @@
  */
 
 import { useCallback, useMemo } from 'react';
-import { Token, QuoteResult, SwapParams } from '@/config/dex/types';
+import { Token, QuoteResult, ExactOutputQuoteResult, SwapParams } from '@/config/dex/types';
 import { useProtocolVersion } from '@/contexts/ProtocolVersionContext';
 import { useDexSwap } from './useDexSwap';
 import { useV3Swap } from './useV3Swap';
@@ -14,6 +14,7 @@ import { swapLogger as logger } from '@/lib/logger';
 interface UseSwapReturn {
     // Core swap operations
     getQuote: (tokenIn: Token, tokenOut: Token, amountIn: string) => Promise<QuoteResult>;
+    getQuoteExactOutput: (tokenIn: Token, tokenOut: Token, amountOut: string) => Promise<ExactOutputQuoteResult>;
     executeSwap: (params: SwapParams) => Promise<string>;
     checkApproval: (token: Token, amount: string, spender?: string) => Promise<boolean>;
     approveToken: (token: Token, spender?: string, amount?: string) => Promise<string>;
@@ -53,6 +54,18 @@ export function useSwap(chainId: number = CHAIN_IDS.KALYCHAIN): UseSwapReturn {
     ): Promise<QuoteResult> => {
         logger.debug(`Getting quote using ${protocolVersion}...`);
         return activeHook.getQuote(tokenIn, tokenOut, amountIn);
+    }, [activeHook, protocolVersion]);
+
+    /**
+     * Get a reverse (exact-output) quote using the active protocol
+     */
+    const getQuoteExactOutput = useCallback(async (
+        tokenIn: Token,
+        tokenOut: Token,
+        amountOut: string
+    ): Promise<ExactOutputQuoteResult> => {
+        logger.debug(`Getting exact-output quote using ${protocolVersion}...`);
+        return activeHook.getQuoteExactOutput(tokenIn, tokenOut, amountOut);
     }, [activeHook, protocolVersion]);
 
     /**
@@ -103,6 +116,7 @@ export function useSwap(chainId: number = CHAIN_IDS.KALYCHAIN): UseSwapReturn {
 
     return {
         getQuote,
+        getQuoteExactOutput,
         executeSwap,
         checkApproval,
         approveToken,

@@ -252,7 +252,7 @@ export default function MultichainSwapInterface({
   const { balances, getFormattedBalance, isLoading: balancesLoading, refreshBalances } = useMultichainTokenBalance(supportedTokens);
 
   // Unified swap hook — routes to V2 or V3 based on protocol version toggle
-  const { getQuote: dexGetQuote, executeSwap: dexExecuteSwap, protocolVersion, isV3, isV3Supported } = useSwap(chainId || CHAIN_IDS.KALYCHAIN);
+  const { getQuote: dexGetQuote, getQuoteExactOutput: dexGetQuoteExactOutput, executeSwap: dexExecuteSwap, protocolVersion, isV3, isV3Supported } = useSwap(chainId || CHAIN_IDS.KALYCHAIN);
 
   const [isSwapping, setIsSwapping] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
@@ -261,6 +261,8 @@ export default function MultichainSwapInterface({
   const [quote, setQuote] = useState<QuoteResult | null>(null);
   const [isLoadingQuote, setIsLoadingQuote] = useState(false);
   const [quoteError, setQuoteError] = useState<string | null>(null);
+  // Which field the user typed in last — drives quote direction (exact-input vs exact-output)
+  const [lastEdited, setLastEdited] = useState<'from' | 'to'>('from');
 
   // Token selector modal state
   const [showFromTokenSelector, setShowFromTokenSelector] = useState(false);
@@ -334,16 +336,22 @@ export default function MultichainSwapInterface({
     }
   }, [currentTransactionHash]);
 
-  // Get quote when swap parameters change
+  // The amount the user actually typed — the other field is quote-derived.
+  // Keying the effect on this (not both amounts) prevents requote loops when
+  // the quote fills the opposite field.
+  const drivingAmount = lastEdited === 'to' ? swapState.toAmount : swapState.fromAmount;
+
+  // Get quote when swap parameters change (exact-input when From was edited,
+  // exact-output when To was edited)
   useEffect(() => {
     const getQuote = async () => {
-      if (!chainId || !isChainSupported(chainId) || !swapState.fromToken || !swapState.toToken || !swapState.fromAmount) {
+      if (!chainId || !isChainSupported(chainId) || !swapState.fromToken || !swapState.toToken || !drivingAmount) {
         setQuote(null);
         setQuoteError(null);
         return;
       }
 
-      if (parseFloat(swapState.fromAmount) <= 0) {
+      if (parseFloat(drivingAmount) <= 0) {
         setQuote(null);
         setQuoteError(null);
         return;
@@ -351,19 +359,41 @@ export default function MultichainSwapInterface({
 
       setIsLoadingQuote(true);
       try {
-        const quoteResult = await dexGetQuote(
-          swapState.fromToken,
-          swapState.toToken,
-          swapState.fromAmount
-        );
-        setQuote(quoteResult);
-        setQuoteError(null);
-        setSwapState(prev => ({ ...prev, toAmount: quoteResult.amountOut }));
+        if (lastEdited === 'to') {
+          const reverseQuote = await dexGetQuoteExactOutput(
+            swapState.fromToken,
+            swapState.toToken,
+            drivingAmount
+          );
+          setQuote({
+            amountOut: drivingAmount,
+            priceImpact: reverseQuote.priceImpact,
+            route: reverseQuote.route,
+            gasEstimate: reverseQuote.gasEstimate,
+          });
+          setQuoteError(null);
+          setSwapState(prev => ({ ...prev, fromAmount: reverseQuote.amountIn }));
+        } else {
+          const quoteResult = await dexGetQuote(
+            swapState.fromToken,
+            swapState.toToken,
+            drivingAmount
+          );
+          setQuote(quoteResult);
+          setQuoteError(null);
+          setSwapState(prev => ({ ...prev, toAmount: quoteResult.amountOut }));
+        }
       } catch (error) {
         swapLogger.error('Quote error:', error);
         setQuote(null);
         const message = error instanceof Error ? error.message : 'Failed to get quote';
-        if (message.includes('Pair not found') || message.includes('No V3 route')) {
+        if (message.includes('Insufficient liquidity')) {
+          setQuoteError(
+            lastEdited === 'to'
+              ? `Not enough ${protocolVersion.toUpperCase()} liquidity to receive ${drivingAmount} ${swapState.toToken.symbol}. Try a smaller amount.`
+              : `Not enough ${protocolVersion.toUpperCase()} liquidity for this trade size. Try a smaller amount.`
+          );
+        } else if (message.includes('Pair not found') || message.includes('No V3 route')) {
           setQuoteError(
             `No ${protocolVersion.toUpperCase()} liquidity found for ${swapState.fromToken.symbol}/${swapState.toToken.symbol}.` +
             ((chainId === CHAIN_IDS.KALYCHAIN || chainId === CHAIN_IDS.KALYCHAIN_TESTNET)
@@ -373,7 +403,9 @@ export default function MultichainSwapInterface({
         } else {
           setQuoteError(message);
         }
-        setSwapState(prev => ({ ...prev, toAmount: '' }));
+        setSwapState(prev => lastEdited === 'to'
+          ? { ...prev, fromAmount: '' }
+          : { ...prev, toAmount: '' });
       } finally {
         setIsLoadingQuote(false);
       }
@@ -382,7 +414,7 @@ export default function MultichainSwapInterface({
     // Debounce quote requests
     const timeoutId = setTimeout(getQuote, 500);
     return () => clearTimeout(timeoutId);
-  }, [chainId, swapState.fromToken, swapState.toToken, swapState.fromAmount, protocolVersion]);
+  }, [chainId, swapState.fromToken, swapState.toToken, drivingAmount, lastEdited, protocolVersion]);
 
   // Helper function to check if tokens are valid for current chain
   const areTokensValidForChain = (fromToken: Token | null, toToken: Token | null): boolean => {
@@ -392,6 +424,7 @@ export default function MultichainSwapInterface({
 
   // Handle token swap (flip from/to tokens)
   const handleSwapTokens = () => {
+    setLastEdited('from');
     setSwapState(prev => ({
       ...prev,
       fromToken: prev.toToken,
@@ -408,11 +441,18 @@ export default function MultichainSwapInterface({
 
   // Handle amount input change
   const handleFromAmountChange = (value: string) => {
+    setLastEdited('from');
     setSwapState(prev => ({ ...prev, fromAmount: value }));
+  };
+
+  const handleToAmountChange = (value: string) => {
+    setLastEdited('to');
+    setSwapState(prev => ({ ...prev, toAmount: value }));
   };
 
   // Handle token selection from modal
   const handleFromTokenSelect = (token: Token) => {
+    setLastEdited('from');
     setSwapState(prev => ({
       ...prev,
       fromToken: token,
@@ -428,6 +468,7 @@ export default function MultichainSwapInterface({
   };
 
   const handleToTokenSelect = (token: Token) => {
+    setLastEdited('from');
     setSwapState(prev => ({
       ...prev,
       toToken: token,
@@ -819,31 +860,25 @@ export default function MultichainSwapInterface({
                   </Button>
                 </div>
                 <div className="flex flex-col items-end flex-1 min-w-0">
-                  <div className="text-lg font-medium text-white truncate w-full text-right">
-                    {isLoadingQuote ? (
+                  {isLoadingQuote && lastEdited === 'from' ? (
+                    <div className="text-lg font-medium text-white truncate w-full text-right">
                       <div className="animate-pulse">...</div>
-                    ) : (
-                      (() => {
-                        // Format toAmount to prevent overflow
-                        if (!swapState.toAmount || swapState.toAmount === '0.0') return '0.0';
-                        const num = parseFloat(swapState.toAmount);
-                        if (isNaN(num)) return '0.0';
-
-                        // Format based on magnitude - always human readable, no scientific notation
-                        if (num >= 1000000) {
-                          return num.toLocaleString('en-US', { maximumFractionDigits: 2 });
-                        } else if (num >= 1) {
-                          return num.toLocaleString('en-US', { maximumFractionDigits: 6, minimumFractionDigits: 2 });
-                        } else if (num >= 0.0001) {
-                          return num.toFixed(6);
-                        } else if (num > 0) {
-                          // For very small numbers, show up to 10 decimal places
-                          return num.toFixed(10).replace(/\.?0+$/, '');
-                        }
-                        return '0.0';
-                      })()
-                    )}
-                  </div>
+                    </div>
+                  ) : (
+                    <Input
+                      type="text"
+                      inputMode="decimal"
+                      placeholder="0.0"
+                      value={swapState.toAmount}
+                      onChange={(e) => {
+                        // Only allow numbers and decimal point
+                        const value = e.target.value.replace(/[^0-9.]/g, '');
+                        handleToAmountChange(value);
+                      }}
+                      className="text-right bg-transparent border-none text-lg font-medium text-white placeholder-gray-500 p-0 h-auto w-full min-w-0"
+                      disabled={!isChainSupportedForSwap}
+                    />
+                  )}
                   {swapState.toToken && (
                     <div className="text-xs text-gray-400 mt-1">
                       Balance: {getTokenBalance(swapState.toToken)}
