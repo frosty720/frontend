@@ -44,9 +44,10 @@ interface TransactionDataProps {
     pairAddress?: string;
   };
   userAddress?: string | null;
+  protocolVersion?: 'v2' | 'v3';
 }
 
-export default function TransactionData({ selectedPair, userAddress }: TransactionDataProps) {
+export default function TransactionData({ selectedPair, userAddress, protocolVersion = 'v2' }: TransactionDataProps) {
   const chainId = useChainId();
   const [activeTab, setActiveTab] = useState<'recent' | 'my'>('recent');
   const [currentPage, setCurrentPage] = useState(1);
@@ -62,7 +63,8 @@ export default function TransactionData({ selectedPair, userAddress }: Transacti
     pairAddress: selectedPair?.pairAddress,
     userAddress: activeTab === 'my' && chainId === CHAIN_IDS.KALYCHAIN ? userAddress : null,
     limit: itemsPerPage * 5, // Get more transactions since we'll paginate client-side
-    chainId: chainId
+    chainId: chainId,
+    protocolVersion
   });
 
   // Client-side pagination for swap transactions

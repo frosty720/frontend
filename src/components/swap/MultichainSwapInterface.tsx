@@ -260,6 +260,7 @@ export default function MultichainSwapInterface({
   const [currentTransactionHash, setCurrentTransactionHash] = useState<string | null>(null);
   const [quote, setQuote] = useState<QuoteResult | null>(null);
   const [isLoadingQuote, setIsLoadingQuote] = useState(false);
+  const [quoteError, setQuoteError] = useState<string | null>(null);
 
   // Token selector modal state
   const [showFromTokenSelector, setShowFromTokenSelector] = useState(false);
@@ -338,11 +339,13 @@ export default function MultichainSwapInterface({
     const getQuote = async () => {
       if (!chainId || !isChainSupported(chainId) || !swapState.fromToken || !swapState.toToken || !swapState.fromAmount) {
         setQuote(null);
+        setQuoteError(null);
         return;
       }
 
       if (parseFloat(swapState.fromAmount) <= 0) {
         setQuote(null);
+        setQuoteError(null);
         return;
       }
 
@@ -354,10 +357,22 @@ export default function MultichainSwapInterface({
           swapState.fromAmount
         );
         setQuote(quoteResult);
+        setQuoteError(null);
         setSwapState(prev => ({ ...prev, toAmount: quoteResult.amountOut }));
       } catch (error) {
         swapLogger.error('Quote error:', error);
         setQuote(null);
+        const message = error instanceof Error ? error.message : 'Failed to get quote';
+        if (message.includes('Pair not found') || message.includes('No V3 route')) {
+          setQuoteError(
+            `No ${protocolVersion.toUpperCase()} liquidity found for ${swapState.fromToken.symbol}/${swapState.toToken.symbol}.` +
+            ((chainId === CHAIN_IDS.KALYCHAIN || chainId === CHAIN_IDS.KALYCHAIN_TESTNET)
+              ? ` Try switching to ${protocolVersion === 'v3' ? 'V2' : 'V3'} with the toggle above.`
+              : '')
+          );
+        } else {
+          setQuoteError(message);
+        }
         setSwapState(prev => ({ ...prev, toAmount: '' }));
       } finally {
         setIsLoadingQuote(false);
@@ -639,6 +654,16 @@ export default function MultichainSwapInterface({
               onReset={clearError}
               isRetrying={isRetrying}
             />
+          )}
+
+          {/* Quote error — otherwise a failed quote silently shows 0.0 out */}
+          {quoteError && !isLoadingQuote && (
+            <div className="p-3 bg-amber-900/30 border border-amber-500/30 rounded-lg">
+              <div className="flex items-center gap-2 text-amber-400 text-sm">
+                <AlertTriangle className="h-4 w-4 flex-shrink-0" />
+                <span className="break-words min-w-0">{quoteError}</span>
+              </div>
+            </div>
           )}
 
           {/* Chain not supported warning */}

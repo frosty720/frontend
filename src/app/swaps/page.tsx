@@ -728,7 +728,7 @@ function SwapsPageContent({
     isLoading: pairStatsLoading,
     error: pairStatsError,
     pairAddress
-  } = usePairMarketStats(swapState.fromToken || undefined, swapState.toToken || undefined);
+  } = usePairMarketStats(swapState.fromToken || undefined, swapState.toToken || undefined, protocolVersion);
 
   // Determine the base token for consistent price formatting
   // Always use the non-stablecoin token for formatting
@@ -915,6 +915,7 @@ function SwapsPageContent({
                     pairAddress: pairAddress || undefined
                   }}
                   userAddress={userAddress}
+                  protocolVersion={protocolVersion}
                 />
               </div>
             </div>

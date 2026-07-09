@@ -13,7 +13,8 @@ import {
   convertGeckoTerminalToChartData,
   getPoolInfo
 } from '@/lib/geckoterminal-client';
-import { getPairHourData, getPairData, getV3PoolHourData } from '@/lib/subgraph-client';
+import { getPairHourData, getPairData, getV3PoolHourData, getV3PoolForPair } from '@/lib/subgraph-client';
+import { transformV3HourData, shouldInvertV3Price } from '@/utils/v3ChartData';
 import { getV3Config } from '@/config/dex/v3-config';
 import { Token } from '@/config/dex/types';
 import { chartLogger as logger } from '@/lib/logger';
@@ -105,11 +106,27 @@ export function useChartData({ tokenA, tokenB, enabled = true, refetchInterval, 
     [tokenA?.address, tokenA?.symbol, tokenB?.address, tokenB?.symbol]
   );
 
-  // Query for pair address
+  // Query for pair/pool address — protocol-aware: V2 uses the factory's
+  // getPair, V3 looks up the deepest pool in the V3 subgraph
   const pairAddressQuery = useQuery({
-    queryKey: ['pairAddress', normalizedTokenA?.address, normalizedTokenB?.address, normalizedTokenA?.chainId],
+    queryKey: ['pairAddress', protocolVersion, normalizedTokenA?.address, normalizedTokenB?.address, normalizedTokenA?.chainId],
     queryFn: async () => {
-      if (!publicClient || !normalizedTokenA || !normalizedTokenB) return null;
+      if (!normalizedTokenA || !normalizedTokenB) return null;
+
+      const chainId = normalizedTokenA.chainId || normalizedTokenB.chainId || CHAIN_IDS.KALYCHAIN;
+
+      if (protocolVersion === 'v3' && !isGeckoTerminalSupported(chainId)) {
+        const v3Config = getV3Config(chainId);
+        if (!v3Config) return null;
+        const pool = await getV3PoolForPair(
+          getEffectiveAddress(normalizedTokenA),
+          getEffectiveAddress(normalizedTokenB),
+          v3Config.subgraphUrl
+        );
+        return pool?.id ?? null;
+      }
+
+      if (!publicClient) return null;
       return getPairAddress(publicClient, normalizedTokenA, normalizedTokenB);
     },
     enabled: enabled && hasValidTokens && !!publicClient,
@@ -118,7 +135,7 @@ export function useChartData({ tokenA, tokenB, enabled = true, refetchInterval, 
 
   // Main chart data query
   const chartQuery = useQuery<PricePoint[], Error>({
-    queryKey: ['chartData', normalizedTokenA?.address, normalizedTokenB?.address, normalizedTokenA?.chainId, pairAddressQuery.data],
+    queryKey: ['chartData', protocolVersion, normalizedTokenA?.address, normalizedTokenB?.address, normalizedTokenA?.chainId, pairAddressQuery.data],
     queryFn: async (): Promise<PricePoint[]> => {
       const chainId = normalizedTokenA?.chainId || normalizedTokenB?.chainId || CHAIN_IDS.KALYCHAIN;
       const pairAddress = pairAddressQuery.data;
@@ -281,13 +298,7 @@ async function fetchV3SubgraphData(
   logger.debug('Using V3 subgraph for KalyChain', { poolAddress });
 
   if (!poolAddress) {
-    // Ideally we might want to discover the pool via factory if not provided,
-    // but for now we expect the caller (or getPairAddress) to provide it.
-    // NOTE: getPairAddress in useChartData currently assumes V2 factory.
-    // If poolAddress is null in V3 mode, we might need a V3-specific lookup logic here
-    // or rely on the fact that V3 pages usually pass the pool address explicitly if known.
-    // For this implementation, we throw if missing, similar to V2.
-    throw new Error('No V3 pool address found');
+    throw new Error('No liquidity pool exists for this token pair');
   }
 
   const v3Config = getV3Config(chainId);
@@ -298,53 +309,16 @@ async function fetchV3SubgraphData(
     throw new Error('Chart data not available - V3 pool not indexed yet');
   }
 
-  // Convert hourly data to OHLCV format
-  const historicalData: PricePoint[] = hourData
-    .map((hour: any) => {
-      // V3 subgraph usually stores prices indexed to token0/token1.
-      // We need to check which token is token0/token1 vs normalizedTokenA/B.
-      // The V3 poolHourData entity often has 'open', 'high', 'low', 'close' based on token1/token0 price.
-      // Assume 'close' is price of token0 in terms of token1 (or similar standard).
-      // Let's rely on standard V3 subgraph schema where prices are typically tracked.
-      // If the schema matches the standard Uniswap V3 subgraph:
-      // open/high/low/close are usually tracked as token1 price (i.e. how much token1 for 1 token0) or vice versa.
-      // We will assume 'close' is price of token0 in terms of token1.
-
-      // We need to verify if normalizedTokenA is token0 or token1.
-      // Note: The poolHourData doesn't explicitly give us token0/1 addresses in this query result (only pool id).
-      // However, we know normalizedTokenA/B are sorted.
-      // If normalizedTokenA is token0, we use the price directly.
-      // If normalizedTokenA is token1, we invert the price.
-      // BUT, getV3PoolHourData result doesn't explicitly link tokens.
-      // We can infer using the same sorting logic as the factory.
-      // V3 factory sorts tokens just like V2.
-      // So normalizedTokenA should be token0.
-
-      const price = parseFloat(hour.close);
-      const volume = parseFloat(hour.volumeUSD);
-
-      if (isNaN(price) || price <= 0) return null;
-
-      return {
-        time: parseInt(hour.periodStartUnix),
-        open: parseFloat(hour.open),
-        high: parseFloat(hour.high),
-        low: parseFloat(hour.low),
-        close: parseFloat(hour.close),
-        volume
-      };
-    })
-    .filter((point: PricePoint | null): point is PricePoint => point !== null && point.close > 0)
-    .sort((a: PricePoint, b: PricePoint) => a.time - b.time);
-
-  // Deduplicate
-  const deduplicatedData = Array.from(
-    historicalData.reduce((map, point) => {
-      map.set(point.time, point);
-      return map;
-    }, new Map<number, PricePoint>()).values()
+  // Subgraph OHLC is token0-per-token1; the chart shows the base token
+  // (normalizedTokenA) priced in the quote token, so invert when the base
+  // token is token0. See src/utils/v3ChartData.ts.
+  const invert = shouldInvertV3Price(
+    getEffectiveAddress(normalizedTokenA),
+    getEffectiveAddress(normalizedTokenB)
   );
 
-  return deduplicatedData;
+  const points = transformV3HourData(hourData, invert);
+  logger.debug(`Processed ${points.length} V3 price points`, { invert, poolAddress });
+  return points;
 }
 

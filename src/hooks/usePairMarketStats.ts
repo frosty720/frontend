@@ -5,7 +5,8 @@ import { priceLogger as logger } from '@/lib/logger';
 
 import { useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { getPairMarketStats, getPairsData } from '@/lib/subgraph-client';
+import { getPairMarketStats, getPairsData, getV3PoolForPair, getV3PoolStats } from '@/lib/subgraph-client';
+import { getV3Config } from '@/config/dex/v3-config';
 import { usePriceDataContext } from '@/contexts/PriceDataContext';
 import { fetchGraphQL, isNetworkError } from '@/utils/networkUtils';
 import { Token } from '@/config/dex/types';
@@ -96,7 +97,7 @@ interface PairStatsData {
  * Uses TanStack Query for caching and automatic refetching.
  * Industry standard: Always shows the same price/stats regardless of token order.
  */
-export function usePairMarketStats(tokenA?: Token, tokenB?: Token): PairMarketStats {
+export function usePairMarketStats(tokenA?: Token, tokenB?: Token, protocolVersion: 'v2' | 'v3' = 'v2'): PairMarketStats {
   // Use shared price change from context
   const { priceChange24h } = usePriceDataContext();
 
@@ -111,20 +112,23 @@ export function usePairMarketStats(tokenA?: Token, tokenB?: Token): PairMarketSt
 
   // Main query for pair stats
   const statsQuery = useQuery<PairStatsData, Error>({
-    queryKey: ['pairMarketStats', normalizedTokenA?.address, normalizedTokenB?.address, chainId],
+    queryKey: ['pairMarketStats', protocolVersion, normalizedTokenA?.address, normalizedTokenB?.address, chainId],
     queryFn: async (): Promise<PairStatsData> => {
       if (!normalizedTokenA || !normalizedTokenB) {
         return { price: 0, volume24h: 0, liquidity: 0, pairAddress: null };
       }
 
-      logger.debug(`📊 Fetching pair stats for ${normalizedTokenA.symbol}/${normalizedTokenB.symbol} on chain ${chainId}`);
+      logger.debug(`📊 Fetching pair stats for ${normalizedTokenA.symbol}/${normalizedTokenB.symbol} on chain ${chainId} (${protocolVersion})`);
 
       // For BSC and Arbitrum, use GeckoTerminal API
       if (chainId === 56 || chainId === 42161) {
         return fetchGeckoTerminalStats(chainId, normalizedTokenA, normalizedTokenB);
       }
 
-      // For KalyChain, use subgraph
+      // For KalyChain, use the protocol's subgraph
+      if (protocolVersion === 'v3') {
+        return fetchKalyChainV3Stats(chainId, normalizedTokenA, normalizedTokenB);
+      }
       return fetchKalyChainStats(normalizedTokenA, normalizedTokenB);
     },
     enabled: hasValidTokens,
@@ -184,6 +188,48 @@ async function fetchGeckoTerminalStats(
     }
     return { price: 0, volume24h: 0, liquidity: 0, pairAddress: null };
   }
+}
+
+// Fetch market stats from the KalyChain V3 subgraph
+async function fetchKalyChainV3Stats(
+  chainId: number,
+  normalizedTokenA: Token,
+  normalizedTokenB: Token
+): Promise<PairStatsData> {
+  const v3Config = getV3Config(chainId);
+  if (!v3Config) {
+    return { price: 0, volume24h: 0, liquidity: 0, pairAddress: null };
+  }
+
+  const baseAddress = getTokenAddress(normalizedTokenA);
+  const pool = await getV3PoolForPair(
+    baseAddress,
+    getTokenAddress(normalizedTokenB),
+    v3Config.subgraphUrl
+  );
+
+  if (!pool) {
+    logger.debug(`⚠️ No V3 pool found for ${normalizedTokenA.symbol}/${normalizedTokenB.symbol}`);
+    return { price: 0, volume24h: 0, liquidity: 0, pairAddress: null };
+  }
+
+  const stats = await getV3PoolStats(pool.id, v3Config.subgraphUrl);
+  if (!stats) {
+    throw new Error('Failed to fetch V3 pool stats');
+  }
+
+  // token1Price = token1 per token0; price shown is the base token in quote terms
+  const baseIsToken0 = stats.pool.token0.id.toLowerCase() === baseAddress.toLowerCase();
+  const price = parseFloat(baseIsToken0 ? stats.pool.token1Price : stats.pool.token0Price) || 0;
+
+  logger.debug(`✅ KalyChain V3 stats: price=${price}, volume=$${stats.volume24h.toFixed(2)}`);
+
+  return {
+    price,
+    volume24h: stats.volume24h,
+    liquidity: parseFloat(stats.pool.totalValueLockedUSD) || 0,
+    pairAddress: pool.id,
+  };
 }
 
 // Fetch market stats from KalyChain subgraph

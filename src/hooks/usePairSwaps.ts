@@ -1,7 +1,8 @@
 import { CHAIN_IDS } from '@/config/chains';
 import { swapLogger } from '@/lib/logger';
 import { useState, useEffect, useCallback } from 'react';
-import { getPairSwaps, getRecentSwaps } from '@/lib/subgraph-client';
+import { getPairSwaps, getRecentSwaps, getV3PoolSwaps } from '@/lib/subgraph-client';
+import { getV3Config } from '@/config/dex/v3-config';
 import { getPoolTrades } from '@/lib/geckoterminal-client';
 import { safeApiCall, isNetworkError } from '@/utils/networkUtils';
 
@@ -36,6 +37,35 @@ export interface SubgraphSwap {
   amountUSD: string;
 }
 
+// V3 subgraph swap entity (signed amounts: positive = into the pool)
+export interface V3SubgraphSwap {
+  id: string;
+  timestamp: string;
+  transaction: {
+    id: string;
+    blockNumber: string;
+  };
+  pool: {
+    id: string;
+    token0: {
+      id: string;
+      symbol: string;
+      decimals: string;
+    };
+    token1: {
+      id: string;
+      symbol: string;
+      decimals: string;
+    };
+  };
+  origin: string;
+  sender: string;
+  recipient: string;
+  amount0: string;
+  amount1: string;
+  amountUSD: string;
+}
+
 // Formatted swap for UI display
 export interface FormattedSwap {
   id: string;
@@ -59,6 +89,7 @@ interface UsePairSwapsProps {
   limit?: number;
   userAddress?: string | null;
   chainId?: number; // Chain ID to determine data source
+  protocolVersion?: 'v2' | 'v3'; // Which subgraph to read on KalyChain
 }
 
 interface UsePairSwapsResult {
@@ -110,6 +141,39 @@ function formatSwap(swap: SubgraphSwap, userAddress?: string | null): FormattedS
   };
 }
 
+// Format a V3 swap: amount0 > 0 means token0 entered the pool (user sold token0)
+export function formatV3Swap(swap: V3SubgraphSwap): FormattedSwap {
+  const amount0 = parseFloat(swap.amount0);
+  const amount1 = parseFloat(swap.amount1);
+
+  const isSellToken0 = amount0 > 0;
+  const type: 'BUY' | 'SELL' = isSellToken0 ? 'SELL' : 'BUY';
+  const token0Amount = isSellToken0
+    ? `-${Math.abs(amount0).toFixed(6)}`
+    : `+${Math.abs(amount0).toFixed(6)}`;
+  const token1Amount = isSellToken0
+    ? `+${Math.abs(amount1).toFixed(6)}`
+    : `-${Math.abs(amount1).toFixed(6)}`;
+
+  return {
+    id: swap.id,
+    hash: swap.transaction.id,
+    timestamp: new Date(parseInt(swap.timestamp) * 1000),
+    blockNumber: parseInt(swap.transaction.blockNumber),
+    pairAddress: swap.pool.id,
+    token0Symbol: swap.pool.token0.symbol,
+    token1Symbol: swap.pool.token1.symbol,
+    token0Amount,
+    token1Amount,
+    amountUSD: parseFloat(swap.amountUSD),
+    sender: swap.sender,
+    // origin is the user wallet; sender/recipient are usually the router
+    from: swap.origin,
+    to: swap.recipient,
+    type
+  };
+}
+
 // Helper function to format GeckoTerminal trades
 function formatGeckoTerminalTrade(trade: any, pairAddress: string): FormattedSwap {
   const attrs = trade.attributes;
@@ -147,7 +211,8 @@ export function usePairSwaps({
   pairAddress,
   limit = 20,
   userAddress,
-  chainId = CHAIN_IDS.KALYCHAIN
+  chainId = CHAIN_IDS.KALYCHAIN,
+  protocolVersion = 'v2'
 }: UsePairSwapsProps): UsePairSwapsResult {
   const [swaps, setSwaps] = useState<FormattedSwap[]>([]);
   const [loading, setLoading] = useState(false);
@@ -180,6 +245,36 @@ export function usePairSwaps({
 
         swapLogger.debug(`✅ Fetched ${formattedSwaps.length} trades from GeckoTerminal`);
         setSwaps(formattedSwaps);
+        setLoading(false);
+        return;
+      }
+
+      // V3 mode on KalyChain reads the V3 subgraph (pool-scoped only)
+      const v3Config = protocolVersion === 'v3' ? getV3Config(chainId) : null;
+      if (v3Config) {
+        if (!pairAddress) {
+          setSwaps([]);
+          setLoading(false);
+          return;
+        }
+
+        swapLogger.debug('Fetching swaps from V3 subgraph...', { chainId, pairAddress, limit, userAddress });
+        const rawV3Swaps: V3SubgraphSwap[] = await safeApiCall(
+          () => getV3PoolSwaps(pairAddress, v3Config.subgraphUrl, limit),
+          [],
+          `V3 pool swaps for ${pairAddress}`
+        );
+
+        let formattedV3Swaps = rawV3Swaps.map(formatV3Swap);
+        if (userAddress) {
+          const userAddressLower = userAddress.toLowerCase();
+          formattedV3Swaps = formattedV3Swaps.filter(swap =>
+            swap.from.toLowerCase() === userAddressLower ||
+            swap.to.toLowerCase() === userAddressLower
+          );
+        }
+
+        setSwaps(formattedV3Swaps);
         setLoading(false);
         return;
       }
@@ -236,7 +331,7 @@ export function usePairSwaps({
     } finally {
       setLoading(false);
     }
-  }, [pairAddress, limit, userAddress, chainId]);
+  }, [pairAddress, limit, userAddress, chainId, protocolVersion]);
 
   // Fetch swaps when dependencies change
   useEffect(() => {

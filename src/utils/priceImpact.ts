@@ -144,6 +144,38 @@ export function calculatePriceImpactFromReserves(
 }
 
 /**
+ * Calculate price impact by comparing a trade's execution rate against the
+ * marginal rate observed on a small "probe" quote through the same route.
+ * Rates are amountOut/amountIn in human units, so it works across any
+ * token pair, decimals, or hop count. Negative impact (favorable rounding)
+ * and degenerate inputs return 0.
+ */
+export function computePriceImpactFromProbe(
+  amountIn: string,
+  amountOut: string,
+  probeAmountIn: string,
+  probeAmountOut: string
+): number {
+  const tradeIn = parseFloat(amountIn);
+  const tradeOut = parseFloat(amountOut);
+  const probeIn = parseFloat(probeAmountIn);
+  const probeOut = parseFloat(probeAmountOut);
+
+  if (!isFinite(tradeIn) || !isFinite(tradeOut) || !isFinite(probeIn) || !isFinite(probeOut)) {
+    return 0;
+  }
+  if (tradeIn <= 0 || probeIn <= 0 || probeOut <= 0) {
+    return 0;
+  }
+
+  const executionRate = tradeOut / tradeIn;
+  const marginalRate = probeOut / probeIn;
+  const impact = (1 - executionRate / marginalRate) * 100;
+
+  return impact > 0 ? impact : 0;
+}
+
+/**
  * Get price impact severity and warning message
  */
 export function getPriceImpactSeverity(priceImpact: string): PriceImpactResult {

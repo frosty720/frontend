@@ -4,6 +4,7 @@ import {
   getPriceImpactSeverity,
   formatPriceImpact,
   getPriceImpactColor,
+  computePriceImpactFromProbe,
 } from '../priceImpact'
 
 describe('calculatePriceImpactFromReserves', () => {
@@ -129,3 +130,24 @@ describe('getPriceImpactColor', () => {
   })
 })
 
+
+describe('computePriceImpactFromProbe', () => {
+  it('computes impact from execution rate vs marginal (probe) rate', () => {
+    // Probe: 10 KLC -> 0.025 USDT (marginal rate 0.0025)
+    // Trade: 1000 KLC -> 2.4 USDT (execution rate 0.0024) => 4% impact
+    expect(computePriceImpactFromProbe('1000', '2.4', '10', '0.025')).toBeCloseTo(4, 6)
+  })
+
+  it('returns 0 when execution rate equals marginal rate', () => {
+    expect(computePriceImpactFromProbe('100', '0.25', '1', '0.0025')).toBeCloseTo(0, 6)
+  })
+
+  it('clamps negative impact (favorable rounding) to 0', () => {
+    expect(computePriceImpactFromProbe('100', '0.26', '1', '0.0025')).toBe(0)
+  })
+
+  it('returns 0 for degenerate inputs instead of NaN', () => {
+    expect(computePriceImpactFromProbe('100', '0.25', '0', '0')).toBe(0)
+    expect(computePriceImpactFromProbe('0', '0', '1', '0.0025')).toBe(0)
+  })
+})
