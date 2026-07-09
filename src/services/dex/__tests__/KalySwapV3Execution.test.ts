@@ -32,6 +32,9 @@ describe('KalySwapV3Service Execution Logic', () => {
         const getV3QuoteSpy = vi.spyOn(service, 'getV3Quote');
         const executeV3SwapSpy = vi.spyOn(service, 'executeV3Swap').mockResolvedValue('0xHash');
 
+        // Multi-hop probes are not under test — without this mock they hit the real RPC
+        vi.spyOn(service, 'getMultiHopQuote').mockRejectedValue(new Error('no multi-hop route'));
+
         getV3QuoteSpy.mockImplementation(async (t1, t2, amount, fee) => {
             if (fee === 500) return { amountOut: '100', priceImpact: 0, route: [], sqrtPriceX96After: 0n, initializedTicksCrossed: 0, gasEstimate: '0', fee };
             if (fee === 3000) return { amountOut: '150', priceImpact: 0, route: [], sqrtPriceX96After: 0n, initializedTicksCrossed: 0, gasEstimate: '0', fee }; // BEST

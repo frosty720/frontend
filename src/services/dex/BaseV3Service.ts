@@ -33,6 +33,7 @@ import { V3DexConfig } from '@/config/dex/v3-config';
 import { V3_FEE_TIERS, V3_TICK_SPACING, getTickSpacing, Q96 } from '@/config/dex/v3-constants';
 import type { PublicClient, WalletClient } from 'viem';
 import { parseUnits, formatUnits, encodeFunctionData } from 'viem';
+import { computePriceImpactFromProbe } from '@/utils/priceImpact';
 
 /**
  * Base class for V3 DEX services
@@ -75,6 +76,17 @@ export abstract class BaseV3Service implements IV3DexService {
 
     getWethAddress(): string {
         return this.config.wethAddress;
+    }
+
+    /**
+     * Address to use for pool discovery and quoting.
+     * Native tokens have no pools — V3 pools/quotes always use the wrapped token.
+     */
+    getEffectiveTokenAddress(token: Token): string {
+        if (token.isNative || token.address === '0x0000000000000000000000000000000000000000') {
+            return this.getWethAddress();
+        }
+        return token.address;
     }
 
     getSubgraphUrl(): string {
@@ -123,10 +135,14 @@ export abstract class BaseV3Service implements IV3DexService {
         try {
             const factoryAddress = this.getFactoryAddress();
 
+            // Native tokens must be wrapped for pool lookup
+            const addressA = this.getEffectiveTokenAddress(tokenA);
+            const addressB = this.getEffectiveTokenAddress(tokenB);
+
             // Sort tokens
-            const [token0, token1] = tokenA.address.toLowerCase() < tokenB.address.toLowerCase()
-                ? [tokenA.address, tokenB.address]
-                : [tokenB.address, tokenA.address];
+            const [token0, token1] = addressA.toLowerCase() < addressB.toLowerCase()
+                ? [addressA, addressB]
+                : [addressB, addressA];
 
             const poolAddress = await publicClient.readContract({
                 address: factoryAddress as `0x${string}`,
@@ -193,11 +209,19 @@ export abstract class BaseV3Service implements IV3DexService {
             const sqrtPriceX96 = slot0[0];
             const tick = slot0[1];
 
+            // Decimals must follow the pool's token0/token1 order, which may
+            // differ from the order tokenA/tokenB were passed in
+            const tokenAIsToken0 =
+                this.getEffectiveTokenAddress(tokenA).toLowerCase() === (token0 as string).toLowerCase();
+            const [token0Decimals, token1Decimals] = tokenAIsToken0
+                ? [tokenA.decimals, tokenB.decimals]
+                : [tokenB.decimals, tokenA.decimals];
+
             // Calculate prices from sqrtPriceX96
             const { token0Price, token1Price } = this.sqrtPriceX96ToPrice(
                 sqrtPriceX96,
-                tokenA.decimals,
-                tokenB.decimals
+                token0Decimals,
+                token1Decimals
             );
 
             return {
@@ -290,14 +314,18 @@ export abstract class BaseV3Service implements IV3DexService {
             const quoterAddress = this.getQuoterAddress();
             const amountInWei = parseUnits(amountIn, tokenIn.decimals);
 
+            // Native tokens must be wrapped for quoting
+            const tokenInAddress = this.getEffectiveTokenAddress(tokenIn);
+            const tokenOutAddress = this.getEffectiveTokenAddress(tokenOut);
+
             // Call quoteExactInputSingle
             const result = await publicClient.readContract({
                 address: quoterAddress as `0x${string}`,
                 abi: this.config.quoterABI,
                 functionName: 'quoteExactInputSingle',
                 args: [{
-                    tokenIn: tokenIn.address as `0x${string}`,
-                    tokenOut: tokenOut.address as `0x${string}`,
+                    tokenIn: tokenInAddress as `0x${string}`,
+                    tokenOut: tokenOutAddress as `0x${string}`,
                     amountIn: amountInWei,
                     fee,
                     sqrtPriceLimitX96: BigInt(0),
@@ -316,7 +344,7 @@ export abstract class BaseV3Service implements IV3DexService {
             return {
                 amountOut: amountOutFormatted,
                 priceImpact: Math.abs(priceImpact),
-                route: [tokenIn.address, tokenOut.address],
+                route: [tokenInAddress, tokenOutAddress],
                 sqrtPriceX96After,
                 initializedTicksCrossed,
                 gasEstimate: gasEstimate.toString(),
@@ -356,9 +384,46 @@ export abstract class BaseV3Service implements IV3DexService {
 
         return {
             amountOut: result.quote.amountOut,
-            priceImpact: result.quote.priceImpact,
+            priceImpact: await this.calculateRoutePriceImpact(
+                tokenIn,
+                tokenOut,
+                amountIn,
+                result.quote.amountOut,
+                result.route,
+                publicClient
+            ),
             route: result.quote.route,
         };
+    }
+
+    /**
+     * Price impact = execution rate vs the marginal rate of a small probe quote
+     * through the same route. The raw quoter amounts alone cannot give impact —
+     * they compare amounts of two different tokens.
+     */
+    private async calculateRoutePriceImpact(
+        tokenIn: Token,
+        tokenOut: Token,
+        amountIn: string,
+        amountOut: string,
+        route: V3Route,
+        publicClient: PublicClient
+    ): Promise<number> {
+        try {
+            const probeAmount = (parseFloat(amountIn) / 100).toFixed(tokenIn.decimals);
+            if (parseFloat(probeAmount) <= 0) {
+                return 0;
+            }
+
+            const probeQuote = route.tokenPath.length === 2
+                ? await this.getV3Quote(tokenIn, tokenOut, probeAmount, route.fees[0], publicClient)
+                : await this.getMultiHopQuote(tokenIn, tokenOut, probeAmount, route, publicClient);
+
+            return computePriceImpactFromProbe(amountIn, amountOut, probeAmount, probeQuote.amountOut);
+        } catch (error) {
+            logger.warn('Price impact probe failed, reporting 0:', error);
+            return 0;
+        }
     }
 
     // Execute V3 Swap
@@ -831,11 +896,15 @@ export abstract class BaseV3Service implements IV3DexService {
      */
     getIntermediateTokens(): string[] {
         const wklc = this.getWethAddress(); // WKLC
-        const busd = '0xA510Df56F2aa3f7241da94F2cF053C1bf02E1168'; // BUSD on testnet
 
-        // On mainnet, also consider USDT, USDC, KSWAP
-        // For now, WKLC and BUSD are the primary routing tokens
-        return [wklc, busd];
+        // Routing stables come from the chain's token list, never hardcoded —
+        // limited to symbols with real pool liquidity to bound RPC probes per quote.
+        const ROUTING_STABLE_SYMBOLS = ['USDT', 'USDC', 'KUSD', 'BUSD'];
+        const stables = this.config.tokens
+            .filter((t) => !t.isNative && ROUTING_STABLE_SYMBOLS.includes(t.symbol))
+            .map((t) => t.address);
+
+        return [wklc, ...stables.filter((a) => a.toLowerCase() !== wklc.toLowerCase())];
     }
 
     /**
@@ -909,6 +978,10 @@ export abstract class BaseV3Service implements IV3DexService {
         const feeTiers = this.getFeeTiers();
         let bestResult: { route: V3Route; quote: V3QuoteResult } | null = null;
 
+        // Native tokens must be wrapped for routing/quoting (execution handles wrap/unwrap)
+        const effectiveIn = this.getEffectiveTokenAddress(tokenIn);
+        const effectiveOut = this.getEffectiveTokenAddress(tokenOut);
+
         // 1. Try all direct pools (single-hop)
         for (const fee of feeTiers) {
             try {
@@ -916,9 +989,9 @@ export abstract class BaseV3Service implements IV3DexService {
                 if (!pool) continue;
 
                 const route: V3Route = {
-                    tokenPath: [tokenIn.address, tokenOut.address],
+                    tokenPath: [effectiveIn, effectiveOut],
                     fees: [fee],
-                    encodedPath: this.encodePath([tokenIn.address, tokenOut.address], [fee]),
+                    encodedPath: this.encodePath([effectiveIn, effectiveOut], [fee]),
                 };
 
                 const quote = await this.getV3Quote(tokenIn, tokenOut, amountIn, fee, publicClient);
@@ -933,8 +1006,8 @@ export abstract class BaseV3Service implements IV3DexService {
 
         // 2. Try 2-hop routes through intermediate tokens
         const intermediateTokens = this.getIntermediateTokens();
-        const addressIn = tokenIn.address.toLowerCase();
-        const addressOut = tokenOut.address.toLowerCase();
+        const addressIn = effectiveIn.toLowerCase();
+        const addressOut = effectiveOut.toLowerCase();
 
         for (const intermediate of intermediateTokens) {
             // Skip if intermediate is the same as input or output
@@ -965,10 +1038,10 @@ export abstract class BaseV3Service implements IV3DexService {
                         if (!pool1 || !pool2) continue;
 
                         const route: V3Route = {
-                            tokenPath: [tokenIn.address, intermediate, tokenOut.address],
+                            tokenPath: [effectiveIn, intermediate, effectiveOut],
                             fees: [fee1, fee2],
                             encodedPath: this.encodePath(
-                                [tokenIn.address, intermediate, tokenOut.address],
+                                [effectiveIn, intermediate, effectiveOut],
                                 [fee1, fee2]
                             ),
                         };

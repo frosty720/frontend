@@ -122,7 +122,7 @@ export default function TradingChart({
   const {
     volume24h: realVolume24h,
     isLoading: volumeLoading
-  } = usePairMarketStats(currentTokenA || undefined, currentTokenB || undefined);
+  } = usePairMarketStats(currentTokenA || undefined, currentTokenB || undefined, protocolVersion);
 
   logger.debug('🎯 TradingChart Debug:', {
     tokenA: currentTokenA?.symbol,
