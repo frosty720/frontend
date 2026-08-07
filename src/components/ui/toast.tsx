@@ -190,6 +190,7 @@ export const toastHelpers = {
       kalychain: 'https://kalyscan.io/tx/',
       arbitrum: 'https://arbiscan.io/tx/',
       bsc: 'https://bscscan.com/tx/',
+      polygon: 'https://polygonscan.com/tx/',
     };
     
     const explorerUrl = explorerUrls[chainName];

@@ -37,6 +37,12 @@ const CHAIN_WALLET_CONFIGS: Record<string, ChainWalletConfig> = {
     supportedWallets: ['metamask', 'walletconnect', 'coinbase', 'internal'],
     requiredFeatures: ['eth_sendTransaction', 'eth_signTransaction'],
   },
+  polygon: {
+    chainId: CHAIN_IDS.POLYGON,
+    chainName: 'Polygon',
+    supportedWallets: ['metamask', 'walletconnect', 'coinbase', 'internal'],
+    requiredFeatures: ['eth_sendTransaction', 'eth_signTransaction'],
+  },
 };
 
 export const walletValidation = {

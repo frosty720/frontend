@@ -76,6 +76,29 @@ export const bridgeChains: ChainMap<ChainMetadata> = {
     },
     logoURI: '/logos/bnb.svg',
   },
+  polygon: {
+    protocol: ProtocolType.Ethereum,
+    chainId: CHAIN_IDS.POLYGON,
+    domainId: CHAIN_IDS.POLYGON,
+    name: 'polygon',
+    displayName: 'Polygon',
+    nativeToken: { name: 'POL', symbol: 'POL', decimals: 18 },
+    rpcUrls: [{ http: getRpcUrl(CHAIN_IDS.POLYGON) }],
+    blockExplorers: [
+      {
+        name: 'PolygonScan',
+        url: 'https://polygonscan.com',
+        apiUrl: 'https://api.polygonscan.com/api',
+        family: ExplorerFamily.Etherscan,
+      },
+    ],
+    blocks: {
+      confirmations: 1,
+      reorgPeriod: 256,
+      estimateBlockTime: 2,
+    },
+    logoURI: '/icons/polygon.png',
+  },
 };
 
 export type BridgeChain = ChainMetadata;

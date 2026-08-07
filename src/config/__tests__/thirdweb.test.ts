@@ -16,7 +16,7 @@ describe('Thirdweb Configuration', () => {
   describe('chain definitions', () => {
     it('should define all chains with correct IDs', async () => {
       const {
-        twKalychain, twKalychainTestnet, twArbitrum, twBsc,
+        twKalychain, twKalychainTestnet, twArbitrum, twBsc, twPolygon,
         thirdwebChains,
       } = await getThirdwebConfig()
 
@@ -24,10 +24,11 @@ describe('Thirdweb Configuration', () => {
       expect(twKalychainTestnet.id).toBe(3889)
       expect(twArbitrum.id).toBe(42161)
       expect(twBsc.id).toBe(56)
+      expect(twPolygon.id).toBe(137)
 
-      expect(thirdwebChains).toHaveLength(4)
+      expect(thirdwebChains).toHaveLength(5)
       const chainIds = thirdwebChains.map(c => c.id)
-      expect(chainIds).toEqual([3888, 3889, 42161, 56])
+      expect(chainIds).toEqual([3888, 3889, 42161, 56, 137])
     })
   })
 

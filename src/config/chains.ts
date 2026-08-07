@@ -13,7 +13,7 @@
  */
 
 import { defineChain, type Chain } from 'viem'
-import { arbitrum, bsc } from 'viem/chains'
+import { arbitrum, bsc, polygon } from 'viem/chains'
 
 // ============================================================================
 // CHAIN IDs - Use these constants throughout the app
@@ -23,6 +23,7 @@ export const CHAIN_IDS = {
   KALYCHAIN_TESTNET: 3889,
   ARBITRUM: 42161,
   BSC: 56,
+  POLYGON: 137,
 } as const;
 
 export type ChainIdValue = typeof CHAIN_IDS[keyof typeof CHAIN_IDS];
@@ -99,6 +100,7 @@ export const supportedChains = [
   kalychainTestnet, // Enabled for V3 testing
   arbitrum,
   bsc,
+  polygon,
 ] as const
 
 // Helper function to get chain by ID
@@ -133,6 +135,13 @@ export const CHAIN_CONFIG = {
   [bsc.id]: {
     name: 'BNB Smart Chain',
     shortName: 'BSC',
+    isTestnet: false,
+    faucetUrl: null,
+    bridgeUrl: null,
+  },
+  [polygon.id]: {
+    name: 'Polygon',
+    shortName: 'POL',
     isTestnet: false,
     faucetUrl: null,
     bridgeUrl: null,
@@ -173,6 +182,7 @@ function thirdwebRpc(chainId: number): string {
 const PUBLIC_RPC_FALLBACK: Record<number, string> = {
   [CHAIN_IDS.ARBITRUM]: 'https://arb1.arbitrum.io/rpc',
   [CHAIN_IDS.BSC]: 'https://bsc-dataseed.binance.org',
+  [CHAIN_IDS.POLYGON]: 'https://polygon-rpc.com',
 };
 
 export const RPC_URLS: Record<number, string> = {
@@ -180,6 +190,7 @@ export const RPC_URLS: Record<number, string> = {
   [CHAIN_IDS.KALYCHAIN_TESTNET]: process.env.NEXT_PUBLIC_KALYCHAIN_TESTNET_RPC_URL || 'https://testnetrpc.kalychain.io/rpc',
   [CHAIN_IDS.ARBITRUM]: process.env.NEXT_PUBLIC_ARBITRUM_RPC_URL || thirdwebRpc(CHAIN_IDS.ARBITRUM) || PUBLIC_RPC_FALLBACK[CHAIN_IDS.ARBITRUM],
   [CHAIN_IDS.BSC]: process.env.NEXT_PUBLIC_BSC_RPC_URL || thirdwebRpc(CHAIN_IDS.BSC) || PUBLIC_RPC_FALLBACK[CHAIN_IDS.BSC],
+  [CHAIN_IDS.POLYGON]: process.env.NEXT_PUBLIC_POLYGON_RPC_URL || thirdwebRpc(CHAIN_IDS.POLYGON) || PUBLIC_RPC_FALLBACK[CHAIN_IDS.POLYGON],
 };
 
 /**
@@ -207,6 +218,10 @@ export const RPC_URLS_ALL: Record<number, string[]> = {
   [CHAIN_IDS.BSC]: [
     process.env.NEXT_PUBLIC_BSC_RPC_URL || thirdwebRpc(CHAIN_IDS.BSC),
     PUBLIC_RPC_FALLBACK[CHAIN_IDS.BSC],
+  ].filter(Boolean),
+  [CHAIN_IDS.POLYGON]: [
+    process.env.NEXT_PUBLIC_POLYGON_RPC_URL || thirdwebRpc(CHAIN_IDS.POLYGON),
+    PUBLIC_RPC_FALLBACK[CHAIN_IDS.POLYGON],
   ].filter(Boolean),
 };
 
@@ -260,6 +275,15 @@ export const CHAIN_METADATA: Record<number, ChainMetadata> = {
     logo: '/tokens/bnb.png',
     explorer: 'https://bscscan.com',
     explorerApi: 'https://api.bscscan.com/api',
+    isTestnet: false,
+  },
+  [CHAIN_IDS.POLYGON]: {
+    name: 'Polygon',
+    shortName: 'POL',
+    symbol: 'POL',
+    logo: '/tokens/pol.png',
+    explorer: 'https://polygonscan.com',
+    explorerApi: 'https://api.polygonscan.com/api',
     isTestnet: false,
   },
 };
