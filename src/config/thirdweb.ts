@@ -69,11 +69,17 @@ export const twBsc = defineChain({
   rpc: RPC_URLS[CHAIN_IDS.BSC],
 })
 
+export const twPolygon = defineChain({
+  id: CHAIN_IDS.POLYGON,
+  rpc: RPC_URLS[CHAIN_IDS.POLYGON],
+})
+
 export const thirdwebChains = [
   twKalychain,
   twKalychainTestnet,
   twArbitrum,
   twBsc,
+  twPolygon,
 ]
 
 // ============================================================================

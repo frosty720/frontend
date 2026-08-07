@@ -70,6 +70,7 @@ export const bridgeHelpers = {
       kalychain: 'KalyChain',
       arbitrum: 'Arbitrum One',
       bsc: 'BNB Smart Chain',
+      polygon: 'Polygon',
     };
     return chainDisplayNames[chainName] || chainName;
   },
@@ -98,6 +99,7 @@ export const bridgeHelpers = {
       kalychain: 'https://kalyscan.io/tx/',
       arbitrum: 'https://arbiscan.io/tx/',
       bsc: 'https://bscscan.com/tx/',
+      polygon: 'https://polygonscan.com/tx/',
     };
     const baseUrl = explorerUrls[chainName];
     return baseUrl ? `${baseUrl}${txHash}` : '';
