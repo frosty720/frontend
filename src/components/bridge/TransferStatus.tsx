@@ -138,24 +138,25 @@ export function TransferStatus({ className }: TransferStatusProps) {
               </a>
             </Button>
             
-            {latestTransfer.msgId && (
-              <Button
-                variant="outline"
-                size="sm"
-                asChild
-                className="w-full"
-              >
-                <a
-                  href={`https://explorer.hyperlane.xyz/message/${latestTransfer.msgId}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="flex items-center justify-center gap-2"
-                >
-                  Track on Hyperlane
-                  <ExternalLink className="h-4 w-4" />
-                </a>
-              </Button>
-            )}
+          </div>
+        )}
+
+        {/* Hyperlane Message ID — the public Hyperlane explorer does not index
+            self-hosted KalyChain, so show a copyable id for support instead */}
+        {latestTransfer.msgId && (
+          <div className="flex items-center justify-center gap-2 text-xs text-muted-foreground">
+            <span>Message ID: </span>
+            <span className="font-mono">
+              {latestTransfer.msgId.slice(0, 10)}...{latestTransfer.msgId.slice(-8)}
+            </span>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => handleCopyAddress(latestTransfer.msgId!, 'Message ID')}
+              className="h-6 w-6 p-0 hover:bg-muted"
+            >
+              <Copy className="h-3 w-3" />
+            </Button>
           </div>
         )}
 
@@ -192,7 +193,7 @@ export function TransferHistory({ className }: { className?: string }) {
     return (
       <Card className={className}>
         <CardContent className="pt-6">
-          <div className="text-center text-gray-500">
+          <div className="text-center text-muted-foreground">
             <Clock className="h-8 w-8 mx-auto mb-2 opacity-50" />
             <p>No transfers yet</p>
           </div>
@@ -218,7 +219,7 @@ export function TransferHistory({ className }: { className?: string }) {
         {transfers.slice().reverse().map((transfer, index) => (
           <div
             key={`${transfer.timestamp}-${index}`}
-            className="flex items-center justify-between p-3 bg-gray-50 rounded-lg"
+            className="flex items-center justify-between p-3 bg-muted/50 rounded-lg"
           >
             <div className="flex items-center gap-3">
               <span className="text-lg">
@@ -229,21 +230,21 @@ export function TransferHistory({ className }: { className?: string }) {
                   <span className="font-medium">
                     {bridgeHelpers.getChainDisplayName(transfer.origin)}
                   </span>
-                  <ArrowRight className="h-3 w-3 text-gray-400" />
+                  <ArrowRight className="h-3 w-3 text-muted-foreground" />
                   <span className="font-medium">
                     {bridgeHelpers.getChainDisplayName(transfer.destination)}
                   </span>
                 </div>
-                <div className="text-xs text-gray-600">
+                <div className="text-xs text-muted-foreground">
                   {transfer.amount} {bridgeHelpers.getTokenSymbol(transfer.originTokenAddressOrDenom)}
                 </div>
               </div>
             </div>
             <div className="text-right">
               <div className={`text-xs font-medium ${transferStatusHelpers.getStatusColor(transfer.status)}`}>
-                {transfer.status}
+                {transferStatusHelpers.getStatusMessage(transfer.status)}
               </div>
-              <div className="text-xs text-gray-500">
+              <div className="text-xs text-muted-foreground">
                 {new Date(transfer.timestamp).toLocaleDateString()}
               </div>
             </div>

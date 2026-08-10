@@ -9,7 +9,7 @@ import React, { useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
-import { ArrowUpDown, ArrowRight, ChevronLeft, CheckCircle, AlertCircle } from 'lucide-react';
+import { ArrowUpDown, ArrowRight, ChevronLeft, CheckCircle, AlertCircle, Clock } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -236,6 +236,18 @@ export function BridgeForm() {
                 )}
               />
             </div>
+
+            {/* Polygon finality notice — validators wait out Polygon's reorg
+                window before signing, so outbound transfers are slow */}
+            {formValues.originChain === 'polygon' && (
+              <div className="flex items-center gap-2 p-3 bg-amber-50 border border-amber-200 rounded-lg">
+                <Clock className="h-5 w-5 text-amber-600 flex-shrink-0" />
+                <p className="text-sm text-amber-700">
+                  Transfers from Polygon take up to 10 minutes to arrive while
+                  the bridge waits for Polygon finality.
+                </p>
+              </div>
+            )}
 
             {/* Token and Amount Section */}
             <div className="flex items-end justify-between gap-4">

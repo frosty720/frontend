@@ -3,7 +3,7 @@ import { contractLogger } from '@/lib/logger';
 // This file contains utility functions adapted from Hyperlane bridge UI
 
 import { TokenAmount } from '@hyperlane-xyz/sdk';
-import { formatUnits, parseUnits, isAddress, TransactionReceipt, Log } from 'viem';
+import { formatUnits, parseUnits, isAddress } from 'viem';
 import BigNumber from 'bignumber.js';
 
 export const bridgeHelpers = {
@@ -174,45 +174,6 @@ export const bridgeHelpers = {
       clearTimeout(timeout);
       timeout = setTimeout(() => func(...args), wait);
     };
-  },
-
-  // Extract message ID from transaction receipt using Hyperlane utilities
-  extractMessageIdFromReceipt: (receipt: TransactionReceipt, originChain: string): string | null => {
-    try {
-      // TODO: Use proper Hyperlane utility function
-      // const messageId = tryGetMsgIdFromTransferReceipt(originChain, receipt);
-      // For now, use simplified extraction
-
-      // Look for Hyperlane message dispatch events
-      // The message ID is typically in the first topic of the DispatchId event
-      const dispatchEvents = receipt.logs.filter((log: Log) => {
-        // Hyperlane DispatchId event signature
-        const dispatchIdTopic = '0x788dbc1b7152732178210e7f4d9d010ef016f9eafbe66786bd7169f56e0c353a';
-        return log.topics[0] === dispatchIdTopic;
-      });
-
-      if (dispatchEvents.length > 0) {
-        // The message ID is typically the first topic after the event signature
-        const messageId = dispatchEvents[0].topics[1];
-        return messageId || null;
-      }
-
-      // Fallback: look for any event that might contain a message ID
-      for (const log of receipt.logs) {
-        if (log.topics.length > 1) {
-          const potentialMessageId = log.topics[1];
-          // Basic validation: message ID should be 32 bytes (64 hex chars + 0x)
-          if (potentialMessageId && potentialMessageId.length === 66) {
-            return potentialMessageId;
-          }
-        }
-      }
-
-      return null;
-    } catch (error) {
-      contractLogger.error('Error extracting message ID from receipt:', error);
-      return null;
-    }
   },
 
   // Copy text to clipboard
