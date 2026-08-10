@@ -2,10 +2,25 @@
 // This hook handles bridge transfer operations with full status tracking
 
 import { useState, useCallback } from 'react';
-import { parseUnits } from 'viem';
+import {
+  createPublicClient,
+  custom,
+  decodeFunctionData,
+  erc20Abi,
+  parseUnits,
+  type EIP1193Provider,
+} from 'viem';
+import type { providers } from 'ethers';
+import {
+  ChainMap,
+  CoreAddresses,
+  MultiProtocolCore,
+  MultiProtocolProvider,
+  ProviderType,
+} from '@hyperlane-xyz/sdk';
 import { useBridgeContext } from './useBridgeContext';
 import { useWallet } from '../useWallet';
-import { useTransferStore, TransferStatus, TransferContext, txCategoryToStatuses, errorMessages } from './useTransferStore';
+import { useTransferStore, TransferStatus, TransferContext, txCategoryToStatuses, humanizeBridgeError } from './useTransferStore';
 import { useToast, toastHelpers } from '@/components/ui/toast';
 import { bridgeHelpers } from '@/utils/bridge/bridgeHelpers';
 import { loggerHelpers } from '@/utils/bridge/logger';
@@ -17,6 +32,71 @@ export interface TransferParams {
   tokenIndex: number;
   amount: string;
   recipient: string;
+}
+
+// Extract the Hyperlane message id from a confirmed transfer receipt.
+// Mirrors tryGetMsgIdFromTransferReceipt in the hyperlane-warp-ui repo:
+// actual core addresses are not required for id extraction, so stubs suffice.
+function tryGetMsgIdFromReceipt(
+  multiProvider: MultiProtocolProvider,
+  origin: string,
+  receipt: providers.TransactionReceipt
+): string | undefined {
+  try {
+    const addressStubs = multiProvider
+      .getKnownChainNames()
+      .reduce<ChainMap<CoreAddresses>>((acc, chainName) => {
+        acc[chainName] = { validatorAnnounce: '', proxyAdmin: '', mailbox: '' };
+        return acc;
+      }, {});
+    const core = new MultiProtocolCore(multiProvider, addressStubs);
+    const messages = core.extractMessageIds(origin, {
+      type: ProviderType.EthersV5,
+      receipt,
+    });
+    return messages.length ? messages[0].messageId : undefined;
+  } catch (error) {
+    bridgeLogger.error('Could not extract message id from receipt:', error);
+    return undefined;
+  }
+}
+
+// After an approval is mined on our RPC, wallets like MetaMask still simulate
+// the follow-up transfer against their own node (e.g. Infura), which can lag a
+// few seconds behind. Submitting the transfer before the wallet's node has seen
+// the new allowance makes the wallet warn "likely to fail" and can get the
+// submission rejected. Poll the allowance through the wallet's own provider
+// until the approval is visible there. Returns false when there is no injected
+// provider to check against (e.g. in-app wallets) or the poll gave up.
+async function waitForWalletToSeeApproval(
+  tokenAddress: string,
+  approveData: string,
+  owner: string
+): Promise<boolean> {
+  const injected =
+    typeof window !== 'undefined'
+      ? (window as { ethereum?: EIP1193Provider }).ethereum
+      : undefined;
+  if (!injected) return false;
+  try {
+    const decoded = decodeFunctionData({ abi: erc20Abi, data: approveData as `0x${string}` });
+    if (decoded.functionName !== 'approve') return false;
+    const [spender, amount] = decoded.args;
+    const walletProviderClient = createPublicClient({ transport: custom(injected) });
+    for (let attempt = 0; attempt < 15; attempt++) {
+      const allowance = await walletProviderClient.readContract({
+        address: tokenAddress as `0x${string}`,
+        abi: erc20Abi,
+        functionName: 'allowance',
+        args: [owner as `0x${string}`, spender],
+      });
+      if (allowance >= amount) return true;
+      await new Promise((resolve) => setTimeout(resolve, 2000));
+    }
+  } catch (error) {
+    bridgeLogger.warn('Could not verify allowance via wallet provider:', error);
+  }
+  return false;
 }
 
 export function useBridgeTransfer() {
@@ -41,6 +121,7 @@ export function useBridgeTransfer() {
     setSuccessMessage(null);
 
     let transferIndex: number | undefined;
+    let currentStatus: TransferStatus = TransferStatus.Preparing;
 
     try {
       // Check if we need to switch chains
@@ -123,7 +204,7 @@ export function useBridgeTransfer() {
       }
 
       // Update status: Creating transactions
-      updateTransferStatus(transferIndex, TransferStatus.CreatingTxs);
+      updateTransferStatus(transferIndex, (currentStatus = TransferStatus.CreatingTxs));
 
       // Get transfer transactions
       bridgeLogger.debug('📝 Creating transfer transactions...');
@@ -143,43 +224,62 @@ export function useBridgeTransfer() {
 
       // Execute transactions with status tracking
       const txHashes: string[] = [];
+      let msgId: string | undefined;
       for (const tx of transferTxs) {
         const category = tx.category || 'transfer';
         const [signingStatus, confirmingStatus] = txCategoryToStatuses[category as keyof typeof txCategoryToStatuses] ||
           [TransferStatus.SigningTransfer, TransferStatus.ConfirmingTransfer];
 
         // Update status: Signing
-        updateTransferStatus(transferIndex, signingStatus);
+        updateTransferStatus(transferIndex, (currentStatus = signingStatus));
 
         bridgeLogger.debug(`✍️ Signing ${category} transaction...`);
         const txHash = await signTransaction(tx);
         txHashes.push(txHash);
 
         // Update status: Confirming
-        updateTransferStatus(transferIndex, confirmingStatus, txHash);
+        updateTransferStatus(transferIndex, (currentStatus = confirmingStatus), txHash);
 
         bridgeLogger.debug(`⏳ Confirming ${category} transaction: ${txHash}`);
 
-        // TODO: Wait for transaction receipt and extract message ID
-        // This is not critical for transfer success, so we'll skip it for now
-        // try {
-        //   const provider = multiProvider.getProvider(params.originChain);
-        //   const receipt = await provider.waitForTransaction(txHash);
-        //   const messageId = bridgeHelpers.extractMessageIdFromReceipt(receipt, params.originChain);
-        //   if (messageId) {
-        //     bridgeLogger.debug(`📧 Message ID extracted: ${messageId}`);
-        //     updateTransferStatus(transferIndex, confirmingStatus, txHash, messageId);
-        //   }
-        // } catch (receiptError) {
-        //   bridgeLogger.warn('⚠️ Failed to extract message ID from receipt:', receiptError);
-        // }
+        // Every transaction must be mined before we move on. For approvals,
+        // submitting the transfer earlier makes its gas estimation run against
+        // a node that has not seen the allowance yet, reverting with
+        // "ERC20: transfer amount exceeds allowance" (seen on Polygon). For
+        // transfers, success must only be reported once the tx actually landed.
+        const provider = multiProvider.getEthersV5Provider(params.originChain);
+        const receipt = await provider.waitForTransaction(txHash);
+        if (receipt.status === 0) {
+          throw new Error(`Transaction reverted on ${params.originChain}: ${txHash}`);
+        }
+        bridgeLogger.debug(`✅ ${category} transaction confirmed: ${txHash}`);
 
-        // Show transaction sent toast
+        // Do not submit the transfer until the wallet's own node can see the
+        // approval, otherwise its gas simulation fails and the UX degrades.
+        if (category === 'approval') {
+          const populated = (tx as { transaction?: { to?: string; data?: string } }).transaction;
+          const walletSawApproval =
+            typeof populated?.to === 'string' && typeof populated?.data === 'string'
+              ? await waitForWalletToSeeApproval(populated.to, populated.data, account)
+              : false;
+          if (!walletSawApproval) {
+            // No injected provider to check against — give lagging wallet
+            // nodes a couple of extra blocks instead.
+            await provider.waitForTransaction(txHash, 3);
+          }
+        }
+
+        if (category === 'transfer') {
+          msgId = tryGetMsgIdFromReceipt(multiProvider, params.originChain, receipt);
+          if (msgId) bridgeLogger.debug(`📧 Hyperlane message id: ${msgId}`);
+        }
+
+        // Show transaction confirmed toast
         toastHelpers.transactionSuccess(txHash, params.originChain, toast);
       }
 
       // Update final status
-      updateTransferStatus(transferIndex, TransferStatus.ConfirmedTransfer, txHashes[txHashes.length - 1]);
+      updateTransferStatus(transferIndex, TransferStatus.ConfirmedTransfer, txHashes[txHashes.length - 1], msgId);
 
       // Show success toast
       toastHelpers.bridgeSuccess(
@@ -195,8 +295,9 @@ export function useBridgeTransfer() {
 
       return transferTxs;
     } catch (err) {
-      bridgeLogger.error('❌ Bridge transfer failed:', err);
-      const errorMessage = err instanceof Error ? err.message : 'Transfer failed';
+      // Raw error goes to the log; users see the stage-aware message.
+      bridgeLogger.error(`❌ Bridge transfer failed at stage ${currentStatus}:`, err);
+      const errorMessage = humanizeBridgeError(err, currentStatus);
 
       // Update transfer status to failed if we have a transfer index
       if (transferIndex !== undefined) {

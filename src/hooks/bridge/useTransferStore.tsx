@@ -218,3 +218,22 @@ export const errorMessages = {
   [TransferStatus.SigningTransfer]: 'Failed to sign transfer transaction. Please try again.',
   [TransferStatus.ConfirmingTransfer]: 'Transfer transaction failed. Please check the transaction and try again.',
 } as const;
+
+// Map a raw error to a user-facing message for the stage it occurred in.
+// Raw errors are logged by the caller; users only ever see these.
+export function humanizeBridgeError(error: unknown, stage: TransferStatus): string {
+  const details = error instanceof Error ? error.message : String(error);
+  if (/user rejected|user denied|rejected the request/i.test(details)) {
+    return 'Transaction rejected in wallet.';
+  }
+  if (details.includes('ChainMismatchError')) {
+    return 'Wallet must be connected to the origin chain.';
+  }
+  if (details.includes('block height exceeded') || details.includes('timeout')) {
+    return 'Transaction timed out, the network may be busy. Please try again.';
+  }
+  return (
+    errorMessages[stage as keyof typeof errorMessages] ||
+    'Unable to transfer tokens. Please try again.'
+  );
+}

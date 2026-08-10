@@ -197,8 +197,8 @@ export const toastHelpers = {
     const shortHash = `${txHash.slice(0, 6)}...${txHash.slice(-4)}`;
     
     toast.success(
-      'Transaction Sent!',
-      `Transaction ${shortHash} has been submitted to the network.`,
+      'Transaction Confirmed!',
+      `Transaction ${shortHash} has been confirmed on the network.`,
       {
         duration: 8000,
         link: explorerUrl ? {
