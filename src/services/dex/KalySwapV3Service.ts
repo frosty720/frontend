@@ -6,14 +6,14 @@
 import { CHAIN_IDS } from '@/config/chains';
 import { BaseV3Service } from './BaseV3Service';
 import { SwapFailedError } from './IDexService';
-import { V3MigrateParams } from './IV3DexService';
-import { KALYSWAP_V3_TESTNET_CONFIG, getV3Config } from '@/config/dex/v3-config';
+import { KALYSWAP_V3_CONFIG, getV3Config } from '@/config/dex/v3-config';
 import { Token, SwapParams } from '@/config/dex/types';
 import { V3_FEE_TIERS, V3_DEFAULT_FEE_TIER } from '@/config/dex/v3-constants';
 import type { PublicClient, WalletClient } from 'viem';
 import { parseUnits, formatUnits, encodeFunctionData, createPublicClient, http } from 'viem';
-import { getChainTransport, kalychain, kalychainTestnet } from '@/config/chains';
+import { getChainTransport, kalychain } from '@/config/chains';
 import { dexLogger as logger } from '@/lib/logger';
+import { kalyFeeOverrides } from '@/config/gas';
 
 /**
  * KalySwap V3 Service for KalyChain
@@ -53,7 +53,7 @@ export class KalySwapV3Service extends BaseV3Service {
             // Create a robust public client for reading state.
             // Uses fallback transport so we auto-rotate to rpc2 when the
             // primary drops.
-            const chain = this.chainId === CHAIN_IDS.KALYCHAIN_TESTNET ? kalychainTestnet : kalychain;
+            const chain = kalychain;
 
             const publicClient = createPublicClient({
                 chain,
@@ -147,8 +147,8 @@ export class KalySwapV3Service extends BaseV3Service {
     getNativeToken(): Token {
         return {
             chainId: this.chainId,
-            symbol: 'KLC',
-            name: 'KalyCoin',
+            symbol: 'KMT',
+            name: 'KalyChain Monetary Token',
             address: '0x0000000000000000000000000000000000000000',
             decimals: 18,
             logoURI: 'https://raw.githubusercontent.com/kalycoinproject/sdk/main/src/images/chains/kaly.png',
@@ -230,6 +230,9 @@ export class KalySwapV3Service extends BaseV3Service {
 
         // eslint-disable-next-line @typescript-eslint/no-explicit-any -- dynamic ABI from config
         const txHash = await walletClient.writeContract({
+            // KalyChain advertises a ~0 priority fee; without this the wallet builds
+            // the tx below the 21 gwei inclusion floor. No-op on other chains.
+            ...kalyFeeOverrides(walletClient.chain?.id),
             address: positionManagerAddress as `0x${string}`,
             abi: this.config.positionManagerABI,
             functionName: 'createAndInitializePoolIfNecessary',
@@ -245,49 +248,6 @@ export class KalySwapV3Service extends BaseV3Service {
         return txHash;
     }
 
-    /**
-     * Migrate V2 liquidity to V3
-     */
-    async migrateLiquidity(
-        params: V3MigrateParams,
-        publicClient: PublicClient,
-        walletClient: WalletClient
-    ): Promise<string> {
-        const migratorAddress = this.config.migrator;
-        if (!migratorAddress) throw new Error('V3 Migrator address not configured');
-
-        // Note: tokens in params are already sorted by caller if needed, 
-        // but verify token0/token1 match parameter structure requirements
-        // Migration params typically expect token0 < token1
-
-        const migrateParams = {
-            pair: params.pair as `0x${string}`,
-            liquidityToMigrate: BigInt(params.liquidityToMigrate),
-            percentageToMigrate: params.percentageToMigrate,
-            token0: params.token0.address as `0x${string}`,
-            token1: params.token1.address as `0x${string}`,
-            fee: params.fee,
-            tickLower: params.tickLower,
-            tickUpper: params.tickUpper,
-            amount0Min: BigInt(params.amount0Min),
-            amount1Min: BigInt(params.amount1Min),
-            recipient: params.recipient as `0x${string}`,
-            deadline: BigInt(params.deadline),
-            refundAsETH: params.refundAsETH
-        };
-
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- dynamic ABI from config
-        const { request } = await publicClient.simulateContract({
-            address: migratorAddress as `0x${string}`,
-            abi: this.config.migratorABI,
-            functionName: 'migrate',
-            args: [migrateParams],
-            account: walletClient.account
-        } as any);
-
-        const txHash = await walletClient.writeContract(request as any);
-        return txHash;
-    }
 }
 
 // Export singleton factory

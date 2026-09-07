@@ -5,6 +5,7 @@ import { contractLogger } from '@/lib/logger';
 import { TokenAmount } from '@hyperlane-xyz/sdk';
 import { formatUnits, parseUnits, isAddress } from 'viem';
 import BigNumber from 'bignumber.js';
+import { KALYCHAIN_EXPLORER_URL } from '@/config/chains';
 
 export const bridgeHelpers = {
   // Format token amount for display
@@ -96,7 +97,7 @@ export const bridgeHelpers = {
   // Get transaction explorer URL
   getTransactionUrl: (txHash: string, chainName: string): string => {
     const explorerUrls: Record<string, string> = {
-      kalychain: 'https://kalyscan.io/tx/',
+      kalychain: `${KALYCHAIN_EXPLORER_URL}/tx/`,
       arbitrum: 'https://arbiscan.io/tx/',
       bsc: 'https://bscscan.com/tx/',
       polygon: 'https://polygonscan.com/tx/',
@@ -142,13 +143,13 @@ export const bridgeHelpers = {
 
       // USDC addresses
       '0xD0a1d1b8E10625eE7Ed4Be4Aa7afA7f169411FBd': 'USDC', // Arbitrum
-      '0x9cAb0c396cF0F4325913f2269a0b72BD4d46E3A9': 'USDC', // KalyChain
+      '0xf00A4b733093C21b0892eae0578F0a926f9370b3': 'USDC', // KalyChain (3890)
       '0xB3dF48224FA257D55e01342592f9A24cefc2628e': 'USDC', // Polygon
       '0xaf88d065e77c8cC2239327C5EDb3A432268e5831': 'USDC', // Arbitrum collateral
       '0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359': 'USDC', // Polygon collateral
 
       // USDT addresses
-      '0x2CA775C77B922A51FcF3097F52bFFdbc0250D99A': 'USDT', // KalyChain
+      '0x6318EcDbae6B469D39C38949eDC671f4bA8A6172': 'USDT', // KalyChain (3890)
       '0xFDb3307a16442ed5A7C040AE1600a3B3D3C8e7D9': 'USDT', // Arbitrum
       '0x2f7c83FC82A0e39A997c262e5BAB13176C275104': 'USDT', // Polygon
       '0xFd086bC7CD5C481DCC9C85ebE478A1C0b69FCbb9': 'USDT', // Arbitrum collateral

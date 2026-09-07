@@ -15,9 +15,11 @@ import {
 } from 'lucide-react'
 import { ProjectData } from '@/hooks/launchpad/useProjectDetails'
 import { useWallet } from '@/hooks/useWallet'
-import { useAccount, useWalletClient } from 'wagmi'
+import { useAccount, useWalletClient, usePublicClient } from 'wagmi'
 import { PRESALE_ABI, FAIRLAUNCH_ABI, PRESALE_V3_ABI, FAIRLAUNCH_V3_ABI } from '@/config/abis'
 import { launchpadLogger } from '@/lib/logger'
+import { kalyFeeOverrides } from '@/config/gas';
+import { assertTxSucceeded } from '@/utils/transactions';
 
 interface ProjectOwnerControlsProps {
   projectData: ProjectData
@@ -33,10 +35,11 @@ export default function ProjectOwnerControls({
   const { isConnected, address } = useWallet()
   const { address: wagmiAddress } = useAccount()
   const { data: walletClient } = useWalletClient()
+  const publicClient = usePublicClient()
 
   // Get appropriate ABI based on project type and dex version
   const getABI = () => {
-    if (projectData.dexVersion === 'v3') {
+    if (true) {
       return projectData.type === 'presale' ? PRESALE_V3_ABI : FAIRLAUNCH_V3_ABI
     }
     return projectData.type === 'presale' ? PRESALE_ABI : FAIRLAUNCH_ABI
@@ -67,13 +70,14 @@ export default function ProjectOwnerControls({
     }
 
     const hash = await walletClient.writeContract({
+      // Was a hardcoded 3 gwei tip — below KalyChain's 21 gwei inclusion floor, which
+      // is the difference between landing in seconds and sitting for tens of minutes.
+      ...kalyFeeOverrides(walletClient.chain?.id),
       address: contractAddress as `0x${string}`,
       abi,
       functionName,
       args,
       gas: BigInt(5000000), // 5M gas limit like the working test script
-      maxFeePerGas: BigInt(30000000000), // 30 gwei
-      maxPriorityFeePerGas: BigInt(3000000000), // 3 gwei
     })
 
     return hash
@@ -98,10 +102,10 @@ export default function ProjectOwnerControls({
 
       launchpadLogger.debug('Finalize transaction hash:', hash)
 
-      // Wait a moment for transaction to be mined, then refresh
-      setTimeout(() => {
-        onRefresh()
-      }, 3000)
+      // Was a blind 3-second timer, which reported success for a reverted finalize.
+      if (!publicClient) throw new Error('Public client not available')
+      await assertTxSucceeded(publicClient, hash, 'Finalize')
+      onRefresh()
 
     } catch (error) {
       launchpadLogger.error('Finalize failed:', error)
@@ -116,13 +120,35 @@ export default function ProjectOwnerControls({
     setIsLoading(true)
     setLoadingAction('cancel')
     try {
-      // TODO: Implement cancel contract call
-      launchpadLogger.debug('Cancelling project:', projectData.contractAddress)
-      // Placeholder for actual implementation
-      await new Promise(resolve => setTimeout(resolve, 2000))
+      if (!projectData.contractAddress) {
+        throw new Error('Contract address not available')
+      }
+      if (!publicClient) {
+        throw new Error('Public client not available')
+      }
+
+      // This used to be a 2-second setTimeout followed by onRefresh(): the owner saw a
+      // spinner and a refresh, and believed the sale was cancelled while nothing had
+      // been sent on-chain. Presale and fairlaunch name the call differently.
+      // `type` is optional on ProjectData; defaulting to fairlaunch here would call the
+      // wrong function on a presale.
+      const functionName = (projectData.type ?? 'presale') === 'presale'
+        ? 'cancelPresale'
+        : 'cancelFairlaunch'
+
+      const hash = await executeContractCall(
+        projectData.contractAddress,
+        getABI(),
+        functionName,
+        []
+      )
+
+      await assertTxSucceeded(publicClient, hash, 'Cancel')
+      launchpadLogger.debug('Cancel transaction hash:', hash)
       onRefresh()
     } catch (error) {
       launchpadLogger.error('Cancel failed:', error)
+      alert(`Cancel failed: ${error instanceof Error ? error.message : 'Unknown error'}`)
     } finally {
       setIsLoading(false)
       setLoadingAction(null)

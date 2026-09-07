@@ -3,7 +3,7 @@
 
 import { ChainMap, ChainMetadata, ExplorerFamily } from '@hyperlane-xyz/sdk';
 import { ProtocolType } from '@hyperlane-xyz/utils';
-import { CHAIN_IDS, getRpcUrl } from '@/config/chains';
+import { CHAIN_IDS, KALYCHAIN_EXPLORER_URL, getRpcUrl } from '@/config/chains';
 
 // Complete chain configurations matching production standards
 export const bridgeChains: ChainMap<ChainMetadata> = {
@@ -13,13 +13,15 @@ export const bridgeChains: ChainMap<ChainMetadata> = {
     domainId: CHAIN_IDS.KALYCHAIN,
     name: 'kalychain',
     displayName: 'KalyChain',
-    nativeToken: { name: 'KalyCoin', symbol: 'KLC', decimals: 18 },
+    // Relaunched on 3890 with KMT as the native token. Warp routes verified on-chain
+    // 2026-08-26 in both directions, with matching decimals on every route.
+    nativeToken: { name: 'KalyChain Monetary Token', symbol: 'KMT', decimals: 18 },
     rpcUrls: [{ http: getRpcUrl(CHAIN_IDS.KALYCHAIN) }],
     blockExplorers: [
       {
         name: 'KalyScan',
-        url: 'https://kalyscan.io',
-        apiUrl: 'https://kalyscan.io/api',
+        url: KALYCHAIN_EXPLORER_URL,
+        apiUrl: `${KALYCHAIN_EXPLORER_URL}/api`,
         family: ExplorerFamily.Etherscan,
       },
     ],

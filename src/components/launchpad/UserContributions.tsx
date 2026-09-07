@@ -18,6 +18,7 @@ import { ProjectData } from '@/hooks/launchpad/useProjectDetails'
 import { useParticipation } from '@/hooks/launchpad/useParticipation'
 import { useWallet } from '@/hooks/useWallet'
 import { launchpadLogger } from '@/lib/logger'
+import { KALYCHAIN_EXPLORER_URL } from '@/config/chains'
 
 interface UserContributionsProps {
   projectData: ProjectData
@@ -64,14 +65,14 @@ export default function UserContributions({
   // Fetch user contribution data on mount
   useEffect(() => {
     if (isConnected && projectData.contractAddress && projectData.type) {
-      fetchUserContribution(projectData.contractAddress, projectData.type, projectData.isFinalized, projectData.dexVersion)
+      fetchUserContribution(projectData.contractAddress, projectData.type, projectData.isFinalized)
     }
-  }, [isConnected, projectData.contractAddress, projectData.type, projectData.isFinalized, projectData.dexVersion, fetchUserContribution])
+  }, [isConnected, projectData.contractAddress, projectData.type, projectData.isFinalized, fetchUserContribution])
 
   // Handle claim tokens
   const handleClaimTokens = async () => {
     try {
-      await claimTokens(projectData.contractAddress, projectData.type || 'presale', projectData.dexVersion)
+      await claimTokens(projectData.contractAddress, projectData.type || 'presale')
       onRefresh?.()
     } catch (error) {
       launchpadLogger.error('Claim failed:', error)
@@ -81,7 +82,7 @@ export default function UserContributions({
   // Handle claim refund
   const handleClaimRefund = async () => {
     try {
-      await claimRefund(projectData.contractAddress, projectData.type || 'presale', projectData.dexVersion)
+      await claimRefund(projectData.contractAddress, projectData.type || 'presale')
       onRefresh?.()
     } catch (error) {
       launchpadLogger.error('Refund failed:', error)
@@ -135,7 +136,7 @@ export default function UserContributions({
             <Button
               variant="outline"
               size="sm"
-              onClick={() => fetchUserContribution(projectData.contractAddress, projectData.type || 'presale', projectData.isFinalized, projectData.dexVersion)}
+              onClick={() => fetchUserContribution(projectData.contractAddress, projectData.type || 'presale', projectData.isFinalized)}
               disabled={isLoading}
               className="border-amber-500/30 text-amber-400 hover:bg-amber-500/20"
             >
@@ -257,7 +258,7 @@ export default function UserContributions({
               <p className="text-sm text-gray-300">
                 Transaction Hash:{' '}
                 <a
-                  href={`https://kalyscan.io/tx/${transactionHash}`}
+                  href={`${KALYCHAIN_EXPLORER_URL}/tx/${transactionHash}`}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="text-blue-400 hover:underline break-all inline-flex items-center gap-1"

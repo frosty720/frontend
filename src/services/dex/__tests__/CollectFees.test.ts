@@ -6,15 +6,14 @@ import { PublicClient, WalletClient } from 'viem';
 
 // Mock chains config
 vi.mock('@/config/chains', () => ({
-    CHAIN_IDS: { KALYCHAIN_TESTNET: 3889 }
+    CHAIN_IDS: { KALYCHAIN: 3890 }
 }));
 
 // Concrete implementation
 class TestV3Service extends BaseV3Service {
     getName(): string { return 'TestService'; }
-    getChainId(): number { return 3889; }
+    getChainId(): number { return 3890; }
     executeSwap(): Promise<string> { return Promise.resolve('0x'); }
-    migrateLiquidity(): Promise<string> { return Promise.resolve('0x'); }
     createAndInitializePool(): Promise<string> { return Promise.resolve('0x'); }
 }
 
@@ -26,7 +25,7 @@ describe('V3 Collect Fees Logic', () => {
     const mockConfig = {
         positionManagerABI: ['collectABI'],
         positionManager: '0xPosMgr',
-        chain: { id: 3889 }
+        chain: { id: 3890 }
     } as unknown as V3DexConfig;
 
     beforeEach(() => {

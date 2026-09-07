@@ -5,8 +5,9 @@ import { priceLogger as logger } from '@/lib/logger';
 
 import { useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { getPairMarketStats, getPairsData, getV3PoolForPair, getV3PoolStats } from '@/lib/subgraph-client';
+import { getV3PoolForPair, getV3PoolStats } from '@/lib/subgraph-client';
 import { getV3Config } from '@/config/dex/v3-config';
+import { getDexConfig } from '@/config/dex';
 import { usePriceDataContext } from '@/contexts/PriceDataContext';
 import { fetchGraphQL, isNetworkError } from '@/utils/networkUtils';
 import { Token } from '@/config/dex/types';
@@ -27,10 +28,27 @@ export interface PairMarketStats {
 // WKLC address for native KLC conversion
 const WKLC_ADDRESS = MAINNET_CONTRACTS.WKLC;
 
+/**
+ * The wrapped-native address for a given chain. Subgraphs only ever know the WRAPPED
+ * token, so a native selection has to be mapped before any pool lookup.
+ *
+ * This used to return MAINNET_CONTRACTS.WKLC unconditionally, which meant that on any
+ * other chain the pool lookup searched for a 3888 address in that chain's subgraph, found
+ * nothing, and silently returned zeros — the symptom being Price/Volume/Liquidity all
+ * showing as "—".
+ */
+function wrappedNativeFor(chainId?: number): string {
+  const v3 = chainId ? getV3Config(chainId) : null;
+  if (v3?.wethAddress) return v3.wethAddress;
+  const dex = chainId ? getDexConfig(chainId) : null;
+  if (dex?.wethAddress) return dex.wethAddress;
+  return WKLC_ADDRESS;
+}
+
 // Helper: Convert native KLC to WKLC address
 function getTokenAddress(token: Token): string {
   if (token.isNative || token.address === '0x0000000000000000000000000000000000000000') {
-    return WKLC_ADDRESS;
+    return wrappedNativeFor(token.chainId);
   }
   return token.address;
 }
@@ -58,33 +76,6 @@ function normalizeTokenPair(tokenA?: Token, tokenB?: Token): [Token | undefined,
   return tokenAAddr < tokenBAddr ? [tokenA, tokenB] : [tokenB, tokenA];
 }
 
-// Helper: Find pair address dynamically
-async function findPairAddress(tokenA: Token, tokenB: Token): Promise<string | null> {
-  const addressA = getTokenAddress(tokenA).toLowerCase();
-  const addressB = getTokenAddress(tokenB).toLowerCase();
-
-  logger.debug(`🔍 Looking for pair: ${tokenA.symbol}/${tokenB.symbol}`);
-
-  try {
-    const pairs = await getPairsData(100, 'txCount', 'desc');
-    const matchingPair = pairs.find((pair: any) => {
-      const token0Addr = pair.token0.id.toLowerCase();
-      const token1Addr = pair.token1.id.toLowerCase();
-      return (token0Addr === addressA && token1Addr === addressB) ||
-             (token0Addr === addressB && token1Addr === addressA);
-    });
-
-    if (matchingPair) {
-      logger.debug(`✅ Found pair at ${matchingPair.id}`);
-      return matchingPair.id;
-    }
-    return null;
-  } catch (error) {
-    logger.error('Error finding pair:', error);
-    return null;
-  }
-}
-
 interface PairStatsData {
   price: number;
   volume24h: number;
@@ -97,7 +88,7 @@ interface PairStatsData {
  * Uses TanStack Query for caching and automatic refetching.
  * Industry standard: Always shows the same price/stats regardless of token order.
  */
-export function usePairMarketStats(tokenA?: Token, tokenB?: Token, protocolVersion: 'v2' | 'v3' = 'v2'): PairMarketStats {
+export function usePairMarketStats(tokenA?: Token, tokenB?: Token): PairMarketStats {
   // Use shared price change from context
   const { priceChange24h } = usePriceDataContext();
 
@@ -112,24 +103,22 @@ export function usePairMarketStats(tokenA?: Token, tokenB?: Token, protocolVersi
 
   // Main query for pair stats
   const statsQuery = useQuery<PairStatsData, Error>({
-    queryKey: ['pairMarketStats', protocolVersion, normalizedTokenA?.address, normalizedTokenB?.address, chainId],
+    queryKey: ['pairMarketStats', normalizedTokenA?.address, normalizedTokenB?.address, chainId],
     queryFn: async (): Promise<PairStatsData> => {
       if (!normalizedTokenA || !normalizedTokenB) {
         return { price: 0, volume24h: 0, liquidity: 0, pairAddress: null };
       }
 
-      logger.debug(`📊 Fetching pair stats for ${normalizedTokenA.symbol}/${normalizedTokenB.symbol} on chain ${chainId} (${protocolVersion})`);
+      logger.debug(`📊 Fetching pair stats for ${normalizedTokenA.symbol}/${normalizedTokenB.symbol} on chain ${chainId}`);
 
       // For BSC and Arbitrum, use GeckoTerminal API
       if (chainId === 56 || chainId === 42161) {
         return fetchGeckoTerminalStats(chainId, normalizedTokenA, normalizedTokenB);
       }
 
-      // For KalyChain, use the protocol's subgraph
-      if (protocolVersion === 'v3') {
-        return fetchKalyChainV3Stats(chainId, normalizedTokenA, normalizedTokenB);
-      }
-      return fetchKalyChainStats(normalizedTokenA, normalizedTokenB);
+      // KalyChain-family chains: V3 only. The V2 branch was deleted with the V2
+      // subgraph on 2026-08-26.
+      return fetchKalyChainV3Stats(chainId, normalizedTokenA, normalizedTokenB);
     },
     enabled: hasValidTokens,
     staleTime: 30 * 1000, // 30 seconds
@@ -232,79 +221,3 @@ async function fetchKalyChainV3Stats(
   };
 }
 
-// Fetch market stats from KalyChain subgraph
-async function fetchKalyChainStats(
-  normalizedTokenA: Token,
-  normalizedTokenB: Token
-): Promise<PairStatsData> {
-  const foundPairAddress = await findPairAddress(normalizedTokenA, normalizedTokenB);
-
-  if (!foundPairAddress) {
-    logger.debug(`⚠️ No pair found for ${normalizedTokenA.symbol}/${normalizedTokenB.symbol}`);
-    return { price: 0, volume24h: 0, liquidity: 0, pairAddress: null };
-  }
-
-  const stats = await getPairMarketStats(foundPairAddress, CHAIN_IDS.KALYCHAIN);
-  if (!stats) {
-    throw new Error('Failed to fetch pair stats');
-  }
-
-  // Parse reserves for use in calculations
-  const reserve0 = parseFloat(stats.pair.reserve0);
-  const reserve1 = parseFloat(stats.pair.reserve1);
-
-  // Calculate price from reserves using centralized utility
-  const token0Address = getTokenAddress(normalizedTokenA);
-  const price = calculatePriceFromReservesRaw(token0Address, {
-    token0: stats.pair.token0,
-    token1: stats.pair.token1,
-    reserve0: stats.pair.reserve0,
-    reserve1: stats.pair.reserve1,
-  });
-
-  // Get real 24hr volume from backend
-  let volume24h = 0;
-  try {
-    const klcPriceUSD = 0.0003; // Default fallback
-    const volumeData = await fetchGraphQL<any>(
-      'https://app.kalyswap.io/api/graphql',
-      `query GetPairVolume($pairs: [PairInput!]!, $klcPriceUSD: Float!) {
-        multiplePairs24hrVolume(pairs: $pairs, klcPriceUSD: $klcPriceUSD) {
-          volume24hrUSD
-        }
-      }`,
-      {
-        pairs: [{
-          address: foundPairAddress.toLowerCase(),
-          token0Symbol: stats.pair.token0.symbol,
-          token1Symbol: stats.pair.token1.symbol
-        }],
-        klcPriceUSD
-      },
-      { timeout: 8000, retries: 1 }
-    );
-    volume24h = parseFloat(volumeData?.multiplePairs24hrVolume?.[0]?.volume24hrUSD) || 0;
-  } catch (volumeError) {
-    if (isNetworkError(volumeError)) {
-      logger.warn('Network error fetching volume, using fallback');
-    }
-    volume24h = stats.volume24h || 0;
-  }
-
-  // Calculate liquidity using ADDRESS matching (not symbol)
-  let liquidity = 0;
-  const token0Addr = stats.pair.token0?.id?.toLowerCase() || '';
-  const token1Addr = stats.pair.token1?.id?.toLowerCase() || '';
-
-  if (isStablecoinAddress(token0Addr)) {
-    liquidity = reserve0 * 2;
-  } else if (isStablecoinAddress(token1Addr)) {
-    liquidity = reserve1 * 2;
-  } else {
-    liquidity = parseFloat(stats.pair.reserveUSD || '0');
-  }
-
-  logger.debug(`✅ KalyChain stats: price=${price.toFixed(8)}, volume=$${volume24h.toFixed(2)}`);
-
-  return { price, volume24h, liquidity, pairAddress: foundPairAddress };
-}

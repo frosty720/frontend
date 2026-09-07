@@ -10,7 +10,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { request, gql } from 'graphql-request';
-import { useAccount } from 'wagmi';
+import { useAccount, useChainId } from 'wagmi';
 import { getV3Config } from '@/config/dex/v3-config';
 import { CHAIN_IDS } from '@/config/chains';
 import { dexLogger as logger } from '@/lib/logger';
@@ -60,26 +60,39 @@ export interface SubgraphRewardClaim {
 
 // ========== GraphQL Queries ==========
 
+// NOTE: in the deployed schema `Incentive.rewardToken` and `Incentive.pool` are Bytes
+// (plain addresses), NOT entity references. Selecting sub-fields on them returns the bare
+// address instead of an object, which silently produced `rewardToken.symbol === undefined`
+// and an IncentiveKey with undefined addresses — the farm list then rendered nothing.
+// Fetch the scalars here and enrich pool/token metadata with a second query below.
 const GET_INCENTIVES = gql`
     query GetIncentives {
         incentives(first: 100, where: { ended: false }) {
             id
-            rewardToken {
-                id
-                symbol
-                decimals
-            }
-            pool {
-                id
-                token0 { symbol }
-                token1 { symbol }
-                feeTier
-            }
+            rewardToken
+            pool
             startTime
             endTime
             refundee
             reward
             numberOfStakes
+        }
+    }
+`;
+
+/** Pool + token metadata for the pools referenced by the incentives above. */
+const GET_INCENTIVE_POOLS = gql`
+    query GetIncentivePools($poolIds: [ID!], $tokenIds: [ID!]) {
+        pools(where: { id_in: $poolIds }) {
+            id
+            feeTier
+            token0 { id symbol decimals }
+            token1 { id symbol decimals }
+        }
+        tokens(where: { id_in: $tokenIds }) {
+            id
+            symbol
+            decimals
         }
     }
 `;
@@ -121,7 +134,13 @@ const GET_REWARD_CLAIMS = gql`
 
 // ========== Hook ==========
 
-export function useV3StakingSubgraph(chainId: number = CHAIN_IDS.KALYCHAIN) {
+/**
+ * @param chainIdOverride force a specific chain; omit to follow the CONNECTED wallet chain.
+ * Defaulting to a hardcoded chain made staking data silently read the wrong subgraph.
+ */
+export function useV3StakingSubgraph(chainIdOverride?: number) {
+    const connectedChainId = useChainId();
+    const chainId = chainIdOverride ?? connectedChainId ?? CHAIN_IDS.KALYCHAIN;
     const { address } = useAccount();
     const [incentives, setIncentives] = useState<SubgraphIncentive[]>([]);
     const [userStakes, setUserStakes] = useState<SubgraphDeposit[]>([]);
@@ -142,11 +161,47 @@ export function useV3StakingSubgraph(chainId: number = CHAIN_IDS.KALYCHAIN) {
         if (!subgraphUrl) return;
 
         try {
-            const data = await request<{ incentives: SubgraphIncentive[] }>(
+            const data = await request<{ incentives: any[] }>(subgraphUrl, GET_INCENTIVES);
+            const raw = data.incentives ?? [];
+            if (raw.length === 0) {
+                setIncentives([]);
+                return;
+            }
+
+            // Enrich the scalar pool/rewardToken addresses into the nested shape the rest
+            // of the staking code expects.
+            const poolIds = Array.from(new Set(raw.map((i) => String(i.pool).toLowerCase())));
+            const tokenIds = Array.from(new Set(raw.map((i) => String(i.rewardToken).toLowerCase())));
+            const meta = await request<{ pools: any[]; tokens: any[] }>(
                 subgraphUrl,
-                GET_INCENTIVES,
-            );
-            setIncentives(data.incentives);
+                GET_INCENTIVE_POOLS,
+                { poolIds, tokenIds },
+            ).catch(() => ({ pools: [], tokens: [] }));
+
+            const poolById = new Map((meta.pools ?? []).map((p) => [String(p.id).toLowerCase(), p]));
+            const tokenById = new Map((meta.tokens ?? []).map((tk) => [String(tk.id).toLowerCase(), tk]));
+
+            const enriched = raw.map((i) => {
+                const poolId = String(i.pool).toLowerCase();
+                const rewardId = String(i.rewardToken).toLowerCase();
+                const p = poolById.get(poolId);
+                const rt = tokenById.get(rewardId);
+                return {
+                    ...i,
+                    rewardToken: {
+                        id: rewardId,
+                        symbol: rt?.symbol ?? 'TOKEN',
+                        decimals: rt?.decimals ?? '18',
+                    },
+                    pool: {
+                        id: poolId,
+                        feeTier: p?.feeTier ?? '3000',
+                        token0: { symbol: p?.token0?.symbol ?? '?' },
+                        token1: { symbol: p?.token1?.symbol ?? '?' },
+                    },
+                } as SubgraphIncentive;
+            });
+            setIncentives(enriched);
         } catch (err) {
             // Expected to fail if staking entities aren't in the subgraph yet
             logger.debug('V3 Staking subgraph: incentives query failed (schema may not be deployed yet):', err);

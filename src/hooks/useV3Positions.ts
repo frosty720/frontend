@@ -3,9 +3,12 @@ import { useAccount, usePublicClient } from 'wagmi';
 import { getKalySwapV3Service } from '@/services/dex/KalySwapV3Service';
 import { V3Position } from '@/services/dex/IV3DexService';
 import { poolLogger as logger } from '@/lib/logger';
+import { useResolvedChainId } from '@/hooks/useResolvedChainId';
 
 export function useV3Positions() {
-    const { address, isConnected, chainId } = useAccount();
+    const { address, isConnected } = useAccount();
+    // Must match useV3Pools, or the page lists one chain's pools and another's positions.
+    const chainId = useResolvedChainId();
     const publicClient = usePublicClient();
 
     const [positions, setPositions] = useState<V3Position[]>([]);

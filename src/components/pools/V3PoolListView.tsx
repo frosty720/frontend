@@ -16,7 +16,6 @@ import {
 } from 'lucide-react';
 import { useV3PoolDiscovery } from '@/hooks/useV3PoolDiscovery';
 import V3PoolCard from './V3PoolCard';
-import ProtocolVersionToggle from '@/components/swap/ProtocolVersionToggle';
 
 /**
  * V3 pools browse view — the V3 counterpart of the V2 grid in `PoolList`.
@@ -99,7 +98,6 @@ export default function V3PoolListView() {
             </p>
           </div>
           <div className="flex items-center gap-4">
-            <ProtocolVersionToggle />
             <Button
               onClick={() => refetch()}
               variant="outline"

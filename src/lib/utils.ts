@@ -50,6 +50,38 @@ export function formatNumber(
 }
 
 /**
+ * Format a USD market-stat value (24h volume, liquidity / TVL).
+ *
+ * Returns an em dash rather than "$0" for missing or zero values: a pool that has
+ * simply never been traded has no volume, which is not the same claim as "$0".
+ *
+ * Scale rules keep the stats card readable and consistent:
+ *   >= $1M   -> $1.23M      (compact)
+ *   >= $1k   -> $51,519     (whole dollars, grouped)
+ *   <  $1k   -> $12.34      (cents matter at this size)
+ *   <  $0.01 -> <$0.01     (never render a real amount as "$0.00")
+ */
+export function formatUsdStat(value: number | string | undefined | null): string {
+  if (value === undefined || value === null || value === '') return '—'
+  const v = typeof value === 'string' ? parseFloat(value) : value
+  if (!isFinite(v) || isNaN(v) || v <= 0) return '—'
+
+  if (v >= 1_000_000) {
+    return `$${v.toLocaleString(undefined, {
+      notation: 'compact',
+      compactDisplay: 'short',
+      maximumFractionDigits: 2,
+    })}`
+  }
+  if (v >= 1_000) {
+    return `$${v.toLocaleString(undefined, { maximumFractionDigits: 0 })}`
+  }
+  // Don't render a real-but-tiny amount as "$0.00" — that reads as nothing at all.
+  if (v < 0.01) return '<$0.01'
+  return `$${v.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+}
+
+/**
  * Format a currency value with proper formatting
  * @param value - The value to format
  * @param decimals - Number of decimal places (default: 2)

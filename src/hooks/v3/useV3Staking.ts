@@ -6,13 +6,14 @@
  */
 
 import { useCallback, useMemo } from 'react';
-import { useAccount, usePublicClient, useWalletClient } from 'wagmi';
+import { useAccount, usePublicClient, useWalletClient, useChainId } from 'wagmi';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { CHAIN_IDS } from '@/config/chains';
 import { getV3StakingService } from '@/services/dex/V3StakingService';
 import { useV3StakingSubgraph } from '@/hooks/v3/useV3StakingSubgraph';
 import { dexLogger as logger } from '@/lib/logger';
 import type { IncentiveKey, V3Incentive, V3Deposit } from '@/services/dex/v3-staking-types';
+import { assertTxSucceeded } from '@/utils/transactions';
 
 /** UI metadata for an incentive, derived from the subgraph (pool/reward token). */
 interface IncentiveMeta {
@@ -93,7 +94,16 @@ async function fetchPendingRewards(
     return rewards;
 }
 
-export function useV3Staking(chainId: number = CHAIN_IDS.KALYCHAIN) {
+/**
+ * @param chainIdOverride force a specific chain; omit to follow the CONNECTED wallet chain.
+ *
+ * This previously defaulted to CHAIN_IDS.KALYCHAIN, so every caller that omitted the
+ * argument (including the Farm page) queried the 3888 subgraph no matter which chain the
+ * user was on — incentives created on any other chain were invisible.
+ */
+export function useV3Staking(chainIdOverride?: number) {
+    const connectedChainId = useChainId();
+    const chainId = chainIdOverride ?? connectedChainId ?? CHAIN_IDS.KALYCHAIN;
     const { address } = useAccount();
     const publicClient = usePublicClient({ chainId });
     const { data: walletClient } = useWalletClient({ chainId });
@@ -203,12 +213,12 @@ export function useV3Staking(chainId: number = CHAIN_IDS.KALYCHAIN) {
 
         // Step 1: Deposit NFT into staker
         const depositHash = await service.depositToken(tokenId, walletClient);
-        await publicClient.waitForTransactionReceipt({ hash: depositHash as `0x${string}` });
+        await assertTxSucceeded(publicClient, depositHash, 'Deposit position');
         logger.debug('V3 Staking: Deposit confirmed', { depositHash });
 
         // Step 2: Stake the deposited NFT
         const stakeHash = await service.stakeToken(incentiveKey, tokenId, walletClient);
-        await publicClient.waitForTransactionReceipt({ hash: stakeHash as `0x${string}` });
+        await assertTxSucceeded(publicClient, stakeHash, 'Stake');
         logger.debug('V3 Staking: Stake confirmed', { stakeHash });
 
         // Invalidate queries to refresh data
@@ -237,12 +247,12 @@ export function useV3Staking(chainId: number = CHAIN_IDS.KALYCHAIN) {
 
         // Step 1: Unstake from incentive
         const unstakeHash = await service.unstakeToken(incentiveKey, tokenId, walletClient);
-        await publicClient.waitForTransactionReceipt({ hash: unstakeHash as `0x${string}` });
+        await assertTxSucceeded(publicClient, unstakeHash, 'Unstake');
         logger.debug('V3 Staking: Unstake confirmed', { unstakeHash });
 
         // Step 2: Withdraw NFT back to owner
         const withdrawHash = await service.withdrawToken(tokenId, address, walletClient);
-        await publicClient.waitForTransactionReceipt({ hash: withdrawHash as `0x${string}` });
+        await assertTxSucceeded(publicClient, withdrawHash, 'Withdraw position');
         logger.debug('V3 Staking: Withdraw confirmed', { withdrawHash });
 
         // Invalidate queries
@@ -269,7 +279,7 @@ export function useV3Staking(chainId: number = CHAIN_IDS.KALYCHAIN) {
         });
 
         const hash = await service.claimReward(rewardToken, address, amount, walletClient);
-        await publicClient.waitForTransactionReceipt({ hash: hash as `0x${string}` });
+        await assertTxSucceeded(publicClient, hash, 'Claim reward');
         logger.debug('V3 Staking: Claim confirmed', { hash });
 
         // Invalidate rewards query
@@ -296,20 +306,20 @@ export function useV3Staking(chainId: number = CHAIN_IDS.KALYCHAIN) {
 
         // Step 1: Unstake (moves accumulated rewards to rewards mapping)
         const unstakeHash = await service.unstakeToken(incentiveKey, tokenId, walletClient);
-        await publicClient.waitForTransactionReceipt({ hash: unstakeHash as `0x${string}` });
+        await assertTxSucceeded(publicClient, unstakeHash, 'Unstake');
         logger.debug('V3 Staking: Unstake confirmed for harvest', { unstakeHash });
 
         // Step 2: Claim the accumulated rewards
         const accumulated = await service.getAccumulatedRewards(incentiveKey.rewardToken, address);
         if (accumulated > 0n) {
             const claimHash = await service.claimReward(incentiveKey.rewardToken, address, accumulated, walletClient);
-            await publicClient.waitForTransactionReceipt({ hash: claimHash as `0x${string}` });
+            await assertTxSucceeded(publicClient, claimHash, 'Claim reward');
             logger.debug('V3 Staking: Claim confirmed for harvest', { claimHash, amount: accumulated.toString() });
         }
 
         // Step 3: Re-stake (position is still deposited in staker, just needs restaking)
         const restakeHash = await service.stakeToken(incentiveKey, tokenId, walletClient);
-        await publicClient.waitForTransactionReceipt({ hash: restakeHash as `0x${string}` });
+        await assertTxSucceeded(publicClient, restakeHash, 'Restake');
         logger.debug('V3 Staking: Re-stake confirmed for harvest', { restakeHash });
 
         // Invalidate queries

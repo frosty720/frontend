@@ -23,6 +23,7 @@ import {
   Link as LinkIcon
 } from 'lucide-react'
 import { ProjectData } from '@/hooks/launchpad/useProjectDetails'
+import { KALYCHAIN_EXPLORER_URL } from '@/config/chains'
 
 interface ProjectConfigurationProps {
   projectData: ProjectData
@@ -70,7 +71,7 @@ export default function ProjectConfiguration({ projectData }: ProjectConfigurati
             {isPresale ? 'Presale' : 'Fairlaunch'} Configuration
           </span>
           <div className="flex items-center gap-2">
-            {projectData.dexVersion === 'v3' && (
+            {true && (
               <Badge className="bg-violet-500/20 text-violet-400 border-violet-500/30">
                 V3 Concentrated Liquidity
               </Badge>
@@ -249,15 +250,15 @@ export default function ProjectConfiguration({ projectData }: ProjectConfigurati
             )}
             <div className="flex justify-between items-center">
               <span className="text-gray-400">DEX Version:</span>
-              <Badge className={projectData.dexVersion === 'v3' ? 'bg-violet-500/20 text-violet-400 border-violet-500/30' : 'bg-gray-500/20 text-gray-400 border-gray-500/30'}>
-                {projectData.dexVersion === 'v3' ? 'Uniswap V3' : 'Uniswap V2'}
+              <Badge className={true ? 'bg-violet-500/20 text-violet-400 border-violet-500/30' : 'bg-gray-500/20 text-gray-400 border-gray-500/30'}>
+                {true ? 'Uniswap V3' : 'Uniswap V2'}
               </Badge>
             </div>
           </div>
         </div>
 
         {/* V3 Liquidity Information */}
-        {projectData.dexVersion === 'v3' && (
+        {true && (
           <div className="mt-6 pt-6 border-t border-gray-700">
             <h4 className="font-medium text-white mb-4 flex items-center">
               <TrendingUp className="h-4 w-4 mr-2" />
@@ -268,7 +269,7 @@ export default function ProjectConfiguration({ projectData }: ProjectConfigurati
                 <div className="flex justify-between items-center">
                   <span className="text-gray-400">V3 Pool Address:</span>
                   <a
-                    href={`https://testnet.kalyscan.io/address/${projectData.v3PoolAddress}`}
+                    href={`${KALYCHAIN_EXPLORER_URL}/address/${projectData.v3PoolAddress}`}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="text-blue-400 hover:underline inline-flex items-center gap-1 font-mono text-xs bg-gray-800/50 px-2 py-1 rounded"

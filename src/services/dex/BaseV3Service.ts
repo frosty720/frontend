@@ -14,7 +14,6 @@ import {
     V3IncreaseLiquidityParams,
     V3DecreaseLiquidityParams,
     V3CollectParams,
-    V3MigrateParams,
     V3PoolNotFoundError,
     V3Route,
     V3MultiHopSwapParams,
@@ -35,6 +34,7 @@ import { V3_FEE_TIERS, V3_TICK_SPACING, getTickSpacing, Q96 } from '@/config/dex
 import type { PublicClient, WalletClient } from 'viem';
 import { parseUnits, formatUnits, encodeFunctionData } from 'viem';
 import { computePriceImpactFromProbe } from '@/utils/priceImpact';
+import { kalyFeeOverrides } from '@/config/gas';
 
 /**
  * Base class for V3 DEX services
@@ -51,7 +51,6 @@ export abstract class BaseV3Service implements IV3DexService {
     abstract getName(): string;
     abstract getChainId(): number;
     abstract executeSwap(params: SwapParams, walletClient: WalletClient): Promise<string>;
-    abstract migrateLiquidity(params: V3MigrateParams, publicClient: PublicClient, walletClient: WalletClient): Promise<string>;
     abstract createAndInitializePool(tokenA: Token, tokenB: Token, fee: number, sqrtPriceX96: bigint, walletClient: WalletClient): Promise<string>;
 
     getProtocolVersion(): 'v3' {
@@ -100,10 +99,6 @@ export abstract class BaseV3Service implements IV3DexService {
 
     getPositionManagerAddress(): string {
         return this.config.positionManager;
-    }
-
-    getMigratorAddress(): string {
-        return this.config.migrator;
     }
 
     isTokenSupported(tokenAddress: string): boolean {
@@ -487,6 +482,9 @@ export abstract class BaseV3Service implements IV3DexService {
 
             // eslint-disable-next-line @typescript-eslint/no-explicit-any -- dynamic ABI from config
             const txHash = await walletClient.writeContract({
+                // KalyChain advertises a ~0 priority fee; without this the wallet builds
+                // the tx below the 21 gwei inclusion floor. No-op on other chains.
+                ...kalyFeeOverrides(walletClient.chain?.id),
                 address: routerAddress as `0x${string}`,
                 abi: this.config.routerABI,
                 functionName: 'multicall',
@@ -620,6 +618,9 @@ export abstract class BaseV3Service implements IV3DexService {
 
             // eslint-disable-next-line @typescript-eslint/no-explicit-any -- dynamic ABI from config
             const txHash = await walletClient.writeContract({
+                // KalyChain advertises a ~0 priority fee; without this the wallet builds
+                // the tx below the 21 gwei inclusion floor. No-op on other chains.
+                ...kalyFeeOverrides(walletClient.chain?.id),
                 address: positionManagerAddress as `0x${string}`,
                 abi: this.config.positionManagerABI,
                 functionName: 'mint',
@@ -693,6 +694,9 @@ export abstract class BaseV3Service implements IV3DexService {
 
         // eslint-disable-next-line @typescript-eslint/no-explicit-any -- dynamic ABI from config
         const txHash = await walletClient.writeContract({
+            // KalyChain advertises a ~0 priority fee; without this the wallet builds
+            // the tx below the 21 gwei inclusion floor. No-op on other chains.
+            ...kalyFeeOverrides(walletClient.chain?.id),
             address: positionManagerAddress as `0x${string}`,
             abi: this.config.positionManagerABI,
             functionName: 'increaseLiquidity',
@@ -710,6 +714,47 @@ export abstract class BaseV3Service implements IV3DexService {
         return txHash;
     }
 
+    /** Default protection when the caller does not supply explicit minimums. */
+    protected static readonly DEFAULT_REMOVE_SLIPPAGE_PCT = 0.5;
+
+    /** Reduce `amount` by `tolerancePct`, in integer maths. */
+    private applySlippageFloor(amount: bigint, tolerancePct: number): bigint {
+        if (amount === 0n) return 0n;
+        // basis points, so 0.5% -> 9950/10000
+        const keptBps = BigInt(Math.round((100 - tolerancePct) * 100));
+        return (amount * keptBps) / 10_000n;
+    }
+
+    /**
+     * Ask the position manager what this withdrawal would actually return, without
+     * sending anything. `decreaseLiquidity` returns (amount0, amount1), so a static
+     * call gives exact expected amounts to derive minimums from.
+     */
+    private async simulateDecrease(
+        positionManagerAddress: string,
+        tokenId: bigint,
+        liquidity: bigint,
+        deadline: bigint,
+        publicClient: PublicClient,
+        walletClient: WalletClient
+    ): Promise<{ amount0: bigint; amount1: bigint } | null> {
+        try {
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any -- dynamic ABI from config
+            const { result } = await publicClient.simulateContract({
+                address: positionManagerAddress as `0x${string}`,
+                abi: this.config.positionManagerABI,
+                functionName: 'decreaseLiquidity',
+                args: [{ tokenId, liquidity, amount0Min: 0n, amount1Min: 0n, deadline }],
+                account: walletClient.account,
+            } as any);
+            const [amount0, amount1] = result as unknown as [bigint, bigint];
+            return { amount0, amount1 };
+        } catch (error) {
+            logger.warn('decreaseLiquidity simulation failed; falling back to zero minimums', error);
+            return null;
+        }
+    }
+
     // Decrease liquidity
     async decreaseLiquidity(
         params: V3DecreaseLiquidityParams,
@@ -719,16 +764,54 @@ export abstract class BaseV3Service implements IV3DexService {
         const positionManagerAddress = this.getPositionManagerAddress();
         const deadline = BigInt(Math.floor(Date.now() / 1000) + params.deadline * 60);
 
+        // The minimums are denominated in the POSITION's tokens, which are not always
+        // 18 decimals — KMT/USDT has a 6-decimal token0. This used to hardcode 18,
+        // which would have inflated the minimum by 1e12 and reverted every withdrawal
+        // the moment a non-zero minimum was passed.
+        const position = await this.getV3Position(params.tokenId, publicClient);
+        if (!position) throw new Error('Position not found');
+
+        const [decimals0, decimals1] = await Promise.all([
+            this.getTokenDecimals(position.token0, publicClient),
+            this.getTokenDecimals(position.token1, publicClient),
+        ]);
+
+        let amount0Min: bigint;
+        let amount1Min: bigint;
+
+        if (params.amount0Min !== undefined && params.amount1Min !== undefined) {
+            amount0Min = parseUnits(params.amount0Min, decimals0);
+            amount1Min = parseUnits(params.amount1Min, decimals1);
+        } else {
+            // Derive protection from what the withdrawal actually returns right now.
+            const tolerance = params.slippageTolerance ?? BaseV3Service.DEFAULT_REMOVE_SLIPPAGE_PCT;
+            const expected = await this.simulateDecrease(
+                positionManagerAddress,
+                params.tokenId,
+                params.liquidity,
+                deadline,
+                publicClient,
+                walletClient
+            );
+            // A failed simulation must not block a withdrawal; it just means this one
+            // goes out unprotected, and the warning above says so.
+            amount0Min = expected ? this.applySlippageFloor(expected.amount0, tolerance) : 0n;
+            amount1Min = expected ? this.applySlippageFloor(expected.amount1, tolerance) : 0n;
+        }
+
         // eslint-disable-next-line @typescript-eslint/no-explicit-any -- dynamic ABI from config
         const txHash = await walletClient.writeContract({
+            // KalyChain advertises a ~0 priority fee; without this the wallet builds
+            // the tx below the 21 gwei inclusion floor. No-op on other chains.
+            ...kalyFeeOverrides(walletClient.chain?.id),
             address: positionManagerAddress as `0x${string}`,
             abi: this.config.positionManagerABI,
             functionName: 'decreaseLiquidity',
             args: [{
                 tokenId: params.tokenId,
                 liquidity: params.liquidity,
-                amount0Min: parseUnits(params.amount0Min, 18), // Simplified
-                amount1Min: parseUnits(params.amount1Min, 18),
+                amount0Min,
+                amount1Min,
                 deadline,
             }],
             gas: 3000000n,
@@ -774,6 +857,9 @@ export abstract class BaseV3Service implements IV3DexService {
 
         // eslint-disable-next-line @typescript-eslint/no-explicit-any -- dynamic ABI from config
         const txHash = await walletClient.writeContract({
+            // KalyChain advertises a ~0 priority fee; without this the wallet builds
+            // the tx below the 21 gwei inclusion floor. No-op on other chains.
+            ...kalyFeeOverrides(walletClient.chain?.id),
             address: positionManagerAddress as `0x${string}`,
             abi: this.config.positionManagerABI,
             functionName: 'collect',
@@ -1316,6 +1402,9 @@ export abstract class BaseV3Service implements IV3DexService {
 
             // eslint-disable-next-line @typescript-eslint/no-explicit-any -- dynamic ABI from config
             const txHash = await walletClient.writeContract({
+                // KalyChain advertises a ~0 priority fee; without this the wallet builds
+                // the tx below the 21 gwei inclusion floor. No-op on other chains.
+                ...kalyFeeOverrides(walletClient.chain?.id),
                 address: routerAddress as `0x${string}`,
                 abi: this.config.routerABI,
                 functionName: 'multicall',
@@ -1451,6 +1540,9 @@ export abstract class BaseV3Service implements IV3DexService {
 
         // eslint-disable-next-line @typescript-eslint/no-explicit-any -- WalletClient may lack chain config
         return await walletClient.writeContract({
+            // KalyChain advertises a ~0 priority fee; without this the wallet builds
+            // the tx below the 21 gwei inclusion floor. No-op on other chains.
+            ...kalyFeeOverrides(walletClient.chain?.id),
             address: token.address as `0x${string}`,
             abi: ERC20_APPROVE_ABI,
             functionName: 'approve',

@@ -1,6 +1,7 @@
 'use client';
 
-import { CHAIN_IDS } from '@/config/chains';
+import { CHAIN_IDS, KALYCHAIN_EXPLORER_URL } from '@/config/chains';
+import { isSupportedDexChain } from '@/config/contracts';
 
 import { useState, useEffect } from 'react';
 import { usePairSwaps, type FormattedSwap } from '@/hooks/usePairSwaps';
@@ -44,10 +45,9 @@ interface TransactionDataProps {
     pairAddress?: string;
   };
   userAddress?: string | null;
-  protocolVersion?: 'v2' | 'v3';
 }
 
-export default function TransactionData({ selectedPair, userAddress, protocolVersion = 'v2' }: TransactionDataProps) {
+export default function TransactionData({ selectedPair, userAddress }: TransactionDataProps) {
   const chainId = useChainId();
   const [activeTab, setActiveTab] = useState<'recent' | 'my'>('recent');
   const [currentPage, setCurrentPage] = useState(1);
@@ -61,10 +61,11 @@ export default function TransactionData({ selectedPair, userAddress, protocolVer
     refetch
   } = usePairSwaps({
     pairAddress: selectedPair?.pairAddress,
-    userAddress: activeTab === 'my' && chainId === CHAIN_IDS.KALYCHAIN ? userAddress : null,
+    // User filtering works on any chain we have a subgraph for — gating this to
+    // CHAIN_IDS.KALYCHAIN meant "My Trades" silently showed everyone's trades elsewhere.
+    userAddress: activeTab === 'my' && isSupportedDexChain(chainId) ? userAddress : null,
     limit: itemsPerPage * 5, // Get more transactions since we'll paginate client-side
     chainId: chainId,
-    protocolVersion
   });
 
   // Client-side pagination for swap transactions
@@ -183,7 +184,7 @@ export default function TransactionData({ selectedPair, userAddress, protocolVer
                             <Button
                               variant="ghost"
                               size="sm"
-                              onClick={() => window.open(`https://kalyscan.io/tx/${swap.hash}`, '_blank')}
+                              onClick={() => window.open(`${KALYCHAIN_EXPLORER_URL}/tx/${swap.hash}`, '_blank')}
                             >
                               <ExternalLink className="h-4 w-4" />
                             </Button>
@@ -320,7 +321,7 @@ export default function TransactionData({ selectedPair, userAddress, protocolVer
                             <Button
                               variant="ghost"
                               size="sm"
-                              onClick={() => window.open(`https://kalyscan.io/tx/${swap.hash}`, '_blank')}
+                              onClick={() => window.open(`${KALYCHAIN_EXPLORER_URL}/tx/${swap.hash}`, '_blank')}
                             >
                               <ExternalLink className="h-4 w-4" />
                             </Button>

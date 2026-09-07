@@ -12,7 +12,9 @@ const mockWriteContract = vi.fn();
 const mockWaitForTransactionReceipt = vi.fn().mockResolvedValue({ status: 'success' });
 
 vi.mock('wagmi', () => ({
-    useAccount: () => ({ address: mockAddress, chainId: 3889 }),
+    useAccount: () => ({ address: mockAddress, chainId: 3890 }),
+    // useV3Staking follows the connected chain when no override is passed.
+    useChainId: () => 3890,
     usePublicClient: () => ({
         waitForTransactionReceipt: mockWaitForTransactionReceipt,
     }),
@@ -20,7 +22,7 @@ vi.mock('wagmi', () => ({
         data: {
             account: { address: mockAddress },
             writeContract: mockWriteContract,
-            chain: { id: 3889 },
+            chain: { id: 3890 },
         },
     }),
 }));
@@ -102,7 +104,7 @@ describe('useV3Staking', () => {
     });
 
     it('should initialize with empty state', () => {
-        const { result } = renderHook(() => useV3Staking(3889), {
+        const { result } = renderHook(() => useV3Staking(3890), {
             wrapper: createWrapper(),
         });
 
@@ -112,7 +114,7 @@ describe('useV3Staking', () => {
     });
 
     it('should expose all expected action functions', () => {
-        const { result } = renderHook(() => useV3Staking(3889), {
+        const { result } = renderHook(() => useV3Staking(3890), {
             wrapper: createWrapper(),
         });
 
@@ -125,7 +127,7 @@ describe('useV3Staking', () => {
     });
 
     it('should expose the service instance', () => {
-        const { result } = renderHook(() => useV3Staking(3889), {
+        const { result } = renderHook(() => useV3Staking(3890), {
             wrapper: createWrapper(),
         });
 
@@ -140,7 +142,7 @@ describe('useV3Staking', () => {
         mockDepositToken.mockResolvedValue(depositHash);
         mockStakeToken.mockResolvedValue(stakeHash);
 
-        const { result } = renderHook(() => useV3Staking(3889), {
+        const { result } = renderHook(() => useV3Staking(3890), {
             wrapper: createWrapper(),
         });
 
@@ -167,7 +169,7 @@ describe('useV3Staking', () => {
         mockUnstakeToken.mockResolvedValue(unstakeHash);
         mockWithdrawToken.mockResolvedValue(withdrawHash);
 
-        const { result } = renderHook(() => useV3Staking(3889), {
+        const { result } = renderHook(() => useV3Staking(3890), {
             wrapper: createWrapper(),
         });
 
@@ -190,7 +192,7 @@ describe('useV3Staking', () => {
         const rewardToken = '0x7659567Bc5057e7284856aAF331C4dea22AEd73E';
         const amount = BigInt('1000000000000000000');
 
-        const { result } = renderHook(() => useV3Staking(3889), {
+        const { result } = renderHook(() => useV3Staking(3890), {
             wrapper: createWrapper(),
         });
 
@@ -218,7 +220,7 @@ describe('useV3Staking', () => {
         };
         mockGetDepositInfo.mockResolvedValue(mockDeposit);
 
-        const { result } = renderHook(() => useV3Staking(3889), {
+        const { result } = renderHook(() => useV3Staking(3890), {
             wrapper: createWrapper(),
         });
 
@@ -238,7 +240,7 @@ describe('useV3Staking', () => {
         };
         mockGetRewardInfo.mockResolvedValue(mockRewardInfo);
 
-        const { result } = renderHook(() => useV3Staking(3889), {
+        const { result } = renderHook(() => useV3Staking(3890), {
             wrapper: createWrapper(),
         });
 

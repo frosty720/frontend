@@ -110,7 +110,11 @@ export interface LiquidityPosition {
 export type DexProtocol = 'kalyswap' | 'pancakeswap' | 'uniswap-v2';
 
 // Supported Chain IDs
-export const SUPPORTED_DEX_CHAINS = [CHAIN_IDS.KALYCHAIN, CHAIN_IDS.KALYCHAIN_TESTNET, 56, 42161] as const;
+export const SUPPORTED_DEX_CHAINS = [
+  CHAIN_IDS.KALYCHAIN, // 3890 — V3 only, no V2 DEX
+  56,
+  42161,
+] as const;
 export type SupportedDexChainId = typeof SUPPORTED_DEX_CHAINS[number];
 
 // Helper function to check if chain supports DEX

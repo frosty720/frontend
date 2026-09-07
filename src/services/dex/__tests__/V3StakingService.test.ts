@@ -38,7 +38,7 @@ const sampleKey: IncentiveKey = {
 const mockWalletClient = {
     account: { address: '0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266' as `0x${string}` },
     writeContract: vi.fn(),
-    chain: { id: 3889 },
+    chain: { id: 3890 },
 } as any;
 
 describe('V3StakingService', () => {
@@ -46,7 +46,7 @@ describe('V3StakingService', () => {
 
     beforeEach(() => {
         vi.clearAllMocks();
-        service = new V3StakingService(3889);
+        service = new V3StakingService(3890);
     });
 
     // ========== encodeIncentiveKey ==========
@@ -291,6 +291,6 @@ describe('V3StakingService', () => {
         const addr = service.getStakerAddress();
 
         // Should return the testnet staker address from v3-config
-        expect(addr).toBe('0x8831FF2f7Cd72b24c046fDcd2B5dDad6F56696E5');
+        expect(addr).toBe('0x74D0BC02C633d207C35c6a1D8fda6E7104EC47Db');
     });
 });

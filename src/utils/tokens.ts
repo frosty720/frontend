@@ -9,9 +9,16 @@ import { CHAIN_IDS } from '@/config/chains';
 import { Token } from '@/config/dex/types';
 import { getContractAddress } from '@/config/contracts';
 
-// Chain-specific wrapped native token mappings
+/**
+ * Wrapped native token per chain.
+ *
+ * KalyChain is deliberately ABSENT: its address lives in the contract config, and a copy
+ * here went stale across the 3890 relaunch. The stale copy was 3888's WKLC
+ * (0x069255299Bb…) — which on 3890 is the HYPERLANE MAILBOX, not a token — and because
+ * this map was consulted before the config fallback, every native-KMT lookup resolved to
+ * the mailbox. Chains below have no entry in our contract config, so they stay literal.
+ */
 const WRAPPED_NATIVE_TOKENS: Record<number, { symbol: string; wrappedSymbol: string; wrappedAddress: string }> = {
-  [CHAIN_IDS.KALYCHAIN]: { symbol: 'KLC', wrappedSymbol: 'WKLC', wrappedAddress: '0x069255299Bb729399f3CECaBdc73d15d3D10a2A3' },
   56: { symbol: 'BNB', wrappedSymbol: 'WBNB', wrappedAddress: '0xbb4CdB9CBd36B01bD1cBaEBF2De08d9173bc095c' },
   42161: { symbol: 'ETH', wrappedSymbol: 'WETH', wrappedAddress: '0x82aF49447D8a07e3bd95BD0d56f35241523fBab1' },
   1: { symbol: 'ETH', wrappedSymbol: 'WETH', wrappedAddress: '0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2' },
@@ -25,9 +32,9 @@ export const NATIVE_TOKEN_ADDRESS = '0x0000000000000000000000000000000000000000'
  * and converting to uppercase.
  * 
  * Examples:
- *   normalizeSymbol('WKLC') => 'KLC'
- *   normalizeSymbol('wKLC') => 'KLC'
- *   normalizeSymbol('KLC')  => 'KLC'
+ *   normalizeSymbol('WKMT') => 'KMT'
+ *   normalizeSymbol('wKMT') => 'KMT'
+ *   normalizeSymbol('KMT')  => 'KMT'
  *   normalizeSymbol('USDT') => 'USDT'
  */
 export function normalizeSymbol(symbol: string): string {
@@ -37,7 +44,9 @@ export function normalizeSymbol(symbol: string): string {
   if (upper.startsWith('W') && upper.length > 1) {
     const unwrapped = upper.slice(1);
     // Check if this is actually a wrapped native token pattern
-    if (['KLC', 'ETH', 'BNB', 'MATIC', 'AVAX', 'FTM'].includes(unwrapped)) {
+    // KLC is kept alongside KMT so pre-relaunch symbols in cached/user data still
+    // normalise instead of being treated as unrelated tokens.
+    if (['KMT', 'KLC', 'ETH', 'BNB', 'MATIC', 'AVAX', 'FTM'].includes(unwrapped)) {
       return unwrapped;
     }
   }
@@ -48,8 +57,8 @@ export function normalizeSymbol(symbol: string): string {
  * Check if two token symbols match, accounting for wrapped/native variants.
  * 
  * Examples:
- *   symbolsMatch('KLC', 'WKLC')   => true
- *   symbolsMatch('wKLC', 'KLC')   => true
+ *   symbolsMatch('KMT', 'WKMT')   => true
+ *   symbolsMatch('wKMT', 'KMT')   => true
  *   symbolsMatch('USDT', 'USDC')  => false
  *   symbolsMatch('ETH', 'WETH')   => true
  */
@@ -71,9 +80,21 @@ export function isNativeToken(token: Token): boolean {
  */
 export function isWrappedNativeToken(token: Token): boolean {
   const chainConfig = WRAPPED_NATIVE_TOKENS[token.chainId];
-  if (!chainConfig) return false;
-  return token.address.toLowerCase() === chainConfig.wrappedAddress.toLowerCase() ||
-    token.symbol.toUpperCase() === chainConfig.wrappedSymbol;
+  if (chainConfig) {
+    return token.address.toLowerCase() === chainConfig.wrappedAddress.toLowerCase() ||
+      token.symbol.toUpperCase() === chainConfig.wrappedSymbol;
+  }
+  // KalyChain has no literal entry — its address comes from the contract config, so the
+  // three helpers here must all fall through to the same source.
+  try {
+    const wrapped = getContractAddress('WKLC', token.chainId);
+    if (!wrapped) return false;
+    if (token.address.toLowerCase() === wrapped.toLowerCase()) return true;
+  } catch {
+    // fall through to the symbol check
+  }
+  const upper = token.symbol.toUpperCase();
+  return upper.startsWith('W') && normalizeSymbol(upper) !== upper;
 }
 
 /**
@@ -81,8 +102,8 @@ export function isWrappedNativeToken(token: Token): boolean {
  * This is needed when interacting with DEX contracts which use wrapped tokens.
  * 
  * Example:
- *   getEffectiveAddress(nativeKLC) => '0x069255299Bb729399f3CECaBdc73d15d3D10a2A3'
- *   getEffectiveAddress(USDT)      => '0x2CA775C77B922A51FcF3097F52bFFdbc0250D99A'
+ *   getEffectiveAddress(nativeKMT) => the chain's WKMT address, from contract config
+ *   getEffectiveAddress(USDT)      => the token's own address, unchanged
  */
 export function getEffectiveAddress(token: Token): string {
   if (isNativeToken(token)) {

@@ -1,16 +1,30 @@
 import { launchpadLogger } from '@/lib/logger';
 import { useState, useCallback } from 'react'
 import { useAccount, usePublicClient, useWalletClient } from 'wagmi'
-import { parseEther, formatEther } from 'viem'
+import { parseEther, parseUnits, formatEther } from 'viem'
 import { PRESALE_ABI, FAIRLAUNCH_ABI, PRESALE_V3_ABI, FAIRLAUNCH_V3_ABI, ERC20_ABI } from '@/config/abis'
 import { isNativeToken } from '@/config/contracts'
+import { kalyFeeOverrides } from '@/config/gas';
+import { assertTxSucceeded } from '@/utils/transactions';
+
+/**
+ * Mirrors `enum PresaleStatus` / `enum FairlaunchStatus` in the launchpad contracts:
+ * { PENDING, ACTIVE, SUCCESS, FAILED, CANCELLED, FINALIZED }
+ */
+const SaleStatus = {
+  PENDING: 0,
+  ACTIVE: 1,
+  SUCCESS: 2,
+  FAILED: 3,
+  CANCELLED: 4,
+  FINALIZED: 5,
+} as const
 
 interface ParticipationParams {
   contractAddress: string
   projectType: 'presale' | 'fairlaunch'
   amount: string
   baseToken: string
-  dexVersion?: 'v2' | 'v3'
 }
 
 interface UserContribution {
@@ -31,13 +45,13 @@ interface UseParticipationReturn {
   
   // Actions
   participate: (params: ParticipationParams) => Promise<void>
-  claimTokens: (contractAddress: string, projectType: string, dexVersion?: string) => Promise<void>
-  claimRefund: (contractAddress: string, projectType: string, dexVersion?: string) => Promise<void>
-  fetchUserContribution: (contractAddress: string, projectType: string, isProjectFinalized?: boolean, dexVersion?: string) => Promise<void>
+  claimTokens: (contractAddress: string, projectType: string) => Promise<void>
+  claimRefund: (contractAddress: string, projectType: string) => Promise<void>
+  fetchUserContribution: (contractAddress: string, projectType: string, isProjectFinalized?: boolean) => Promise<void>
   
   // Validation
   canParticipate: (amount: string, contractAddress: string) => Promise<{ canParticipate: boolean; reason?: string }>
-  getContributionLimits: (contractAddress: string, projectType: string, dexVersion?: string) => Promise<{ min: string; max: string }>
+  getContributionLimits: (contractAddress: string, projectType: string) => Promise<{ min: string; max: string }>
 }
 
 export function useParticipation(): UseParticipationReturn {
@@ -51,12 +65,10 @@ export function useParticipation(): UseParticipationReturn {
   const { data: walletClient } = useWalletClient()
 
   // Get appropriate ABI based on project type and dex version
-  const getContractABI = (projectType: string, dexVersion?: string) => {
-    if (dexVersion === 'v3') {
-      return projectType === 'presale' ? PRESALE_V3_ABI : FAIRLAUNCH_V3_ABI
-    }
-    return projectType === 'presale' ? PRESALE_ABI : FAIRLAUNCH_ABI
-  }
+  // Only the V3 launchpad was deployed to KalyChain; the V2 presale/fairlaunch
+  // contracts belong to the pre-relaunch chain and no longer exist.
+  const getContractABI = (projectType: string) =>
+    projectType === 'presale' ? PRESALE_V3_ABI : FAIRLAUNCH_V3_ABI
 
   // Execute contract call via standard Wagmi writeContract
   const executeContractCall = useCallback(async (
@@ -75,6 +87,9 @@ export function useParticipation(): UseParticipationReturn {
     }
 
     const hash = await walletClient.writeContract({
+      // KalyChain advertises a ~0 priority fee; without this the wallet builds
+      // the tx below the 21 gwei inclusion floor. No-op on other chains.
+      ...kalyFeeOverrides(walletClient.chain?.id),
       address: contractAddress as `0x${string}`,
       abi,
       functionName,
@@ -93,22 +108,51 @@ export function useParticipation(): UseParticipationReturn {
     setTransactionHash(null)
 
     try {
-      const { contractAddress, projectType, amount, baseToken, dexVersion } = params
-      const abi = getContractABI(projectType, dexVersion)
+      const { contractAddress, projectType, amount, baseToken } = params
+      const abi = getContractABI(projectType)
       const isNative = isNativeToken(baseToken)
       
       let value = '0'
       let args: any[] = []
 
       if (isNative) {
-        // Native KLC contribution
+        // Native contribution: the contract reads msg.value and ignores the argument.
         value = parseEther(amount).toString()
         args = [parseEther(amount)]
       } else {
-        // ERC20 token contribution
-        // First need to approve the token spending
-        // TODO: Implement ERC20 approval flow
-        args = [parseEther(amount)]
+        // ERC20 contribution. participate() pulls the funds with safeTransferFrom, so the
+        // presale needs an allowance first — without it every ERC20 contribution reverts.
+        // The amount is denominated in the BASE TOKEN's own decimals; parseEther() assumed
+        // 18 and was off by 1e12 for a 6-decimal stablecoin.
+        if (!publicClient) throw new Error('Public client not available')
+
+        const decimals = await publicClient.readContract({
+          address: baseToken as `0x${string}`,
+          abi: ERC20_ABI,
+          functionName: 'decimals',
+          args: [],
+        }) as number
+
+        const contribution = parseUnits(amount, Number(decimals))
+
+        const allowance = await publicClient.readContract({
+          address: baseToken as `0x${string}`,
+          abi: ERC20_ABI,
+          functionName: 'allowance',
+          args: [address as `0x${string}`, contractAddress as `0x${string}`],
+        }) as bigint
+
+        if (allowance < contribution) {
+          const approveHash = await executeContractCall(
+            baseToken,
+            ERC20_ABI,
+            'approve',
+            [contractAddress as `0x${string}`, contribution]
+          )
+          await assertTxSucceeded(publicClient, approveHash, 'Approval')
+        }
+
+        args = [contribution]
       }
 
       const hash = await executeContractCall(
@@ -130,15 +174,15 @@ export function useParticipation(): UseParticipationReturn {
     } finally {
       setIsLoading(false)
     }
-  }, [executeContractCall])
+  }, [executeContractCall, publicClient, address])
 
   // Claim tokens after successful presale
-  const claimTokens = useCallback(async (contractAddress: string, projectType: string, dexVersion?: string) => {
+  const claimTokens = useCallback(async (contractAddress: string, projectType: string) => {
     setIsLoading(true)
     setError(null)
 
     try {
-      const abi = getContractABI(projectType, dexVersion)
+      const abi = getContractABI(projectType)
       
       const hash = await executeContractCall(
         contractAddress,
@@ -159,12 +203,12 @@ export function useParticipation(): UseParticipationReturn {
   }, [executeContractCall])
 
   // Claim refund for failed presale
-  const claimRefund = useCallback(async (contractAddress: string, projectType: string, dexVersion?: string) => {
+  const claimRefund = useCallback(async (contractAddress: string, projectType: string) => {
     setIsLoading(true)
     setError(null)
 
     try {
-      const abi = getContractABI(projectType, dexVersion)
+      const abi = getContractABI(projectType)
       
       const hash = await executeContractCall(
         contractAddress,
@@ -185,11 +229,11 @@ export function useParticipation(): UseParticipationReturn {
   }, [executeContractCall])
 
   // Fetch user's contribution data
-  const fetchUserContribution = useCallback(async (contractAddress: string, projectType: string, isProjectFinalized: boolean = false, dexVersion?: string) => {
+  const fetchUserContribution = useCallback(async (contractAddress: string, projectType: string, isProjectFinalized: boolean = false) => {
     if (!address || !publicClient) return
 
     try {
-      const abi = getContractABI(projectType, dexVersion)
+      const abi = getContractABI(projectType)
 
       // Read user's contribution amount using the correct function name
       let contributionAmount: bigint = 0n
@@ -236,12 +280,28 @@ export function useParticipation(): UseParticipationReturn {
       // Use the token allocation we already retrieved as claimable tokens
       const claimableTokens = tokenAllocation > 0n ? formatEther(tokenAllocation) : '0'
 
+      // claimRefund() requires getStatus() to be FAILED or CANCELLED, a non-zero
+      // contribution, and nothing claimed yet. This was hardcoded false, so the refund
+      // button in UserContributions could never appear on a failed sale.
+      let saleStatus: number | null = null
+      try {
+        saleStatus = Number(await publicClient.readContract({
+          address: contractAddress as `0x${string}`,
+          abi,
+          functionName: 'getStatus',
+          args: [],
+        }))
+      } catch (statusError) {
+        launchpadLogger.warn('Could not read sale status for refund eligibility', statusError)
+      }
+      const isRefundable = saleStatus === SaleStatus.FAILED || saleStatus === SaleStatus.CANCELLED
+
       setUserContribution({
         amount: formatEther(contributionAmount),
         claimableTokens,
         hasContributed: contributionAmount > 0n,
         canClaim: parseFloat(claimableTokens) > 0 && !hasClaimed && isProjectFinalized,
-        canRefund: false, // TODO: Implement refund eligibility check
+        canRefund: isRefundable && contributionAmount > 0n && !hasClaimed,
         hasClaimed: hasClaimed
       })
 
@@ -271,13 +331,13 @@ export function useParticipation(): UseParticipationReturn {
   }, [address, publicClient])
 
   // Get contribution limits from contract
-  const getContributionLimits = useCallback(async (contractAddress: string, projectType: string, dexVersion?: string): Promise<{ min: string; max: string }> => {
+  const getContributionLimits = useCallback(async (contractAddress: string, projectType: string): Promise<{ min: string; max: string }> => {
     if (!publicClient) {
       return { min: '0.1', max: '10' } // Default limits
     }
 
     try {
-      const abi = getContractABI(projectType, dexVersion)
+      const abi = getContractABI(projectType)
 
       if (projectType === 'presale') {
         // For presale contracts, use presaleInfo() function which returns a struct

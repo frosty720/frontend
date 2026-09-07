@@ -8,12 +8,11 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ArrowLeft } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import ProtocolVersionToggle from '@/components/swap/ProtocolVersionToggle';
-import { useProtocolVersion } from '@/contexts/ProtocolVersionContext';
 
 // Import launchpad components
 import Overview from '@/components/launchpad/Overview';
 import TokenCreator from '@/components/launchpad/TokenCreator';
+import RewardsTokenManager from '@/components/launchpad/RewardsTokenManager';
 import PresaleCreator from '@/components/launchpad/PresaleCreator';
 import FairlaunchCreator from '@/components/launchpad/FairlaunchCreator';
 import ConfirmedProjects from '@/components/launchpad/ConfirmedProjects';
@@ -21,7 +20,6 @@ import ConfirmedProjects from '@/components/launchpad/ConfirmedProjects';
 export default function LaunchpadPage() {
   const [activeTab, setActiveTab] = useState('overview');
   const router = useRouter();
-  const { protocolVersion, isV3Supported } = useProtocolVersion();
 
   const handleSwitchToPresale = () => {
     setActiveTab('presale');
@@ -71,12 +69,15 @@ export default function LaunchpadPage() {
             <CardContent>
               <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
                 <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-4 mb-8">
-                  <TabsList className="grid w-full grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 launchpad-tabs">
+                  <TabsList className="grid w-full grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 launchpad-tabs">
                   <TabsTrigger value="overview" className="text-sm font-medium launchpad-tab">
                     Overview
                   </TabsTrigger>
                   <TabsTrigger value="token-creator" className="text-sm font-medium launchpad-tab">
                     Token Creator
+                  </TabsTrigger>
+                  <TabsTrigger value="rewards" className="text-sm font-medium launchpad-tab">
+                    Rewards
                   </TabsTrigger>
                   <TabsTrigger value="presale" className="text-sm font-medium launchpad-tab">
                     Presale
@@ -90,7 +91,6 @@ export default function LaunchpadPage() {
                   </TabsList>
                   {showVersionToggle && (
                     <div className="flex-shrink-0">
-                      <ProtocolVersionToggle size="sm" />
                     </div>
                   )}
                 </div>
@@ -103,12 +103,16 @@ export default function LaunchpadPage() {
                   <TokenCreator />
                 </TabsContent>
 
+                <TabsContent value="rewards" className="mt-0">
+                  <RewardsTokenManager />
+                </TabsContent>
+
                 <TabsContent value="presale" className="mt-0">
-                  <PresaleCreator dexVersion={protocolVersion} />
+                  <PresaleCreator />
                 </TabsContent>
 
                 <TabsContent value="fairlaunch" className="mt-0">
-                  <FairlaunchCreator dexVersion={protocolVersion} />
+                  <FairlaunchCreator />
                 </TabsContent>
 
                 <TabsContent value="confirmed-projects" className="mt-0">

@@ -1,16 +1,21 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { useAccount } from 'wagmi';
 import { request, gql, ClientError } from 'graphql-request';
 import { getV3Config } from '@/config/dex/v3-config';
-import { CHAIN_IDS } from '@/config/chains';
+import { useResolvedChainId } from '@/hooks/useResolvedChainId';
 
-// Resolve the V3 subgraph URL for a given chain. Falls back to KalyChain
-// mainnet when no wallet is connected so logged-out visitors see all pools.
-function getSubgraphUrl(chainId?: number): string {
-    const config = getV3Config(chainId ?? CHAIN_IDS.KALYCHAIN);
-    return config?.subgraphUrl || '';
+/**
+ * V3 subgraph URL for an EXPLICIT chain.
+ *
+ * This used to default to KalyChain mainnet whenever the chain was undefined, which is
+ * what `useAccount().chainId` reports until a wallet reports in — so the pools page
+ * listed 3888's pools (WKLC/USDT, KSWAP, KUSD…) while connected to 3890. There is no
+ * fallback now: an unknown chain returns '' and the caller shows nothing rather than
+ * another chain's data.
+ */
+function getSubgraphUrl(chainId: number): string {
+    return getV3Config(chainId)?.subgraphUrl || '';
 }
 
 export interface V3Pool {
@@ -69,7 +74,7 @@ export interface V3Position {
 }
 
 export function useV3Pools() {
-    const { chainId } = useAccount();
+    const chainId = useResolvedChainId();
     const [pools, setPools] = useState<V3Pool[]>([]);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
@@ -161,7 +166,7 @@ export function useV3Pools() {
 }
 
 export function useUserV3Positions(userAddress: string | undefined | null) {
-    const { chainId } = useAccount();
+    const chainId = useResolvedChainId();
     const [positions, setPositions] = useState<V3Position[]>([]);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);

@@ -21,9 +21,8 @@ vi.mock('@/config/dex/v3-config', () => ({
 // Concrete implementation of abstract class for testing
 class TestV3Service extends BaseV3Service {
     getName(): string { return 'TestService'; }
-    getChainId(): number { return 3889; }
+    getChainId(): number { return 3890; }
     executeSwap(): Promise<string> { return Promise.resolve('0x'); }
-    migrateLiquidity(): Promise<string> { return Promise.resolve('0x'); }
     createAndInitializePool(): Promise<string> { return Promise.resolve('0x'); }
 }
 
@@ -33,10 +32,10 @@ describe('BaseV3Service Unit Tests', () => {
     let mockWalletClient: any;
 
     const MOCK_TOKEN_A: Token = {
-        chainId: 3889, address: '0xTokenA', decimals: 18, symbol: 'TKA', name: 'Token A', logoURI: ''
+        chainId: 3890, address: '0xTokenA', decimals: 18, symbol: 'TKA', name: 'Token A', logoURI: ''
     };
     const MOCK_TOKEN_B: Token = {
-        chainId: 3889, address: '0xTokenB', decimals: 18, symbol: 'TKB', name: 'Token B', logoURI: ''
+        chainId: 3890, address: '0xTokenB', decimals: 18, symbol: 'TKB', name: 'Token B', logoURI: ''
     };
 
     beforeEach(() => {

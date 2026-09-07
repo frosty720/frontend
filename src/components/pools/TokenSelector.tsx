@@ -17,10 +17,9 @@ import {
 import { ChevronDown, Search, Plus } from 'lucide-react';
 import { useTokenLists } from '@/hooks/useTokenLists';
 import { getContract, isAddress } from 'viem';
-import { usePublicClient, useChainId } from 'wagmi';
-import { useActiveAccount, useActiveWalletChain } from 'thirdweb/react';
-import { DEFAULT_CHAIN_ID } from '@/config/contracts';
+import { usePublicClient } from 'wagmi';
 import { ERC20_ABI } from '@/config/abis';
+import { useResolvedChainId } from '@/hooks/useResolvedChainId';
 
 interface Token {
   chainId: number;
@@ -52,16 +51,7 @@ function TokenSelectorContent({
   const [isLoadingCustomToken, setIsLoadingCustomToken] = useState(false);
   const [customTokenError, setCustomTokenError] = useState<string | null>(null);
 
-  // Resolve chain: Thirdweb in-app wallet > wagmi (MetaMask etc.) > DEFAULT_CHAIN_ID.
-  // Was hardcoded to KALYCHAIN_TESTNET during V3 testing — pinned wrong network
-  // after mainnet deployment.
-  const thirdwebAccount = useActiveAccount();
-  const thirdwebChain = useActiveWalletChain();
-  const wagmiChainId = useChainId();
-  const chainId =
-    (thirdwebAccount ? thirdwebChain?.id : undefined) ||
-    wagmiChainId ||
-    DEFAULT_CHAIN_ID;
+  const chainId = useResolvedChainId();
 
   // Use useTokenLists hook (same as swaps page) for consistent token list
   const { tokens, loading } = useTokenLists({ chainId });

@@ -31,6 +31,7 @@ import { useAccount, usePublicClient, useWalletClient } from 'wagmi'
 import { launchpadLogger } from '@/lib/logger'
 import { parseEther, formatEther, formatUnits } from 'viem'
 import { isNativeToken } from '@/config/contracts'
+import { KALYCHAIN_EXPLORER_URL } from '@/config/chains'
 
 interface ParticipationFormProps {
   projectData: ProjectData
@@ -358,7 +359,7 @@ export default function ParticipationForm({
             <p className="text-sm text-gray-300">
               Transaction Hash:{' '}
               <a
-                href={`https://kalyscan.io/tx/${transactionHash}`}
+                href={`${KALYCHAIN_EXPLORER_URL}/tx/${transactionHash}`}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="text-blue-400 hover:underline break-all"

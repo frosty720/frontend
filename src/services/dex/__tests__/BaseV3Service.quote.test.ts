@@ -4,19 +4,19 @@ import { CHAIN_IDS } from '@/config/chains';
 import type { Token } from '@/config/dex/types';
 import type { PublicClient } from 'viem';
 
-const WKLC = '0x069255299Bb729399f3CECaBdc73d15d3D10a2A3';
-const USDT = '0x2CA775C77b922A51FCF3097F52bFFdbc0250D99A';
+const WKMT = '0xf90F0Bd56558Ac12F7FC285571D38181d2feD69b';
+const USDT = '0x6318EcDbae6B469D39C38949eDC671f4bA8A6172';
 const DAI = '0x6E92CAC380F7A7B86f4163fad0df2F277B16Edc6';
 const ZERO = '0x0000000000000000000000000000000000000000';
 const POOL = '0x3848c7C8d088549194a264CB1D639258Abe406a9';
 const POOL2 = '0xDDE87f8835a05812C3a0E6b687aB59F04452CB3d';
 
-const nativeKLC: Token = {
+const nativeKMT: Token = {
 	chainId: CHAIN_IDS.KALYCHAIN,
 	address: ZERO,
 	decimals: 18,
 	name: 'KalyCoin',
-	symbol: 'KLC',
+	symbol: 'KMT',
 	logoURI: '',
 	isNative: true,
 };
@@ -53,10 +53,10 @@ describe('getIntermediateTokens', () => {
 	const service = new KalySwapV3Service(CHAIN_IDS.KALYCHAIN);
 	const TESTNET_BUSD = '0xA510Df56F2aa3f7241da94F2cF053C1bf02E1168';
 
-	it('returns WKLC and config-listed routing stables, never the testnet BUSD address', () => {
+	it('returns WKMT and config-listed routing stables, never the testnet BUSD address', () => {
 		const intermediates = service.getIntermediateTokens().map(a => a.toLowerCase());
 
-		expect(intermediates).toContain(WKLC.toLowerCase());
+		expect(intermediates).toContain(WKMT.toLowerCase());
 		expect(intermediates).toContain(USDT.toLowerCase());
 		expect(intermediates).not.toContain(TESTNET_BUSD.toLowerCase());
 		expect(intermediates).not.toContain(ZERO);
@@ -68,14 +68,14 @@ describe('getV3PoolInfo price orientation', () => {
 
 	const wklcToken: Token = {
 		chainId: CHAIN_IDS.KALYCHAIN,
-		address: WKLC,
+		address: WKMT,
 		decimals: 18,
-		name: 'Wrapped KLC',
-		symbol: 'wKLC',
+		name: 'Wrapped KMT',
+		symbol: 'wKMT',
 		logoURI: '',
 	};
 
-	// Pool state: token0 = WKLC (18 dec), token1 = USDT (6 dec), 1 WKLC = 0.0025 USDT
+	// Pool state: token0 = WKMT (18 dec), token1 = USDT (6 dec), 1 WKMT = 0.0025 USDT
 	// raw token1/token0 = 0.0025 * 10^(6-18) = 2.5e-15; sqrtPriceX96 = sqrt(2.5e-15) * 2^96
 	const SQRT_PRICE_X96 = 3961408125713216879677n;
 
@@ -85,7 +85,7 @@ describe('getV3PoolInfo price orientation', () => {
 				case 'getPool': return POOL;
 				case 'slot0': return [SQRT_PRICE_X96, 0, 0, 0, 0, 0, false];
 				case 'liquidity': return 1000000n;
-				case 'token0': return WKLC;
+				case 'token0': return WKMT;
 				case 'token1': return USDT;
 				default: throw new Error(`unexpected call ${call.functionName}`);
 			}
@@ -98,30 +98,33 @@ describe('getV3PoolInfo price orientation', () => {
 
 		expect(a).not.toBeNull();
 		expect(b).not.toBeNull();
-		// price of token0 (WKLC) denominated in token1 (USDT)
+		// price of token0 (WKMT) denominated in token1 (USDT)
 		expect(parseFloat(a!.token0Price)).toBeCloseTo(0.0025, 6);
 		expect(parseFloat(b!.token0Price)).toBeCloseTo(0.0025, 6);
 	});
 });
 
-describe('BaseV3Service quote path with native KLC', () => {
+describe('BaseV3Service quote path with native KMT', () => {
 	const service = new KalySwapV3Service(CHAIN_IDS.KALYCHAIN);
 
-	it('getV3PoolAddress queries the factory with WKLC, not the zero address', async () => {
+	it('getV3PoolAddress queries the factory with WKMT, not the zero address', async () => {
 		const { client, calls } = stubPublicClient(() => POOL);
 
-		const pool = await service.getV3PoolAddress(nativeKLC, usdt, 3000, client);
+		const pool = await service.getV3PoolAddress(nativeKMT, usdt, 3000, client);
 
 		expect(pool).toBe(POOL);
 		const getPool = calls.find(c => c.functionName === 'getPool');
 		expect(getPool).toBeDefined();
 		const [token0, token1] = getPool!.args;
-		// WKLC (0x0692…) sorts before USDT (0x2CA7…)
-		expect(token0.toLowerCase()).toBe(WKLC.toLowerCase());
-		expect(token1.toLowerCase()).toBe(USDT.toLowerCase());
+		// The service sorts, and USDT (0x6318…) sorts before WKMT (0xf90f…). Assert on the
+		// SET so this does not break again the next time an address changes.
+		expect([token0.toLowerCase(), token1.toLowerCase()].sort())
+			.toEqual([WKMT.toLowerCase(), USDT.toLowerCase()].sort());
+		// the native placeholder must never reach the factory
+		expect([token0, token1]).not.toContain('0x0000000000000000000000000000000000000000');
 	});
 
-	it('getV3Quote calls the quoter with WKLC as tokenIn for native KLC', async () => {
+	it('getV3Quote calls the quoter with WKMT as tokenIn for native KMT', async () => {
 		const { client, calls } = stubPublicClient((call) => {
 			if (call.functionName === 'quoteExactInputSingle') {
 				// [amountOut, sqrtPriceX96After, initializedTicksCrossed, gasEstimate]
@@ -130,24 +133,24 @@ describe('BaseV3Service quote path with native KLC', () => {
 			throw new Error(`unexpected call ${call.functionName}`);
 		});
 
-		const quote = await service.getV3Quote(nativeKLC, usdt, '1000', 3000, client);
+		const quote = await service.getV3Quote(nativeKMT, usdt, '1000', 3000, client);
 
 		const quoterCall = calls.find(c => c.functionName === 'quoteExactInputSingle');
 		expect(quoterCall).toBeDefined();
-		expect(quoterCall!.args[0].tokenIn.toLowerCase()).toBe(WKLC.toLowerCase());
+		expect(quoterCall!.args[0].tokenIn.toLowerCase()).toBe(WKMT.toLowerCase());
 		expect(quoterCall!.args[0].tokenOut.toLowerCase()).toBe(USDT.toLowerCase());
 		expect(quote.amountOut).toBe('2.5');
 		// route should carry effective (wrapped) addresses
-		expect(quote.route.map(a => a.toLowerCase())).toEqual([WKLC.toLowerCase(), USDT.toLowerCase()]);
+		expect(quote.route.map(a => a.toLowerCase())).toEqual([WKMT.toLowerCase(), USDT.toLowerCase()]);
 	});
 
 	it('getQuote reports price impact vs marginal rate, not raw amount difference', async () => {
 		const { client } = stubPublicClient((call) => {
 			if (call.functionName === 'getPool') {
 				const [t0, t1, fee] = call.args;
+				const pair = [t0.toLowerCase(), t1.toLowerCase()].sort().join('/');
 				if (
-					t0.toLowerCase() === WKLC.toLowerCase() &&
-					t1.toLowerCase() === USDT.toLowerCase() &&
+					pair === [WKMT.toLowerCase(), USDT.toLowerCase()].sort().join('/') &&
 					fee === 3000
 				) {
 					return POOL;
@@ -166,21 +169,21 @@ describe('BaseV3Service quote path with native KLC', () => {
 			throw new Error(`unexpected call ${call.functionName}`);
 		});
 
-		const quote = await service.getQuote(nativeKLC, usdt, '1000', client);
+		const quote = await service.getQuote(nativeKMT, usdt, '1000', client);
 
 		expect(quote.amountOut).toBe('2.4');
 		// Old bug: ((1000 - 2.4) / 1000) * 100 ≈ 99.76% — must be ~4% instead
 		expect(quote.priceImpact).toBeCloseTo(4, 3);
 	});
 
-	it('findBestRoute finds a direct native-KLC/USDT route and skips WKLC as intermediate', async () => {
+	it('findBestRoute finds a direct native-KMT/USDT route and skips WKMT as intermediate', async () => {
 		const { client, calls } = stubPublicClient((call) => {
 			if (call.functionName === 'getPool') {
 				const [t0, t1, fee] = call.args;
-				// Only the WKLC/USDT 3000 pool exists
+				// Only the WKMT/USDT 3000 pool exists
 				if (
-					t0.toLowerCase() === WKLC.toLowerCase() &&
-					t1.toLowerCase() === USDT.toLowerCase() &&
+					[t0.toLowerCase(), t1.toLowerCase()].sort().join('/') ===
+					[WKMT.toLowerCase(), USDT.toLowerCase()].sort().join('/') &&
 					fee === 3000
 				) {
 					return POOL;
@@ -196,24 +199,24 @@ describe('BaseV3Service quote path with native KLC', () => {
 			throw new Error(`unexpected call ${call.functionName}`);
 		});
 
-		const result = await service.findBestRoute(nativeKLC, usdt, '1000', client);
+		const result = await service.findBestRoute(nativeKMT, usdt, '1000', client);
 
 		expect(result).not.toBeNull();
 		expect(result!.route.tokenPath.map(a => a.toLowerCase())).toEqual([
-			WKLC.toLowerCase(),
+			WKMT.toLowerCase(),
 			USDT.toLowerCase(),
 		]);
 		expect(result!.route.fees).toEqual([3000]);
 		// encoded path must embed the wrapped address, never the zero address
-		expect(result!.route.encodedPath.toLowerCase()).toContain(WKLC.slice(2).toLowerCase());
+		expect(result!.route.encodedPath.toLowerCase()).toContain(WKMT.slice(2).toLowerCase());
 		expect(result!.route.encodedPath).not.toContain(ZERO.slice(2));
 
-		// WKLC must not be probed as an intermediate hop for a native-KLC swap
+		// WKMT must not be probed as an intermediate hop for a native-KMT swap
 		const intermediateProbes = calls.filter(
 			c =>
 				c.functionName === 'getPool' &&
-				c.args[0].toLowerCase() === WKLC.toLowerCase() &&
-				c.args[1].toLowerCase() === WKLC.toLowerCase()
+				c.args[0].toLowerCase() === WKMT.toLowerCase() &&
+				c.args[1].toLowerCase() === WKMT.toLowerCase()
 		);
 		expect(intermediateProbes).toHaveLength(0);
 	});
@@ -222,12 +225,12 @@ describe('BaseV3Service quote path with native KLC', () => {
 describe('getQuoteExactOutput', () => {
 	const service = new KalySwapV3Service(CHAIN_IDS.KALYCHAIN);
 
-	it('quotes native KLC input for an exact USDT output, picking the route needing the least input', async () => {
+	it('quotes native KMT input for an exact USDT output, picking the route needing the least input', async () => {
 		const { client, calls } = stubPublicClient((call) => {
 			if (call.functionName === 'getPool') {
 				const [t0, t1, fee] = call.args;
 				const isWklcUsdt =
-					t0.toLowerCase() === WKLC.toLowerCase() && t1.toLowerCase() === USDT.toLowerCase();
+					[t0.toLowerCase(), t1.toLowerCase()].sort().join('/') === [WKMT.toLowerCase(), USDT.toLowerCase()].sort().join('/');
 				// Two direct pools: 500 needs less input than 3000
 				if (isWklcUsdt && (fee === 500 || fee === 3000)) return POOL;
 				return ZERO;
@@ -248,16 +251,16 @@ describe('getQuoteExactOutput', () => {
 			throw new Error(`unexpected call ${call.functionName}`);
 		});
 
-		const quote = await service.getQuoteExactOutput(nativeKLC, usdt, '2.5', client);
+		const quote = await service.getQuoteExactOutput(nativeKMT, usdt, '2.5', client);
 
 		expect(quote.amountIn).toBe('900');
 		// quoter must receive the wrapped address, never 0x0
 		const outCall = calls.find(c => c.functionName === 'quoteExactOutputSingle');
-		expect(outCall!.args[0].tokenIn.toLowerCase()).toBe(WKLC.toLowerCase());
+		expect(outCall!.args[0].tokenIn.toLowerCase()).toBe(WKMT.toLowerCase());
 		expect(outCall!.args[0].tokenOut.toLowerCase()).toBe(USDT.toLowerCase());
 		// execution rate 2.5/900 vs marginal 0.025/10 = 0.0025 → ~(1 - 0.002778/0.0025) < 0 → clamped, but
 		// fee-500 route is BETTER than marginal probe here; use fee-3000 style check instead:
-		expect(quote.route.map(a => a.toLowerCase())).toEqual([WKLC.toLowerCase(), USDT.toLowerCase()]);
+		expect(quote.route.map(a => a.toLowerCase())).toEqual([WKMT.toLowerCase(), USDT.toLowerCase()]);
 	});
 
 	it('encodes multi-hop exact-output paths in reverse order (tokenOut → tokenIn)', async () => {
@@ -265,10 +268,11 @@ describe('getQuoteExactOutput', () => {
 			if (call.functionName === 'getPool') {
 				const [t0, t1, fee] = call.args;
 				if (fee !== 3000) return ZERO;
-				const a = t0.toLowerCase();
-				const b = t1.toLowerCase();
-				if (a === WKLC.toLowerCase() && b === USDT.toLowerCase()) return POOL;
-				if (a === USDT.toLowerCase() && b === DAI.toLowerCase()) return POOL2;
+				// the service sorts, so match on the pair, not on slot order
+				const pair = [t0.toLowerCase(), t1.toLowerCase()].sort().join('/');
+				const key = (x: string, y: string) => [x.toLowerCase(), y.toLowerCase()].sort().join('/');
+				if (pair === key(WKMT, USDT)) return POOL;
+				if (pair === key(USDT, DAI)) return POOL2;
 				return ZERO;
 			}
 			if (call.functionName === 'quoteExactOutputSingle') {
@@ -282,19 +286,19 @@ describe('getQuoteExactOutput', () => {
 			throw new Error(`unexpected call ${call.functionName}`);
 		});
 
-		const quote = await service.getQuoteExactOutput(nativeKLC, { ...usdt, address: DAI, symbol: 'DAI', decimals: 18 }, '10', client);
+		const quote = await service.getQuoteExactOutput(nativeKMT, { ...usdt, address: DAI, symbol: 'DAI', decimals: 18 }, '10', client);
 
 		expect(quote.amountIn).toBe('1000');
 		// display route stays in forward order
 		expect(quote.route.map(a => a.toLowerCase())).toEqual([
-			WKLC.toLowerCase(), USDT.toLowerCase(), DAI.toLowerCase(),
+			WKMT.toLowerCase(), USDT.toLowerCase(), DAI.toLowerCase(),
 		]);
-		// but the quoter path must be encoded output-first: DAI → USDT → WKLC
+		// but the quoter path must be encoded output-first: DAI → USDT → WKMT
 		const outCall = calls.find(c => c.functionName === 'quoteExactOutput');
 		const path = (outCall!.args[0] as string).toLowerCase();
 		const daiPos = path.indexOf(DAI.slice(2).toLowerCase());
 		const usdtPos = path.indexOf(USDT.slice(2).toLowerCase());
-		const wklcPos = path.indexOf(WKLC.slice(2).toLowerCase());
+		const wklcPos = path.indexOf(WKMT.slice(2).toLowerCase());
 		expect(daiPos).toBeGreaterThan(-1);
 		expect(daiPos).toBeLessThan(usdtPos);
 		expect(usdtPos).toBeLessThan(wklcPos);
@@ -306,8 +310,8 @@ describe('getQuoteExactOutput', () => {
 			if (call.functionName === 'getPool') {
 				const [t0, t1, fee] = call.args;
 				if (
-					t0.toLowerCase() === WKLC.toLowerCase() &&
-					t1.toLowerCase() === USDT.toLowerCase() &&
+					[t0.toLowerCase(), t1.toLowerCase()].sort().join('/') ===
+					[WKMT.toLowerCase(), USDT.toLowerCase()].sort().join('/') &&
 					fee === 3000
 				) return POOL;
 				return ZERO;
@@ -324,7 +328,7 @@ describe('getQuoteExactOutput', () => {
 			throw new Error(`unexpected call ${call.functionName}`);
 		});
 
-		const quote = await service.getQuoteExactOutput(nativeKLC, usdt, '2.5', client);
+		const quote = await service.getQuoteExactOutput(nativeKMT, usdt, '2.5', client);
 
 		expect(quote.amountIn).toBe('1250');
 		expect(quote.priceImpact).toBeCloseTo(20, 3);
@@ -339,8 +343,8 @@ describe('getQuoteExactOutput insufficient liquidity', () => {
 			if (call.functionName === 'getPool') {
 				const [t0, t1, fee] = call.args;
 				if (
-					t0.toLowerCase() === WKLC.toLowerCase() &&
-					t1.toLowerCase() === USDT.toLowerCase() &&
+					[t0.toLowerCase(), t1.toLowerCase()].sort().join('/') ===
+					[WKMT.toLowerCase(), USDT.toLowerCase()].sort().join('/') &&
 					fee === 3000
 				) return POOL;
 				return ZERO;
@@ -352,7 +356,7 @@ describe('getQuoteExactOutput insufficient liquidity', () => {
 			throw new Error(`unexpected call ${call.functionName}`);
 		});
 
-		await expect(service.getQuoteExactOutput(nativeKLC, usdt, '10000', client))
+		await expect(service.getQuoteExactOutput(nativeKMT, usdt, '10000', client))
 			.rejects.toThrow(/insufficient liquidity/i);
 	});
 
@@ -362,7 +366,7 @@ describe('getQuoteExactOutput insufficient liquidity', () => {
 			throw new Error(`unexpected call ${call.functionName}`);
 		});
 
-		await expect(service.getQuoteExactOutput(nativeKLC, usdt, '10000', client))
+		await expect(service.getQuoteExactOutput(nativeKMT, usdt, '10000', client))
 			.rejects.toThrow(/pair not found/i);
 	});
 });

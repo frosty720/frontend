@@ -56,21 +56,11 @@ export const MAX_TICK = 887272;
 export const MIN_SQRT_RATIO = 4295128739n;
 export const MAX_SQRT_RATIO = 1461446703485210103287273052203988822378723970342n;
 
-// V3 Subgraph start block on KalyChain Testnet
-export const V3_TESTNET_START_BLOCK = 42340167;
-
-// V3 contract deploy info
+// V3 contract deploy info (KalyChain, chain id 3890)
 export const V3_DEPLOY_INFO = {
-    testnet: {
-        startBlock: 42340167,
-        chainId: 3889,
-        deployDate: '2026-01-28',
-    },
-    mainnet: {
-        startBlock: 0, // To be filled when deployed
-        chainId: 3888,
-        deployDate: '', // To be filled when deployed
-    },
+    startBlock: 1615,
+    chainId: 3890,
+    deployDate: '2026-08-21',
 } as const;
 
 export type FeeTier = typeof V3_FEE_TIERS[keyof typeof V3_FEE_TIERS];

@@ -4,6 +4,7 @@ import { swapLogger } from '@/lib/logger';
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useAccount, usePublicClient } from 'wagmi';
+import { KALYCHAIN_EXPLORER_URL } from '@/config/chains';
 
 export interface SwapTransaction {
   id: string;
@@ -63,7 +64,7 @@ export function useSwapTransactions(options: UseSwapTransactionsOptions = {}) {
       ...transaction,
       id: `${transaction.hash}-${Date.now()}`,
       timestamp: new Date(),
-      explorerUrl: `https://kalyscan.io/tx/${transaction.hash}`
+      explorerUrl: `${KALYCHAIN_EXPLORER_URL}/tx/${transaction.hash}`
     };
 
     setTransactions(prev => [newTransaction, ...prev]);

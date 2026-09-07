@@ -6,6 +6,8 @@ import { IDexService, DexError, PairNotFoundError, InsufficientLiquidityError, S
 import { Token, QuoteResult, ExactOutputQuoteResult, SwapParams, PairInfo, DexConfig, AddLiquidityParams, RemoveLiquidityParams, LiquidityPosition } from '@/config/dex/types';
 import { getContract, parseUnits, formatUnits, maxUint256 } from 'viem';
 import type { PublicClient, WalletClient } from 'viem';
+import { kalyFeeOverrides } from '@/config/gas';
+import { assertTxSucceeded } from '@/utils/transactions';
 
 // ERC20 ABI for token approvals
 const ERC20_ABI = [
@@ -475,6 +477,9 @@ export abstract class BaseDexService implements IDexService {
         const nativeAmountMin = isTokenANative ? amountAMinWei : amountBMinWei;
 
         hash = await walletClient.writeContract({
+            // KalyChain advertises a ~0 priority fee; without this the wallet builds
+            // the tx below the 21 gwei inclusion floor. No-op on other chains.
+            ...kalyFeeOverrides(walletClient.chain?.id),
           address: routerAddress as `0x${string}`,
           abi: this.config.routerABI,
           functionName: 'addLiquidityKLC',
@@ -486,6 +491,9 @@ export abstract class BaseDexService implements IDexService {
       } else {
         // Use addLiquidity for token-token pairs
         hash = await walletClient.writeContract({
+            // KalyChain advertises a ~0 priority fee; without this the wallet builds
+            // the tx below the 21 gwei inclusion floor. No-op on other chains.
+            ...kalyFeeOverrides(walletClient.chain?.id),
           address: routerAddress as `0x${string}`,
           abi: this.config.routerABI,
           functionName: 'addLiquidity',
@@ -505,7 +513,7 @@ export abstract class BaseDexService implements IDexService {
       }
 
       // Wait for transaction
-      await publicClient.waitForTransactionReceipt({ hash });
+      await assertTxSucceeded(publicClient, hash);
       return hash;
     } catch (error) {
       dexLogger.error('Add liquidity error:', error);
@@ -552,6 +560,9 @@ export abstract class BaseDexService implements IDexService {
         const nativeAmountMin = addressA === wethAddress ? amountAMinWei : amountBMinWei;
 
         hash = await walletClient.writeContract({
+            // KalyChain advertises a ~0 priority fee; without this the wallet builds
+            // the tx below the 21 gwei inclusion floor. No-op on other chains.
+            ...kalyFeeOverrides(walletClient.chain?.id),
           address: routerAddress as `0x${string}`,
           abi: this.config.routerABI,
           functionName: 'removeLiquidityKLC',
@@ -562,6 +573,9 @@ export abstract class BaseDexService implements IDexService {
       } else {
         // Use removeLiquidity for token-token pairs
         hash = await walletClient.writeContract({
+            // KalyChain advertises a ~0 priority fee; without this the wallet builds
+            // the tx below the 21 gwei inclusion floor. No-op on other chains.
+            ...kalyFeeOverrides(walletClient.chain?.id),
           address: routerAddress as `0x${string}`,
           abi: this.config.routerABI,
           functionName: 'removeLiquidity',
@@ -580,7 +594,7 @@ export abstract class BaseDexService implements IDexService {
       }
 
       // Wait for transaction
-      await publicClient.waitForTransactionReceipt({ hash });
+      await assertTxSucceeded(publicClient, hash);
       return hash;
     } catch (error) {
       dexLogger.error('Remove liquidity error:', error);
@@ -667,6 +681,9 @@ export abstract class BaseDexService implements IDexService {
       const approveAmount = amount === 'max' ? maxUint256 : parseUnits(amount, token.decimals);
 
       const hash = await walletClient.writeContract({
+          // KalyChain advertises a ~0 priority fee; without this the wallet builds
+          // the tx below the 21 gwei inclusion floor. No-op on other chains.
+          ...kalyFeeOverrides(walletClient.chain?.id),
         address: token.address as `0x${string}`,
         abi: ERC20_ABI,
         functionName: 'approve',

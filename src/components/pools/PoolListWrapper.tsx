@@ -2,15 +2,12 @@
 
 import dynamic from 'next/dynamic';
 import { Card, CardContent } from '@/components/ui/card';
-import { PoolData } from '@/hooks/usePoolDiscovery';
 
-interface PoolListWrapperProps {
-  onAddLiquidity: (pool: PoolData) => void;
-}
-
-// Dynamically import PoolList to prevent SSR issues with Wagmi
-const PoolList = dynamic(
-  () => import('./PoolList').catch(() => {
+// Dynamically import the pool list to prevent SSR issues with Wagmi.
+// Points straight at the V3 view: the V2 grid (`PoolList` / `PoolCard`) was deleted
+// on 2026-08-26 along with the V2 subgraph it read from.
+const V3PoolListView = dynamic(
+  () => import('./V3PoolListView').catch(() => {
     // Fallback component if import fails
     return {
       default: () => (
@@ -43,6 +40,6 @@ const PoolList = dynamic(
   }
 );
 
-export default function PoolListWrapper({ onAddLiquidity }: PoolListWrapperProps) {
-  return <PoolList onAddLiquidity={onAddLiquidity} />;
+export default function PoolListWrapper() {
+  return <V3PoolListView />;
 }

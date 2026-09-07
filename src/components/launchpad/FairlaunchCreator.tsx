@@ -45,16 +45,15 @@ import { FAIRLAUNCH_FACTORY_ABI, FAIRLAUNCH_ABI, FAIRLAUNCH_V3_FACTORY_ABI, FAIR
 
 // Wagmi imports for contract interaction
 import { useAccount, usePublicClient, useWalletClient } from 'wagmi';
-import { useEnsureAuth } from '@/components/providers/WalletProvidersClient';
 import { parseUnits, formatUnits, getContract, parseEther, encodeFunctionData } from 'viem';
-
-// Auth hook for checking login status
-import { useAuth } from '@/hooks/useAuth';
 
 // React DatePicker for cross-browser datetime support
 import DatePicker from 'react-datepicker';
 import 'react-datepicker/dist/react-datepicker.css';
 import '@/styles/datepicker-dark.css';
+import { kalyFeeOverrides } from '@/config/gas';
+import { assertTxSucceeded } from '@/utils/transactions';
+import { ConnectWalletButton } from '@/components/wallet/ConnectWallet';
 
 // GraphQL mutation for saving confirmed fairlaunch projects
 const SAVE_FAIRLAUNCH_AFTER_DEPLOYMENT = `
@@ -68,10 +67,7 @@ const SAVE_FAIRLAUNCH_AFTER_DEPLOYMENT = `
       blockNumber
       deployedAt
       createdAt
-      user {
-        id
-        username
-      }
+      ownerAddress
     }
   }
 `;
@@ -120,13 +116,9 @@ interface FairlaunchContractParams {
 
 
 interface FairlaunchCreatorProps {
-  dexVersion?: 'v2' | 'v3';
 }
 
-export default function FairlaunchCreator({ dexVersion = 'v2' }: FairlaunchCreatorProps) {
-  // Auth hook for checking login status
-  const { isAuthenticated, isLoading: authLoading, user } = useAuth();
-  const { ensureAuth } = useEnsureAuth();
+export default function FairlaunchCreator() {
 
   // Wagmi hooks for wallet interaction
   const { address, isConnected } = useAccount();
@@ -244,6 +236,9 @@ export default function FairlaunchCreator({ dexVersion = 'v2' }: FairlaunchCreat
 
     try {
       const hash = await walletClient.writeContract({
+        // KalyChain advertises a ~0 priority fee; without this the wallet builds
+        // the tx below the 21 gwei inclusion floor. No-op on other chains.
+        ...kalyFeeOverrides(walletClient.chain?.id),
         address: tokenAddress as `0x${string}`,
         abi: ERC20_ABI,
         functionName: 'approve',
@@ -251,7 +246,7 @@ export default function FairlaunchCreator({ dexVersion = 'v2' }: FairlaunchCreat
       });
 
       // Wait for transaction confirmation
-      const receipt = await publicClient!.waitForTransactionReceipt({ hash });
+      const receipt = await assertTxSucceeded(publicClient!, hash, 'Token approval');
       return receipt;
     } catch (error) {
       throw new Error(`Failed to approve tokens: ${error instanceof Error ? error.message : 'Unknown error'}`);
@@ -262,12 +257,6 @@ export default function FairlaunchCreator({ dexVersion = 'v2' }: FairlaunchCreat
   const saveFairlaunchToDatabase = async (contractAddress: string, transactionHash: string, blockNumber: number) => {
     try {
       setIsSavingToDatabase(true);
-
-      // Ensure backend auth (auto-creates user for Thirdweb wallet users)
-      const token = await ensureAuth();
-      if (!token) {
-        throw new Error('Please connect a wallet to save your fairlaunch project');
-      }
 
       const projectInput = {
         // Project Information
@@ -298,15 +287,14 @@ export default function FairlaunchCreator({ dexVersion = 'v2' }: FairlaunchCreat
         transactionHash,
         blockNumber,
 
-        // DEX version
-        dexVersion,
+        // DEX version — the only launchpad deployed here
+        dexVersion: 'v3',
       };
 
       const response = await fetch('/api/graphql', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`,
         },
         body: JSON.stringify({
           query: SAVE_FAIRLAUNCH_AFTER_DEPLOYMENT,
@@ -479,6 +467,9 @@ export default function FairlaunchCreator({ dexVersion = 'v2' }: FairlaunchCreat
       const creationFee = parseEther(getCreationFee());
 
       const hash = await walletClient.writeContract({
+        // KalyChain advertises a ~0 priority fee; without this the wallet builds
+        // the tx below the 21 gwei inclusion floor. No-op on other chains.
+        ...kalyFeeOverrides(walletClient.chain?.id),
         address: factoryAddress as `0x${string}`,
         abi: getFactoryABI(),
         functionName: 'createFairlaunch',
@@ -502,7 +493,7 @@ export default function FairlaunchCreator({ dexVersion = 'v2' }: FairlaunchCreat
       launchpadLogger.debug(`📝 Transaction hash: ${hash}`);
       launchpadLogger.debug('⏳ Waiting for transaction confirmation...');
 
-      const receipt = await publicClient.waitForTransactionReceipt({ hash });
+      const receipt = await assertTxSucceeded(publicClient, hash, 'Fairlaunch creation');
       launchpadLogger.debug(`✅ Transaction confirmed in block ${receipt.blockNumber}`);
 
       // Step 5: Parse fairlaunch address from events
@@ -545,42 +536,29 @@ export default function FairlaunchCreator({ dexVersion = 'v2' }: FairlaunchCreat
       setCurrentStep('setting-router');
       setIsSettingRouter(true);
 
-      let setRouterHash: `0x${string}`;
+      let setRouterHash: `0x${string}` | undefined;
 
-      if (dexVersion === 'v3') {
-        launchpadLogger.debug('🔧 Setting V3 position manager...');
-        const v3Contracts = getContracts(DEFAULT_CHAIN_ID) as any;
-        const positionManagerAddress = v3Contracts.V3_NONFUNGIBLE_POSITION_MANAGER as string;
-        const liquidityHelperAddress = v3Contracts.V3_LIQUIDITY_HELPER as string;
+      if (true) {
+        // The position manager and liquidity helper are wired by the FACTORY via
+        // initV3() at creation and are locked (audit M5) — setPositionManager() no
+        // longer exists on-chain. All the owner may still choose is the fee tier.
+        launchpadLogger.debug('🔧 Setting V3 pool fee tier...');
 
         setRouterHash = await walletClient.writeContract({
+          // KalyChain advertises a ~0 priority fee; without this the wallet builds
+          // the tx below the 21 gwei inclusion floor. No-op on other chains.
+          ...kalyFeeOverrides(walletClient.chain?.id),
           address: fairlaunchAddress as `0x${string}`,
           abi: getFairlaunchABI(),
-          functionName: 'setPositionManager',
-          args: [
-            positionManagerAddress as `0x${string}`,
-            v3FeeTier,
-            liquidityHelperAddress as `0x${string}`,
-          ],
-          gas: BigInt(500000),
+          functionName: 'setPoolFee',
+          args: [v3FeeTier],
+          gas: BigInt(200000),
         });
 
-        launchpadLogger.debug('✅ V3 position manager set successfully');
-      } else {
-        launchpadLogger.debug('🔧 Setting router address...');
-        const routerAddress = getContractAddress('ROUTER', DEFAULT_CHAIN_ID);
-
-        setRouterHash = await walletClient.writeContract({
-          address: fairlaunchAddress as `0x${string}`,
-          abi: FAIRLAUNCH_ABI,
-          functionName: 'setRouter',
-          args: [routerAddress],
-        });
-
-        launchpadLogger.debug('✅ Router address set successfully');
+        launchpadLogger.debug('✅ V3 pool fee tier set successfully');
       }
 
-      await publicClient.waitForTransactionReceipt({ hash: setRouterHash });
+      if (setRouterHash) await assertTxSucceeded(publicClient, setRouterHash, 'Set pool fee');
       setIsSettingRouter(false);
 
       // Step 7: Save to database
@@ -638,18 +616,21 @@ export default function FairlaunchCreator({ dexVersion = 'v2' }: FairlaunchCreat
   };
 
   const getFairlaunchFactoryAddress = () => {
-    const contracts = getContracts(DEFAULT_CHAIN_ID);
-    return dexVersion === 'v3'
-      ? (contracts as any).FAIRLAUNCH_V3_FACTORY as string
-      : contracts.FAIRLAUNCH_FACTORY;
+    const contracts = getContracts(DEFAULT_CHAIN_ID) as Record<string, string>;
+    // Chains without a V2 deployment (KMT/3890) have no FAIRLAUNCH_FACTORY at all —
+    // reading it there is a compile error and, at runtime, would be `undefined`.
+    {
+      return contracts.FAIRLAUNCH_V3_FACTORY;
+    }
+    return contracts.FAIRLAUNCH_FACTORY;
   };
 
   const getFactoryABI = () => {
-    return dexVersion === 'v3' ? FAIRLAUNCH_V3_FACTORY_ABI : FAIRLAUNCH_FACTORY_ABI;
+    return FAIRLAUNCH_V3_FACTORY_ABI;
   };
 
   const getFairlaunchABI = () => {
-    return dexVersion === 'v3' ? FAIRLAUNCH_V3_ABI : FAIRLAUNCH_ABI;
+    return true ? FAIRLAUNCH_V3_ABI : FAIRLAUNCH_ABI;
   };
 
   const formatDateTime = (dateString: string) => {
@@ -657,18 +638,9 @@ export default function FairlaunchCreator({ dexVersion = 'v2' }: FairlaunchCreat
     return new Date(dateString).toLocaleString();
   };
 
-  // Show loading while checking auth
-  if (authLoading) {
-    return (
-      <div className="flex items-center justify-center py-12">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-amber-400"></div>
-        <span className="ml-3 text-gray-300">Checking authentication...</span>
-      </div>
-    );
-  }
-
-  // Show login required message if not authenticated
-  if (!isAuthenticated) {
+  // There is no backend account: the connected wallet is the creator, and the
+  // backend records ownership from the deployment receipt (`receipt.from`).
+  if (!isConnected) {
     return (
       <Card className="form-card">
         <CardContent className="p-8 text-center">
@@ -676,28 +648,14 @@ export default function FairlaunchCreator({ dexVersion = 'v2' }: FairlaunchCreat
             <div className="p-4 bg-amber-500/20 rounded-full">
               <Building className="h-8 w-8 text-amber-400" />
             </div>
-            <h3 className="text-xl font-semibold text-white">Account Required</h3>
+            <h3 className="text-xl font-semibold text-white">Connect Your Wallet</h3>
             <p className="text-gray-300 max-w-md">
-              You need to create an account and be logged in to create fairlaunches. This helps us provide better support and enables future features like KYC verification.
+              Connect a wallet to create fairlaunches. Your wallet is your account — there is
+              nothing to sign up for.
             </p>
-            <div className="flex gap-3 mt-6">
-              <Button
-                onClick={() => window.location.href = '/login'}
-                className="bg-amber-600 hover:bg-amber-700 text-white"
-              >
-                Login to Your Account
-              </Button>
-              <Button
-                onClick={() => window.location.href = '/register'}
-                variant="outline"
-                className="border-amber-500/30 text-amber-400 hover:bg-amber-500/20"
-              >
-                Create Account
-              </Button>
+            <div className="mt-6">
+              <ConnectWalletButton />
             </div>
-            <p className="text-sm text-gray-400 mt-4">
-              Don't worry - you can still use your MetaMask wallet to sign transactions after logging in.
-            </p>
           </div>
         </CardContent>
       </Card>
@@ -737,7 +695,7 @@ export default function FairlaunchCreator({ dexVersion = 'v2' }: FairlaunchCreat
       </Card>
 
       {/* V3 Indicator Banner */}
-      {dexVersion === 'v3' && (
+      {true && (
         <div className="bg-purple-900/30 border border-purple-500/30 rounded-lg p-3 mb-4">
           <p className="text-purple-300 text-sm">
             V3 Fairlaunch — Liquidity will be deployed to a V3 pool and the position NFT will be permanently burned
@@ -1044,7 +1002,7 @@ export default function FairlaunchCreator({ dexVersion = 'v2' }: FairlaunchCreat
 
 
           {/* V3 Fee Tier Selector */}
-          {dexVersion === 'v3' && (
+          {true && (
             <div className="space-y-4 pt-6 border-t border-blue-500/20">
               <h3 className="text-lg font-medium text-white">V3 Pool Fee Tier</h3>
               <div className="space-y-2">
@@ -1150,15 +1108,14 @@ export default function FairlaunchCreator({ dexVersion = 'v2' }: FairlaunchCreat
             <Info className="h-5 w-5 text-blue-400 mt-0.5 flex-shrink-0" />
             <div>
               <h4 className="font-medium text-white mb-1">
-                {dexVersion === 'v3' ? 'V3 Position Manager Configuration' : 'DEX Router Configuration'}
+                V3 Position Manager Configuration
               </h4>
               <div className="text-sm text-gray-300 space-y-1">
-                {dexVersion === 'v3' ? (
-                  <>
+                <>
                     <p>• <strong>Position Manager:</strong> {(getContracts(DEFAULT_CHAIN_ID) as any).V3_NONFUNGIBLE_POSITION_MANAGER}</p>
                     <p>• <strong>Liquidity Helper:</strong> {(getContracts(DEFAULT_CHAIN_ID) as any).V3_LIQUIDITY_HELPER}</p>
                     <p>• <strong>Fee Tier:</strong> {v3FeeTier === 500 ? '0.05%' : v3FeeTier === 3000 ? '0.3%' : '1%'}</p>
-                    <p>• <strong>Network:</strong> {Number(DEFAULT_CHAIN_ID) === Number(CHAIN_IDS.KALYCHAIN) ? 'KalyChain Mainnet' : 'KalyChain Testnet'}</p>
+                    <p>• <strong>Network:</strong> KalyChain</p>
                     <p>• <strong>DEX:</strong> KalySwap V3</p>
                     <div className="mt-2 pt-2 border-t border-blue-500/20">
                       <p className="text-xs text-gray-400">
@@ -1166,20 +1123,7 @@ export default function FairlaunchCreator({ dexVersion = 'v2' }: FairlaunchCreat
                         Liquidity will be deployed as a full-range V3 position and the NFT will be permanently burned.
                       </p>
                     </div>
-                  </>
-                ) : (
-                  <>
-                    <p>• <strong>Router Address:</strong> {getContractAddress('ROUTER', DEFAULT_CHAIN_ID)}</p>
-                    <p>• <strong>Network:</strong> {Number(DEFAULT_CHAIN_ID) === Number(CHAIN_IDS.KALYCHAIN) ? 'KalyChain Mainnet' : 'KalyChain Testnet'}</p>
-                    <p>• <strong>DEX:</strong> KalySwap Router</p>
-                    <div className="mt-2 pt-2 border-t border-blue-500/20">
-                      <p className="text-xs text-gray-400">
-                        <strong>Note:</strong> The router address will be automatically set after fairlaunch creation.
-                        This tells participants which DEX will be used for liquidity listing when the fairlaunch is finalized.
-                      </p>
-                    </div>
-                  </>
-                )}
+                </>
               </div>
             </div>
           </div>
@@ -1243,7 +1187,7 @@ export default function FairlaunchCreator({ dexVersion = 'v2' }: FairlaunchCreat
                     ) : (
                       <div className="h-4 w-4 rounded-full border-2 border-gray-500"></div>
                     )}
-                    <span>3. {dexVersion === 'v3' ? 'Configure V3 position manager' : 'Configure router'}</span>
+                    <span>3. {true ? 'Configure V3 position manager' : 'Configure router'}</span>
                   </div>
                   <div className={`flex items-center gap-2 text-sm ${currentStep === 'saving' ? 'text-blue-400 font-medium' : currentStep === 'complete' ? 'text-green-400' : 'text-gray-400'}`}>
                     {currentStep === 'complete' ? (
@@ -1324,7 +1268,7 @@ export default function FairlaunchCreator({ dexVersion = 'v2' }: FairlaunchCreat
                 <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
                 {currentStep === 'approving' && 'Approving Tokens...'}
                 {currentStep === 'creating' && 'Creating Fairlaunch...'}
-                {currentStep === 'setting-router' && (dexVersion === 'v3' ? 'Setting Position Manager...' : 'Setting Router...')}
+                {currentStep === 'setting-router' && (true ? 'Setting Position Manager...' : 'Setting Router...')}
                 {currentStep === 'saving' && 'Saving Project...'}
                 {currentStep === 'idle' && 'Preparing...'}
               </>

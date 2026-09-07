@@ -1,19 +1,18 @@
 'use client';
 
-import { CHAIN_IDS } from '@/config/chains';
 
 import { useState, useEffect } from 'react';
 import './pools.css';
 import MainLayout from '@/components/layout/MainLayout';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { ArrowLeft, Info, Search, ArrowUpRight } from 'lucide-react';
+import { ArrowLeft, Info, Search } from 'lucide-react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import TokenSelector from '@/components/pools/TokenSelector';
-import LiquidityForm from '@/components/pools/LiquidityForm';
+import V3AddLiquidity from '@/components/liquidity/v3/V3AddLiquidity';
 import { Token } from '@/config/dex/types';
-import ProtocolVersionToggle from '@/components/swap/ProtocolVersionToggle';
-import { useProtocolVersion } from '@/contexts/ProtocolVersionContext';
+import { findTokenByAddress } from '@/config/dex';
+import { useResolvedChainId } from '@/hooks/useResolvedChainId';
 
 export default function PoolsPage() {
   const [currentStep, setCurrentStep] = useState(1);
@@ -23,8 +22,11 @@ export default function PoolsPage() {
   const [amountB, setAmountB] = useState('');
 
   const searchParams = useSearchParams();
+  // Pool cards deep-link with the tier they were created at.
+  const selectedFeeTier = Number(searchParams.get('fee')) || 3000;
   const router = useRouter();
-  const { protocolVersion, isV3, isV3Supported } = useProtocolVersion();
+
+  const chainId = useResolvedChainId();
 
   // Handle pre-selected tokens from URL parameters
   useEffect(() => {
@@ -33,47 +35,38 @@ export default function PoolsPage() {
     const tokenASymbol = searchParams.get('tokenASymbol');
     const tokenBSymbol = searchParams.get('tokenBSymbol');
 
-    // Helper function to get correct decimals for tokens
-    const getTokenDecimals = (address: string): number => {
-      const usdtAddress = '0x2CA775C77B922A51FcF3097F52bFFdbc0250D99A';
-      const usdcAddress = '0x9cAb0c396cF0F4325913f2269a0b72BD4d46E3A9';
-
-      if (address.toLowerCase() === usdtAddress.toLowerCase() ||
-        address.toLowerCase() === usdcAddress.toLowerCase()) {
-        return 6; // USDT and USDC have 6 decimals
-      }
-      return 18; // Default for other tokens
+    // Build a Token from the URL params, taking decimals/name/logo from the connected
+    // chain's token list when we know it. Guessing 18 was wrong for every 6-decimal
+    // stablecoin that isn't KalyChain mainnet USDT/USDC.
+    // The symbol params are optional: pool cards link with addresses (and the fee tier),
+    // and requiring a symbol meant those links silently prefilled nothing.
+    const buildToken = (address: string, symbol: string | null): Token => {
+      const known = findTokenByAddress(address, chainId);
+      if (known) return known;
+      const fallbackSymbol = symbol || `${address.slice(0, 6)}…${address.slice(-4)}`;
+      return {
+        chainId,
+        address,
+        decimals: 18,
+        name: fallbackSymbol,
+        symbol: fallbackSymbol,
+        logoURI: `https://raw.githubusercontent.com/KalyCoinProject/tokens/main/assets/${address}/logo.png`,
+      };
     };
 
-    if (tokenAAddress && tokenASymbol) {
-      const tokenA: Token = {
-        chainId: CHAIN_IDS.KALYCHAIN,
-        address: tokenAAddress,
-        decimals: getTokenDecimals(tokenAAddress),
-        name: tokenASymbol,
-        symbol: tokenASymbol,
-        logoURI: `https://raw.githubusercontent.com/KalyCoinProject/tokens/main/assets/${tokenAAddress}/logo.png`
-      };
-      setSelectedTokenA(tokenA);
+    if (tokenAAddress) {
+      setSelectedTokenA(buildToken(tokenAAddress, tokenASymbol));
     }
 
-    if (tokenBAddress && tokenBSymbol) {
-      const tokenB: Token = {
-        chainId: CHAIN_IDS.KALYCHAIN,
-        address: tokenBAddress,
-        decimals: getTokenDecimals(tokenBAddress),
-        name: tokenBSymbol,
-        symbol: tokenBSymbol,
-        logoURI: `https://raw.githubusercontent.com/KalyCoinProject/tokens/main/assets/${tokenBAddress}/logo.png`
-      };
-      setSelectedTokenB(tokenB);
+    if (tokenBAddress) {
+      setSelectedTokenB(buildToken(tokenBAddress, tokenBSymbol));
     }
 
     // If both tokens are pre-selected, go to step 2
-    if (tokenAAddress && tokenBAddress && tokenASymbol && tokenBSymbol) {
+    if (tokenAAddress && tokenBAddress) {
       setCurrentStep(2);
     }
-  }, [searchParams]);
+  }, [searchParams, chainId]);
 
   const handleTokenASelect = (token: Token) => {
     setSelectedTokenA(token);
@@ -136,15 +129,6 @@ export default function PoolsPage() {
                   <Search className="h-4 w-4" />
                   <span>Browse Pools</span>
                 </Button>
-                <Button
-                  variant="outline"
-                  onClick={() => router.push('/pools/migrate')}
-                  className="flex items-center space-x-2 bg-gray-900/30 text-white hover:bg-gray-800/50"
-                  style={{ borderColor: 'rgba(59, 130, 246, 0.2)' }}
-                >
-                  <ArrowUpRight className="h-4 w-4" />
-                  <span>Migrate V2 → V3</span>
-                </Button>
               </div>
             </div>
 
@@ -161,13 +145,10 @@ export default function PoolsPage() {
             <CardHeader className="pb-4">
               <div className="flex items-center justify-between">
                 <CardTitle className="text-xl font-semibold text-white">New position</CardTitle>
-                <ProtocolVersionToggle size="sm" />
               </div>
-              {isV3 && (
-                <p className="text-sm text-purple-400 mt-2">
-                  V3 • Concentrated liquidity • Select your price range
-                </p>
-              )}
+              <p className="text-sm text-purple-400 mt-2">
+                Concentrated liquidity • Select your price range
+              </p>
             </CardHeader>
             <CardContent className="space-y-6">
               {/* Steps Indicator */}
@@ -236,7 +217,8 @@ export default function PoolsPage() {
                       <div>
                         <h4 className="text-sm font-medium text-white mb-1">Fee tier</h4>
                         <p className="text-sm text-gray-300">
-                          The amount earned providing liquidity. All V2 pools have a 0.3% fee. For more options, upgrade to V3 pools.
+                          The amount earned providing liquidity. Pick the tier that matches the pair:
+                          0.05% for stable pairs, 0.30% for most pairs, 1% for volatile ones.
                         </p>
                       </div>
                     </div>
@@ -256,15 +238,21 @@ export default function PoolsPage() {
 
               {/* Step 2: Liquidity Form */}
               {currentStep === 2 && (
-                <LiquidityForm
-                  tokenA={selectedTokenA!}
-                  tokenB={selectedTokenB!}
-                  amountA={amountA}
-                  amountB={amountB}
-                  onAmountAChange={setAmountA}
-                  onAmountBChange={setAmountB}
-                  onBack={handleBack}
-                />
+                <div className="space-y-4">
+                  <V3AddLiquidity
+                    token0={selectedTokenA!}
+                    token1={selectedTokenB!}
+                    fee={selectedFeeTier}
+                    onSuccess={() => router.push('/pools/browse')}
+                  />
+                  <Button
+                    variant="outline"
+                    onClick={handleBack}
+                    className="bg-gray-900/30 text-white hover:bg-gray-800/50 border-gray-500/30"
+                  >
+                    Back
+                  </Button>
+                </div>
               )}
             </CardContent>
           </Card>

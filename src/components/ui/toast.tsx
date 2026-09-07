@@ -7,6 +7,7 @@ import React, { createContext, useContext, useState, useCallback, ReactNode } fr
 import { X, CheckCircle, AlertCircle, Info, ExternalLink } from 'lucide-react';
 import { Card, CardContent } from './card';
 import { Button } from './button';
+import { KALYCHAIN_EXPLORER_URL } from '@/config/chains';
 
 export interface Toast {
   id: string;
@@ -187,7 +188,7 @@ export const toastHelpers = {
   // Transaction success toast with explorer link
   transactionSuccess: (txHash: string, chainName: string, toast: ToastContextType) => {
     const explorerUrls: Record<string, string> = {
-      kalychain: 'https://kalyscan.io/tx/',
+      kalychain: `${KALYCHAIN_EXPLORER_URL}/tx/`,
       arbitrum: 'https://arbiscan.io/tx/',
       bsc: 'https://bscscan.com/tx/',
       polygon: 'https://polygonscan.com/tx/',

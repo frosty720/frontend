@@ -80,8 +80,16 @@ export interface V3IncreaseLiquidityParams {
 export interface V3DecreaseLiquidityParams {
     tokenId: bigint;
     liquidity: bigint;
-    amount0Min: string;
-    amount1Min: string;
+    /**
+     * Explicit minimums, in human units of the position's own token0/token1.
+     * Omit them and the service simulates the withdrawal to learn what the position
+     * actually returns, then applies `slippageTolerance` — passing '0' here means NO
+     * protection at all, which is what the UI used to do.
+     */
+    amount0Min?: string;
+    amount1Min?: string;
+    /** Percent, e.g. 0.5 for 0.5%. Only used when the minimums are omitted. */
+    slippageTolerance?: number;
     deadline: number;
 }
 
@@ -112,22 +120,6 @@ export interface V3MultiHopSwapParams {
     amountIn: string;
     amountOutMinimum: string;
     deadline: number;
-}
-
-export interface V3MigrateParams {
-    pair: string; // V2 Pair address
-    liquidityToMigrate: string; // Amount of V2 LP tokens
-    percentageToMigrate: number; // 0-100
-    token0: Token;
-    token1: Token;
-    fee: number;
-    tickLower: number;
-    tickUpper: number;
-    amount0Min: string;
-    amount1Min: string;
-    recipient: string;
-    deadline: number;
-    refundAsETH: boolean;
 }
 
 export interface IV3DexService extends IDexService {
@@ -265,20 +257,6 @@ export interface IV3DexService extends IDexService {
      * Convert tick to price
      */
     tickToPrice(tick: number, token0Decimals: number, token1Decimals: number): number;
-
-    /**
-     * Get the migrator contract address
-     */
-    getMigratorAddress(): string;
-
-    /**
-     * Migrate V2 liquidity to V3
-     */
-    migrateLiquidity(
-        params: V3MigrateParams,
-        publicClient: PublicClient,
-        walletClient: WalletClient
-    ): Promise<string>;
 
     /**
      * Calculate SqrtPriceX96 from human readable price

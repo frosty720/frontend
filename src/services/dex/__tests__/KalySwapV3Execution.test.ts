@@ -4,15 +4,15 @@ import { KalySwapV3Service } from '../KalySwapV3Service';
 import { Token } from '@/config/dex/types';
 
 // Mocks
-const MOCK_TOKEN_A: Token = { chainId: 3889, address: '0xA', decimals: 18, symbol: 'A', name: 'A', logoURI: '' };
-const MOCK_TOKEN_B: Token = { chainId: 3889, address: '0xB', decimals: 18, symbol: 'B', name: 'B', logoURI: '' };
+const MOCK_TOKEN_A: Token = { chainId: 3890, address: '0xA', decimals: 18, symbol: 'A', name: 'A', logoURI: '' };
+const MOCK_TOKEN_B: Token = { chainId: 3890, address: '0xB', decimals: 18, symbol: 'B', name: 'B', logoURI: '' };
 
 describe('KalySwapV3Service Execution Logic', () => {
     let service: KalySwapV3Service;
     let mockWalletClient: any;
 
     beforeEach(() => {
-        service = new KalySwapV3Service(3889);
+        service = new KalySwapV3Service(3890);
         mockWalletClient = {
             extend: vi.fn().mockReturnValue({}),
             writeContract: vi.fn(),

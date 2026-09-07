@@ -14,6 +14,13 @@ import FairlaunchV3Artifact from './launchpad/FairlaunchV3.json';
 import V3LiquidityHelperArtifact from './launchpad/V3LiquidityHelper.json';
 import StandardTokenFactoryArtifact from './tokens/StandardTokenFactory.json';
 import LiquidityGeneratorTokenFactoryArtifact from './tokens/LiquidityGeneratorTokenFactory.json';
+// V3-safe token stack, deployed to 3890 2026-08-25. RewardsToken replaces the
+// BabyToken/BuybackBaby family: those funded dividends with a transfer fee, which a
+// Uniswap V3 pool structurally rejects (see padV3/AUDIT-2026-08-25.md).
+import TokenFactoryManagerArtifact from './tokens/TokenFactoryManager.json';
+import RewardsTokenFactoryArtifact from './tokens/RewardsTokenFactory.json';
+import RewardsTokenArtifact from './tokens/RewardsToken.json';
+import KalyAntiBotArtifact from './tokens/KalyAntiBot.json';
 import ERC20Artifact from './dex/erc20ABI.json';
 import RouterArtifact from './dex/routerABI.json';
 import FactoryArtifact from './dex/factoryABI.json';
@@ -48,6 +55,10 @@ export const FairlaunchV3ABI = extractABI(FairlaunchV3Artifact);
 export const V3LiquidityHelperABI = extractABI(V3LiquidityHelperArtifact);
 export const StandardTokenFactoryABI = extractABI(StandardTokenFactoryArtifact);
 export const LiquidityGeneratorTokenFactoryABI = extractABI(LiquidityGeneratorTokenFactoryArtifact);
+export const TokenFactoryManagerABI = extractABI(TokenFactoryManagerArtifact);
+export const RewardsTokenFactoryABI = extractABI(RewardsTokenFactoryArtifact);
+export const RewardsTokenABI = extractABI(RewardsTokenArtifact);
+export const KalyAntiBotABI = extractABI(KalyAntiBotArtifact);
 export const ERC20ABI = extractABI(ERC20Artifact);
 export const RouterABI = extractABI(RouterArtifact);
 export const FactoryABI = extractABI(FactoryArtifact);
@@ -75,6 +86,10 @@ export const FAIRLAUNCH_V3_ABI = FairlaunchV3ABI;
 export const V3_LIQUIDITY_HELPER_ABI = V3LiquidityHelperABI;
 export const STANDARD_TOKEN_FACTORY_ABI = StandardTokenFactoryABI;
 export const LIQUIDITY_GENERATOR_TOKEN_FACTORY_ABI = LiquidityGeneratorTokenFactoryABI;
+export const TOKEN_FACTORY_MANAGER_ABI = TokenFactoryManagerABI;
+export const REWARDS_TOKEN_FACTORY_ABI = RewardsTokenFactoryABI;
+export const REWARDS_TOKEN_ABI = RewardsTokenABI;
+export const KALY_ANTIBOT_ABI = KalyAntiBotABI;
 export const ERC20_ABI = ERC20ABI;
 export const ROUTER_ABI = RouterABI;
 export const FACTORY_ABI = FactoryABI;
