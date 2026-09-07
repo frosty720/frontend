@@ -8,12 +8,9 @@ import { KALYSWAP_CONFIG } from './kalyswap';
 import { PANCAKESWAP_CONFIG } from './pancakeswap';
 import { UNISWAP_V2_CONFIG } from './uniswap-v2';
 
-import { KALYSWAP_TESTNET_CONFIG } from './kalyswap-testnet';
-
 // Main DEX configuration mapping
 export const DEX_CONFIGS: Record<SupportedDexChainId, DexConfig> = {
-  [CHAIN_IDS.KALYCHAIN]: KALYSWAP_CONFIG,    // KalyChain
-  [CHAIN_IDS.KALYCHAIN_TESTNET]: KALYSWAP_TESTNET_CONFIG, // KalyChain Testnet
+  [CHAIN_IDS.KALYCHAIN]: KALYSWAP_CONFIG,   // KalyChain (3890, V3 only)
   56: PANCAKESWAP_CONFIG,   // BSC
   42161: UNISWAP_V2_CONFIG, // Arbitrum
 };

@@ -26,7 +26,8 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { TrendingUp, BarChart3, Maximize2, RefreshCw } from 'lucide-react';
-import { useChartData, usePairMarketStats, formatTokenPrice, formatPriceChange } from '@/hooks';
+import { useChartData, usePairMarketStats } from '@/hooks';
+import { formatTokenPrice, formatPriceChange } from '@/utils/priceFormat';
 import { usePriceDataContext } from '@/contexts/PriceDataContext';
 import { useChainId } from 'wagmi';
 import { Token } from '@/config/dex/types';
@@ -43,7 +44,6 @@ interface ChartProps {
   height?: number;
   showChartTypes?: boolean;
   className?: string;
-  protocolVersion?: 'v2' | 'v3';
 }
 
 
@@ -65,7 +65,6 @@ export default function TradingChart({
   height = 400,
   showChartTypes = true,
   className = '',
-  protocolVersion = 'v2',
 }: ChartProps) {
   const chartContainerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
@@ -115,14 +114,13 @@ export default function TradingChart({
     tokenB: hasValidTokens ? currentTokenB : null,
     enabled: hasValidTokens,
     refetchInterval: 30000, // 30 seconds
-    protocolVersion,
   });
 
   // Get real-time pair-specific market stats for accurate 24hr volume
   const {
     volume24h: realVolume24h,
     isLoading: volumeLoading
-  } = usePairMarketStats(currentTokenA || undefined, currentTokenB || undefined, protocolVersion);
+  } = usePairMarketStats(currentTokenA || undefined, currentTokenB || undefined);
 
   logger.debug('🎯 TradingChart Debug:', {
     tokenA: currentTokenA?.symbol,
@@ -544,7 +542,6 @@ export default function TradingChart({
     const isLiquidityError = dataError?.includes('No liquidity pool exists');
     const isAuthError = dataError?.includes('auth error') || dataError?.includes('authorization');
     const isSubgraphError = dataError?.includes('subgraph') || dataError?.includes('indexed');
-    const isCoinGeckoError = dataError?.includes('CoinGecko') || dataError?.includes('not supported by CoinGecko');
 
     // Helper to get chain name
     const getChainName = (chainId?: number) => {
@@ -577,8 +574,6 @@ export default function TradingChart({
             <p className="text-gray-500 max-w-sm">
               {isLiquidityError
                 ? `No liquidity pool exists for ${currentTokenA?.symbol}/${currentTokenB?.symbol}. This pair is not available for trading.`
-                : isCoinGeckoError
-                  ? `Chart data not available from CoinGecko. The ${currentTokenA?.symbol}/${currentTokenB?.symbol} pair may not be supported or have sufficient trading data.`
                   : isAuthError
                     ? `Subgraph authorization error. The ${getChainName(currentTokenA?.chainId || currentTokenB?.chainId)} subgraph requires API authentication.`
                     : isSubgraphError

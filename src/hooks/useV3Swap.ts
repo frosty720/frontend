@@ -12,6 +12,8 @@ import { ERC20_ABI, WKLC_ABI } from '@/config/abis';
 import { useState, useCallback, useMemo } from 'react';
 import { swapLogger as logger } from '@/lib/logger';
 import { CHAIN_IDS } from '@/config/chains';
+import { kalyFeeOverrides } from '@/config/gas';
+import { assertTxSucceeded } from '@/utils/transactions';
 
 // Helper to check if tokens are Native <-> Wrapped Native (same as useDexSwap)
 const isWrapOperation = (tokenIn: Token, tokenOut: Token, wethAddress: string) => {
@@ -276,7 +278,7 @@ export function useV3Swap(chainId: number = CHAIN_IDS.KALYCHAIN): UseV3SwapRetur
 
             // Wait for transaction confirmation
             if (publicClient) {
-                await publicClient.waitForTransactionReceipt({ hash: txHash as `0x${string}` });
+                await assertTxSucceeded(publicClient, txHash);
                 logger.debug(`V3 Approval confirmed: ${txHash}`);
             }
 
@@ -314,6 +316,9 @@ export function useV3Swap(chainId: number = CHAIN_IDS.KALYCHAIN): UseV3SwapRetur
                 if (params.tokenIn.isNative) {
                     // Deposit (Wrap)
                     return await walletClient.writeContract({
+                      // KalyChain advertises a ~0 priority fee; without this the wallet builds
+                      // the tx below the 21 gwei inclusion floor. No-op on other chains.
+                      ...kalyFeeOverrides(walletClient.chain?.id),
                         address: wethAddress as `0x${string}`,
                         abi: WKLC_ABI,
                         functionName: 'deposit',
@@ -324,6 +329,9 @@ export function useV3Swap(chainId: number = CHAIN_IDS.KALYCHAIN): UseV3SwapRetur
                 } else {
                     // Withdraw (Unwrap)
                     return await walletClient.writeContract({
+                      // KalyChain advertises a ~0 priority fee; without this the wallet builds
+                      // the tx below the 21 gwei inclusion floor. No-op on other chains.
+                      ...kalyFeeOverrides(walletClient.chain?.id),
                         address: wethAddress as `0x${string}`,
                         abi: WKLC_ABI,
                         functionName: 'withdraw',

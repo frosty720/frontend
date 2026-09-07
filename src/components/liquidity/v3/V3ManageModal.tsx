@@ -22,6 +22,7 @@ import { Token } from '@/config/dex/types';
 import { Loader2 } from 'lucide-react';
 import { useToast } from '@/components/ui/toast';
 import { getPairedAmount } from '@/utils/v3-math';
+import { assertTxSucceeded } from '@/utils/transactions';
 
 /** Format a raw bigint amount into a trimmed input-friendly decimal string. */
 function formatAmountInput(amount: bigint, decimals: number): string {
@@ -44,6 +45,9 @@ interface V3ManageModalProps {
 
 // Slippage tolerance applied to the desired amounts when increasing liquidity.
 const ADD_SLIPPAGE_PCT = 0.5;
+
+// Slippage tolerance applied to the amounts a withdrawal is expected to return.
+const REMOVE_SLIPPAGE_PCT = 0.5;
 
 export default function V3ManageModal({ isOpen, onClose, position, onUpdate, initialTab = 'remove' }: V3ManageModalProps) {
     const [activeTab, setActiveTab] = useState<'add' | 'remove' | 'collect'>(initialTab);
@@ -247,7 +251,7 @@ export default function V3ManageModal({ isOpen, onClose, position, onUpdate, ini
             const amount = which === 0 ? addAmount0 : addAmount1;
             const txHash = await service.approveToken(token, amount, walletClient);
             if (txHash) {
-                await publicClient.waitForTransactionReceipt({ hash: txHash as `0x${string}` });
+                await assertTxSucceeded(publicClient, txHash, 'Approval');
             }
             if (which === 0) setNeedsApproval0(false);
             else setNeedsApproval1(false);
@@ -280,7 +284,7 @@ export default function V3ManageModal({ isOpen, onClose, position, onUpdate, ini
                 deadline: 20,
             }, publicClient, walletClient);
 
-            await publicClient.waitForTransactionReceipt({ hash: txHash as `0x${string}` });
+            await assertTxSucceeded(publicClient, txHash, 'Add liquidity');
 
             onUpdate();
             success('Liquidity Added', 'Your liquidity was added to the position.');
@@ -308,15 +312,17 @@ export default function V3ManageModal({ isOpen, onClose, position, onUpdate, ini
 
             if (amountToRemove > 0n) {
                 // 1. Decrease Liquidity
+                // No explicit minimums: the service simulates the withdrawal and derives
+                // them from what the position actually returns. Passing '0' here (as this
+                // did) meant the withdrawal had no slippage protection whatsoever.
                 const hash = await v3Service.decreaseLiquidity({
                     tokenId: position.tokenId,
                     liquidity: amountToRemove,
-                    amount0Min: '0', // Slippage hardcoded to 0 for demo/simplicity - TODO: Calculate
-                    amount1Min: '0',
+                    slippageTolerance: REMOVE_SLIPPAGE_PCT,
                     deadline: 20
                 }, publicClient, walletClient);
 
-                await publicClient.waitForTransactionReceipt({ hash: hash as `0x${string}` });
+                await assertTxSucceeded(publicClient, hash, 'Remove liquidity');
             }
 
             // 2. Collect Fees (includes the burned principal which is now "owed")
@@ -332,7 +338,7 @@ export default function V3ManageModal({ isOpen, onClose, position, onUpdate, ini
                 amount1Max: maxUint128
             }, publicClient, walletClient);
 
-            await publicClient.waitForTransactionReceipt({ hash: collectHash as `0x${string}` });
+            await assertTxSucceeded(publicClient, collectHash, 'Collect');
 
             setStep('complete');
             onUpdate();
@@ -376,7 +382,7 @@ export default function V3ManageModal({ isOpen, onClose, position, onUpdate, ini
                 amount1Max: maxUint128
             }, publicClient, walletClient);
 
-            await publicClient.waitForTransactionReceipt({ hash: hash as `0x${string}` });
+            await assertTxSucceeded(publicClient, hash, 'Collect fees');
 
             setStep('complete');
             onUpdate();

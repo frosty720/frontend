@@ -1,12 +1,11 @@
 'use client'
 
-import { ReactNode, createContext, useContext } from 'react'
+import { ReactNode } from 'react'
 import { WagmiProvider } from 'wagmi'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { ThirdwebProvider } from 'thirdweb/react'
 import { wagmiConfig } from '@/config/wagmi.config'
 import { useThirdwebWagmiBridge } from '@/connectors/thirdwebBridge'
-import { useAutoAuth } from '@/hooks/useAutoAuth'
 
 interface WalletProvidersClientProps {
   children: ReactNode
@@ -29,28 +28,12 @@ const queryClient = new QueryClient({
 })
 
 /**
- * Context for lazy backend authentication.
- * Components call `ensureAuth()` when they need a backend session.
- */
-const AutoAuthContext = createContext<{ ensureAuth: () => Promise<string | null> }>({
-  ensureAuth: async () => null,
-})
-
-export const useEnsureAuth = () => useContext(AutoAuthContext)
-
-/**
- * Inner component that runs the bridge and auto-auth hooks.
+ * Inner component that runs the thirdweb→wagmi bridge hook.
  * Must be inside both WagmiProvider and ThirdwebProvider.
  */
-function WalletBridgeAndAuth({ children }: { children: ReactNode }) {
+function WalletBridge({ children }: { children: ReactNode }) {
   useThirdwebWagmiBridge()
-  const { ensureAuth } = useAutoAuth()
-
-  return (
-    <AutoAuthContext.Provider value={{ ensureAuth }}>
-      {children}
-    </AutoAuthContext.Provider>
-  )
+  return <>{children}</>
 }
 
 function WalletProvidersClient({ children }: WalletProvidersClientProps) {
@@ -58,9 +41,9 @@ function WalletProvidersClient({ children }: WalletProvidersClientProps) {
     <QueryClientProvider client={queryClient}>
       <WagmiProvider config={wagmiConfig}>
         <ThirdwebProvider>
-          <WalletBridgeAndAuth>
+          <WalletBridge>
             {children}
-          </WalletBridgeAndAuth>
+          </WalletBridge>
         </ThirdwebProvider>
       </WagmiProvider>
     </QueryClientProvider>

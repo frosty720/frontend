@@ -98,7 +98,7 @@ export default function TokenSelectorModal({
         decimals: Number(decimals),
         name: name as string,
         symbol: symbol as string,
-        logoURI: `https://raw.githubusercontent.com/kalycoinproject/tokens/main/assets/3888/${tokenAddress}/logo_24.png`
+        logoURI: `/tokens/${tokenAddress}/logo_24.png`
       };
 
       return customToken;

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { Button } from '@/components/ui/button';
@@ -8,29 +8,8 @@ import { Menu, X } from 'lucide-react';
 import { ClientOnlyConnectWallet } from '@/components/wallet/ClientOnlyConnectWallet';
 
 export default function Header() {
-  const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const pathname = usePathname();
-
-  useEffect(() => {
-    // Check if user is logged in
-    const token = localStorage.getItem('auth_token');
-    setIsLoggedIn(!!token);
-  }, []);
-
-  const handleLogout = () => {
-    // Import and use auth utilities for proper cleanup
-    import('@/utils/auth').then(({ removeAuthToken }) => {
-      removeAuthToken();
-      setIsLoggedIn(false);
-      window.location.href = '/';
-    }).catch(() => {
-      // Fallback to direct localStorage removal
-      localStorage.removeItem('auth_token');
-      setIsLoggedIn(false);
-      window.location.href = '/';
-    });
-  };
 
   const toggleMobileMenu = () => {
     setMobileMenuOpen(!mobileMenuOpen);
@@ -145,40 +124,6 @@ export default function Header() {
           <div className="hidden md:flex items-center space-x-4">
             {/* Wallet Connection */}
             <ClientOnlyConnectWallet />
-
-            {isLoggedIn ? (
-              <>
-                <Link href="/dashboard">
-                  <Button variant="outline" size="sm" className="font-semibold border-white/30 text-white hover:text-white hover:border-white/50 hover:bg-white/10">
-                    Dashboard
-                  </Button>
-                </Link>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={handleLogout}
-                  className="font-semibold text-white hover:text-white hover:bg-white/10"
-                >
-                  Logout
-                </Button>
-              </>
-            ) : (
-              <>
-                <Link href="/login">
-                  <Button variant="outline" size="sm" className="font-semibold border-white/30 text-white hover:text-white hover:border-white/50 hover:bg-white/10">
-                    Login
-                  </Button>
-                </Link>
-                <Link href="/signup">
-                  <Button
-                    size="sm"
-                    className="bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white font-medium shadow-lg hover:shadow-amber-500/25"
-                  >
-                    Sign Up
-                  </Button>
-                </Link>
-              </>
-            )}
           </div>
         </div>
       </div>
@@ -266,44 +211,6 @@ export default function Header() {
                 <div className="pb-2">
                   <ClientOnlyConnectWallet className="w-full" />
                 </div>
-
-                {isLoggedIn ? (
-                  <>
-                    <Link
-                      href="/dashboard"
-                      className="text-sm font-semibold text-white hover:text-white hover:bg-white/10 px-3 py-2 rounded-md transition-colors duration-200"
-                      onClick={() => setMobileMenuOpen(false)}
-                    >
-                      Dashboard
-                    </Link>
-                    <button
-                      onClick={() => {
-                        handleLogout();
-                        setMobileMenuOpen(false);
-                      }}
-                      className="text-sm font-semibold text-white hover:text-white hover:bg-white/10 px-3 py-2 rounded-md transition-colors duration-200 text-left"
-                    >
-                      Logout
-                    </button>
-                  </>
-                ) : (
-                  <>
-                    <Link
-                      href="/login"
-                      className="text-sm font-semibold text-white hover:text-white hover:bg-white/10 px-3 py-2 rounded-md transition-colors duration-200"
-                      onClick={() => setMobileMenuOpen(false)}
-                    >
-                      Login
-                    </Link>
-                    <Link
-                      href="/signup"
-                      className="text-sm font-semibold text-white bg-amber-500/20 border border-amber-500/30 hover:bg-amber-500/30 px-3 py-2 rounded-md transition-colors duration-200"
-                      onClick={() => setMobileMenuOpen(false)}
-                    >
-                      Sign Up
-                    </Link>
-                  </>
-                )}
               </div>
             </nav>
           </div>

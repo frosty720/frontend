@@ -25,7 +25,7 @@ const TOKEN_LIST_URLS = {
  * Higher priority lists override lower priority ones for duplicate tokens
  */
 export const TOKEN_LIST_CONFIGS: Record<number, TokenListConfig[]> = {
-  // KalyChain (3888) - Use traditional token list
+  // KalyChain (3890)
   [CHAIN_IDS.KALYCHAIN]: [
     {
       name: 'KalySwap Default',
@@ -47,6 +47,9 @@ export const TOKEN_LIST_CONFIGS: Record<number, TokenListConfig[]> = {
     //   enabled: false
     // }
   ],
+
+  // KMT relaunch chain (3890) - no remote list published yet; useTokenLists falls back to
+  // the bundled KMT_TOKENS. Add a hosted list here when one exists.
 
   // Binance Smart Chain (56) - Use official PancakeSwap token list
   56: [

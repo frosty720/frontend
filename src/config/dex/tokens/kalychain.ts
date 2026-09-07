@@ -1,40 +1,40 @@
 import { Token } from '../types';
 import { CHAIN_IDS } from '@/config/chains';
 
-// KalyChain tokens - Official KalySwap Token List
+/**
+ * KalyChain token list.
+ *
+ * KalyChain relaunched on chain id 3890 with KMT as its native token; these are the
+ * addresses from that deployment (kalychain-ops/files/kmt-3890/addresses.json). The old
+ * 3888 addresses are gone, not archived — there is one KalyChain.
+ *
+ * There is no KSWAP entry: that token belongs to the V2 DEX era and was not redeployed
+ * (carry-over is still an open decision).
+ */
 export const KALYCHAIN_TOKENS: Token[] = [
-  // Native KLC
+  // Native KMT
   {
     chainId: CHAIN_IDS.KALYCHAIN,
-    address: '0x0000000000000000000000000000000000000000', // Native token
+    address: '0x0000000000000000000000000000000000000000',
     decimals: 18,
-    name: 'KalyCoin',
-    symbol: 'KLC',
+    name: 'KalyChain Monetary Token',
+    symbol: 'KMT',
     logoURI: '/tokens/klc.png',
     isNative: true
   },
-  // Wrapped KLC
+  // Wrapped KMT
   {
     chainId: CHAIN_IDS.KALYCHAIN,
-    address: '0x069255299Bb729399f3CECaBdc73d15d3D10a2A3',
+    address: '0xf90F0Bd56558Ac12F7FC285571D38181d2feD69b',
     decimals: 18,
-    name: 'Wrapped KalyCoin',
-    symbol: 'wKLC',
+    name: 'Wrapped KMT',
+    symbol: 'wKMT',
     logoURI: '/tokens/klc.png'
   },
-  // KalySwap Token
+  // Stablecoins (bridged via Hyperlane)
   {
     chainId: CHAIN_IDS.KALYCHAIN,
-    address: '0xCC93b84cEed74Dc28c746b7697d6fA477ffFf65a',
-    decimals: 18,
-    name: 'KalySwap Token',
-    symbol: 'KSWAP',
-    logoURI: '/tokens/kswap.png'
-  },
-  // Stablecoins
-  {
-    chainId: CHAIN_IDS.KALYCHAIN,
-    address: '0x2CA775C77B922A51FcF3097F52bFFdbc0250D99A',
+    address: '0x6318EcDbae6B469D39C38949eDC671f4bA8A6172',
     decimals: 6,
     name: 'Tether USD',
     symbol: 'USDT',
@@ -42,7 +42,7 @@ export const KALYCHAIN_TOKENS: Token[] = [
   },
   {
     chainId: CHAIN_IDS.KALYCHAIN,
-    address: '0x9cAb0c396cF0F4325913f2269a0b72BD4d46E3A9',
+    address: '0xf00A4b733093C21b0892eae0578F0a926f9370b3',
     decimals: 6,
     name: 'USD Coin',
     symbol: 'USDC',
@@ -50,65 +50,29 @@ export const KALYCHAIN_TOKENS: Token[] = [
   },
   {
     chainId: CHAIN_IDS.KALYCHAIN,
-    address: '0x6E92CAC380F7A7B86f4163fad0df2F277B16Edc6',
+    address: '0x8fbff791fCcF596DEf2e788549d0275557F95A21',
     decimals: 18,
-    name: 'DAI Token',
+    name: 'Dai Stablecoin',
     symbol: 'DAI',
     logoURI: '/tokens/dai.png'
   },
-  // Major tokens
+  // Majors (bridged via Hyperlane)
   {
     chainId: CHAIN_IDS.KALYCHAIN,
-    address: '0xaA77D4a26d432B82DB07F8a47B7f7F623fd92455',
+    address: '0xE3f1A8Af16d2Dcd0B6F1F813C449375f85C9d97F',
     decimals: 8,
-    name: 'Wrapped BTC',
+    name: 'Wrapped Bitcoin',
     symbol: 'WBTC',
     logoURI: '/tokens/wbtc.png'
   },
   {
     chainId: CHAIN_IDS.KALYCHAIN,
-    address: '0xfdbB253753dDE60b11211B169dC872AaE672879b',
+    address: '0x73b8fBACFF08DafD9a0a6cB8699C64a488d9EA2a',
     decimals: 18,
-    name: 'Ether Token',
+    name: 'Ethereum',
     symbol: 'ETH',
     logoURI: '/tokens/eth.png'
   },
-  {
-    chainId: CHAIN_IDS.KALYCHAIN,
-    address: '0x0e2318b62a096AC68ad2D7F37592CBf0cA9c4Ddb',
-    decimals: 18,
-    name: 'Binance',
-    symbol: 'BNB',
-    logoURI: '/tokens/bnb.png'
-  },
-  {
-    chainId: CHAIN_IDS.KALYCHAIN,
-    address: '0x706C9a63d7c8b7Aaf85DDCca52654645f470E8Ac',
-    decimals: 18,
-    name: 'Polygon Token',
-    symbol: 'POL',
-    logoURI: '/tokens/pol.png'
-  },
-  // KNetwork token
-  {
-    chainId: CHAIN_IDS.KALYCHAIN,
-    address: '0xdbba43d094bc683f7420d4b5a44cd9d6bf4f1773',
-    decimals: 18,
-    name: 'KNETWORK',
-    symbol: 'KNT',
-    logoURI: '/tokens/knt.png'
-  },
-  // KUSD Stablecoin
-  {
-    chainId: CHAIN_IDS.KALYCHAIN,
-    address: '0xCd02480926317748e95c5bBBbb7D1070b2327f1A',
-    decimals: 18,
-    name: 'Kusd Stablecoin',
-    symbol: 'KUSD',
-    logoURI: '/tokens/kusd.png'
-  },
-  // Note: testnet tokens (tKLS, BUSD) live in ./kalychain-testnet.ts — do NOT
-  // mix them into this mainnet list; useTokenLists selects by chainId.
 ];
 
 // Helper function to get token by address

@@ -10,6 +10,7 @@ import { getContract, parseUnits, createPublicClient, http } from 'viem';
 import type { WalletClient, PublicClient } from 'viem';
 import { bsc } from 'viem/chains';
 import { chainRpcUrls } from '@/config/wagmi.config';
+import { kalyFeeOverrides } from '@/config/gas';
 
 export class PancakeSwapService extends BaseDexService {
   // WBNB contract address on BSC
@@ -103,6 +104,9 @@ export class PancakeSwapService extends BaseDexService {
         ] as const;
 
         txHash = await walletClient.writeContract({
+          // No-op on BSC/Arbitrum; present so the KalyChain fee floor
+          // invariant holds for every write path without exception.
+          ...kalyFeeOverrides(walletClient.chain?.id),
           address: this.WBNB_ADDRESS as `0x${string}`,
           abi: WBNB_ABI,
           functionName: 'deposit',
@@ -137,6 +141,9 @@ export class PancakeSwapService extends BaseDexService {
         ] as const;
 
         txHash = await walletClient.writeContract({
+          // No-op on BSC/Arbitrum; present so the KalyChain fee floor
+          // invariant holds for every write path without exception.
+          ...kalyFeeOverrides(walletClient.chain?.id),
           address: this.WBNB_ADDRESS as `0x${string}`,
           abi: WBNB_ABI,
           functionName: 'withdraw',
@@ -165,6 +172,9 @@ export class PancakeSwapService extends BaseDexService {
       if (params.tokenIn.isNative) {
         // BNB to Token
         txHash = await walletClient.writeContract({
+          // No-op on BSC/Arbitrum; present so the KalyChain fee floor
+          // invariant holds for every write path without exception.
+          ...kalyFeeOverrides(walletClient.chain?.id),
           address: this.config.router as `0x${string}`,
           abi: this.config.routerABI,
           functionName: 'swapExactETHForTokens',
@@ -181,6 +191,9 @@ export class PancakeSwapService extends BaseDexService {
       } else if (params.tokenOut.isNative) {
         // Token to BNB
         txHash = await walletClient.writeContract({
+          // No-op on BSC/Arbitrum; present so the KalyChain fee floor
+          // invariant holds for every write path without exception.
+          ...kalyFeeOverrides(walletClient.chain?.id),
           address: this.config.router as `0x${string}`,
           abi: this.config.routerABI,
           functionName: 'swapExactTokensForETH',
@@ -197,6 +210,9 @@ export class PancakeSwapService extends BaseDexService {
       } else {
         // Token to Token
         txHash = await walletClient.writeContract({
+          // No-op on BSC/Arbitrum; present so the KalyChain fee floor
+          // invariant holds for every write path without exception.
+          ...kalyFeeOverrides(walletClient.chain?.id),
           address: this.config.router as `0x${string}`,
           abi: this.config.routerABI,
           functionName: 'swapExactTokensForTokens',

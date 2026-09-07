@@ -21,6 +21,7 @@ import {
   Link as LinkIcon,
   RefreshCw
 } from 'lucide-react';
+import { formatAddress } from '@/config/contracts';
 
 // GraphQL query for confirmed projects (both presales and fairlaunches)
 const GET_CONFIRMED_PROJECTS = `
@@ -51,10 +52,7 @@ const GET_CONFIRMED_PROJECTS = `
       blockNumber
       deployedAt
       createdAt
-      user {
-        id
-        username
-      }
+      ownerAddress
     }
     confirmedFairlaunches(limit: $limit, offset: $offset) {
       id
@@ -79,10 +77,7 @@ const GET_CONFIRMED_PROJECTS = `
       blockNumber
       deployedAt
       createdAt
-      user {
-        id
-        username
-      }
+      ownerAddress
     }
   }
 `;
@@ -113,10 +108,7 @@ interface Project {
   blockNumber: number;
   deployedAt: string;
   createdAt: string;
-  user: {
-    id: string;
-    username: string;
-  };
+  ownerAddress: string;
   // Properties added during mapping
   type: 'presale' | 'fairlaunch';
   startTime: string;
@@ -282,7 +274,7 @@ export default function ConfirmedProjects() {
                 <div className="flex items-start justify-between">
                   <div>
                     <h3 className="text-lg font-semibold text-white">{project.name}</h3>
-                    <p className="text-sm text-gray-400">by {project.user.username}</p>
+                    <p className="text-sm text-gray-400">by {formatAddress(project.ownerAddress)}</p>
                   </div>
                   <div className="flex items-center gap-2">
                     <Badge className={`${

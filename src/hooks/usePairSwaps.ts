@@ -1,43 +1,13 @@
 import { CHAIN_IDS } from '@/config/chains';
 import { swapLogger } from '@/lib/logger';
 import { useState, useEffect, useCallback } from 'react';
-import { getPairSwaps, getRecentSwaps, getV3PoolSwaps } from '@/lib/subgraph-client';
+import { getV3PoolSwaps } from '@/lib/subgraph-client';
 import { getV3Config } from '@/config/dex/v3-config';
+import { isStablecoinAddress } from '@/config/contracts';
 import { getPoolTrades } from '@/lib/geckoterminal-client';
 import { safeApiCall, isNetworkError } from '@/utils/networkUtils';
 
 // Swap transaction interface
-export interface SubgraphSwap {
-  id: string;
-  timestamp: string;
-  transaction: {
-    id: string;
-    blockNumber: string;
-  };
-  pair: {
-    id: string;
-    token0: {
-      id: string;
-      symbol: string;
-      decimals: string;
-    };
-    token1: {
-      id: string;
-      symbol: string;
-      decimals: string;
-    };
-  };
-  sender: string;
-  from: string;
-  to: string;
-  amount0In: string;
-  amount1In: string;
-  amount0Out: string;
-  amount1Out: string;
-  amountUSD: string;
-}
-
-// V3 subgraph swap entity (signed amounts: positive = into the pool)
 export interface V3SubgraphSwap {
   id: string;
   timestamp: string;
@@ -89,7 +59,6 @@ interface UsePairSwapsProps {
   limit?: number;
   userAddress?: string | null;
   chainId?: number; // Chain ID to determine data source
-  protocolVersion?: 'v2' | 'v3'; // Which subgraph to read on KalyChain
 }
 
 interface UsePairSwapsResult {
@@ -99,55 +68,22 @@ interface UsePairSwapsResult {
   refetch: () => void;
 }
 
-// Helper function to determine swap type and format amounts
-function formatSwap(swap: SubgraphSwap, userAddress?: string | null): FormattedSwap {
-  const amount0In = parseFloat(swap.amount0In);
-  const amount1In = parseFloat(swap.amount1In);
-  const amount0Out = parseFloat(swap.amount0Out);
-  const amount1Out = parseFloat(swap.amount1Out);
-
-  // Determine swap direction based on which amounts are non-zero
-  let type: 'BUY' | 'SELL' = 'BUY';
-  let token0Amount = '';
-  let token1Amount = '';
-
-  if (amount0In > 0 && amount1Out > 0) {
-    // Selling token0 for token1
-    type = 'SELL';
-    token0Amount = `-${amount0In.toFixed(6)}`;
-    token1Amount = `+${amount1Out.toFixed(6)}`;
-  } else if (amount1In > 0 && amount0Out > 0) {
-    // Selling token1 for token0 (buying token0)
-    type = 'BUY';
-    token0Amount = `+${amount0Out.toFixed(6)}`;
-    token1Amount = `-${amount1In.toFixed(6)}`;
-  }
-
-  return {
-    id: swap.id,
-    hash: swap.transaction.id,
-    timestamp: new Date(parseInt(swap.timestamp) * 1000),
-    blockNumber: parseInt(swap.transaction.blockNumber),
-    pairAddress: swap.pair.id,
-    token0Symbol: swap.pair.token0.symbol,
-    token1Symbol: swap.pair.token1.symbol,
-    token0Amount,
-    token1Amount,
-    amountUSD: parseFloat(swap.amountUSD),
-    sender: swap.sender,
-    from: swap.from,
-    to: swap.to,
-    type
-  };
-}
-
-// Format a V3 swap: amount0 > 0 means token0 entered the pool (user sold token0)
 export function formatV3Swap(swap: V3SubgraphSwap): FormattedSwap {
   const amount0 = parseFloat(swap.amount0);
   const amount1 = parseFloat(swap.amount1);
 
+  // The base token is the non-stablecoin side. If both or neither are stables, fall back
+  // to token0 as the base so behaviour is unchanged for those pairs.
+  const token0IsStable = isStablecoinAddress(swap.pool.token0.id);
+  const token1IsStable = isStablecoinAddress(swap.pool.token1.id);
+  const baseIsToken0 = token0IsStable && !token1IsStable ? false : true;
+
+  const baseAmount = baseIsToken0 ? amount0 : amount1;
+  // base entered the pool => the user sold the base token
+  const type: 'BUY' | 'SELL' = baseAmount > 0 ? 'SELL' : 'BUY';
+
+  // Display signs still follow the raw pool amounts, independent of the label.
   const isSellToken0 = amount0 > 0;
-  const type: 'BUY' | 'SELL' = isSellToken0 ? 'SELL' : 'BUY';
   const token0Amount = isSellToken0
     ? `-${Math.abs(amount0).toFixed(6)}`
     : `+${Math.abs(amount0).toFixed(6)}`;
@@ -212,7 +148,6 @@ export function usePairSwaps({
   limit = 20,
   userAddress,
   chainId = CHAIN_IDS.KALYCHAIN,
-  protocolVersion = 'v2'
 }: UsePairSwapsProps): UsePairSwapsResult {
   const [swaps, setSwaps] = useState<FormattedSwap[]>([]);
   const [loading, setLoading] = useState(false);
@@ -249,8 +184,9 @@ export function usePairSwaps({
         return;
       }
 
-      // V3 mode on KalyChain reads the V3 subgraph (pool-scoped only)
-      const v3Config = protocolVersion === 'v3' ? getV3Config(chainId) : null;
+      // KalyChain-family chains read the V3 subgraph (pool-scoped only). The V2
+      // branch was deleted with the V2 subgraph on 2026-08-26.
+      const v3Config = getV3Config(chainId);
       if (v3Config) {
         if (!pairAddress) {
           setSwaps([]);
@@ -279,43 +215,9 @@ export function usePairSwaps({
         return;
       }
 
-      // For KalyChain or when userAddress is provided, use subgraph
-      swapLogger.debug('Fetching swaps from subgraph...', { chainId, pairAddress, limit, userAddress });
-
-      let rawSwaps: SubgraphSwap[] = [];
-
-      if (pairAddress) {
-        // Fetch swaps for specific pair with safe API call
-        rawSwaps = await safeApiCall(
-          () => getPairSwaps(pairAddress, limit),
-          [],
-          `Pair swaps for ${pairAddress}`
-        );
-        swapLogger.debug(`✅ Fetched ${rawSwaps.length} swaps for pair ${pairAddress}`);
-      } else {
-        // Fetch recent swaps across all pairs with safe API call
-        rawSwaps = await safeApiCall(
-          () => getRecentSwaps(limit),
-          [],
-          'Recent swaps'
-        );
-        swapLogger.debug(`✅ Fetched ${rawSwaps.length} recent swaps`);
-      }
-
-      // Format swaps for UI
-      let formattedSwaps = rawSwaps.map(swap => formatSwap(swap, userAddress));
-
-      // Filter by user address if provided
-      if (userAddress) {
-        const userAddressLower = userAddress.toLowerCase();
-        formattedSwaps = formattedSwaps.filter(swap =>
-          swap.from.toLowerCase() === userAddressLower ||
-          swap.to.toLowerCase() === userAddressLower
-        );
-        swapLogger.debug(`Filtered to ${formattedSwaps.length} swaps for user ${userAddress}`);
-      }
-
-      setSwaps(formattedSwaps);
+      // No V3 deployment on this chain and not a GeckoTerminal chain: nothing to show.
+      swapLogger.debug('No swap source for this chain', { chainId, pairAddress });
+      setSwaps([]);
 
     } catch (err) {
       swapLogger.error('Error fetching swaps:', err);
@@ -331,7 +233,7 @@ export function usePairSwaps({
     } finally {
       setLoading(false);
     }
-  }, [pairAddress, limit, userAddress, chainId, protocolVersion]);
+  }, [pairAddress, limit, userAddress, chainId]);
 
   // Fetch swaps when dependencies change
   useEffect(() => {

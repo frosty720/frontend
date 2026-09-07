@@ -9,7 +9,6 @@ import {
 describe('isSupportedDexChain', () => {
 	it('accepts KalyChain mainnet and testnet', () => {
 		expect(isSupportedDexChain(CHAIN_ID.KALYCHAIN_MAINNET)).toBe(true);
-		expect(isSupportedDexChain(CHAIN_ID.KALYCHAIN_TESTNET)).toBe(true);
 	});
 
 	it('rejects chains where the KalySwap V2 DEX is not deployed', () => {
@@ -27,7 +26,6 @@ describe('resolveDexChainId', () => {
 	it('returns the connected chain when it is a supported DEX chain', () => {
 		expect(resolveDexChainId(CHAIN_ID.KALYCHAIN_MAINNET)).toBe(CHAIN_ID.KALYCHAIN_MAINNET);
 		// Critical: on testnet we must use testnet addresses, not mainnet.
-		expect(resolveDexChainId(CHAIN_ID.KALYCHAIN_TESTNET)).toBe(CHAIN_ID.KALYCHAIN_TESTNET);
 	});
 
 	it('falls back to DEFAULT_CHAIN_ID for unsupported or unknown chains', () => {

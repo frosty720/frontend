@@ -8,7 +8,6 @@ import { getDexConfig } from '@/config/dex';
 import type { PublicClient, WalletClient } from 'viem';
 
 // Lazy imports to avoid circular dependencies
-let KalySwapService: any;
 let PancakeSwapService: any;
 let UniswapV2Service: any;
 
@@ -32,20 +31,25 @@ export class DexService {
     let service: IDexService;
 
     switch (chainId) {
-      case CHAIN_IDS.KALYCHAIN: // KalyChain (V2 for Mainnet currently)
-        if (!KalySwapService) {
-          const { KalySwapService: Service } = await import('./KalySwapService');
-          KalySwapService = Service;
-        }
-        service = new KalySwapService();
-        break;
-
-      case CHAIN_IDS.KALYCHAIN_TESTNET: // KalyChain Testnet (V3)
-        // Use the V3 Service for Testnet as configured
+      // Every KalyChain-family network now routes through V3.
+      //
+      // KalyChain mainnet used to use KalySwapService (the V2 router). V2 is being retired
+      // and was never deployed on KMT (3890) at all, so a V2 service there would send
+      // transactions to contracts that do not exist. Mainnet has a live V3 deployment, so
+      // both chains use the same V3 service.
+      //
+      // BSC/Arbitrum below are UNRELATED to this: PancakeSwap and Uniswap are third-party
+      // DEXes on other chains and stay exactly as they are.
+      case CHAIN_IDS.KALYCHAIN:
+      case CHAIN_IDS.KALYCHAIN: {
         const { getKalySwapV3Service } = await import('./KalySwapV3Service');
-        // Cast to any/IDexService as we verified compatibility for key methods
-        service = getKalySwapV3Service(chainId) as unknown as IDexService;
+        const v3 = getKalySwapV3Service(chainId);
+        if (!v3) {
+          throw new DexError(`No V3 deployment for chain ${chainId}`, 'NO_SERVICE', 'DexService');
+        }
+        service = v3 as unknown as IDexService;
         break;
+      }
 
       case 56: // BSC
         if (!PancakeSwapService) {

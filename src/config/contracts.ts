@@ -1,14 +1,14 @@
 // Contract addresses and configuration for KalySwap Launchpad
 // Based on deployed contracts from backend/src/blockchain/contracts/launchpad/README.md
 
-import { CHAIN_IDS, RPC_URLS as CENTRAL_RPC_URLS, CHAIN_METADATA } from './chains';
+import { CHAIN_IDS, RPC_URLS as CENTRAL_RPC_URLS, CHAIN_METADATA, KALYCHAIN_EXPLORER_URL } from './chains';
 
 /**
  * @deprecated Use CHAIN_IDS from '@/config/chains' instead
  */
 export const CHAIN_ID = {
   KALYCHAIN_MAINNET: CHAIN_IDS.KALYCHAIN,
-  KALYCHAIN_TESTNET: CHAIN_IDS.KALYCHAIN_TESTNET,
+  KMT: CHAIN_IDS.KALYCHAIN,
 } as const;
 
 /**
@@ -16,43 +16,61 @@ export const CHAIN_ID = {
  */
 export const RPC_URLS = {
   [CHAIN_ID.KALYCHAIN_MAINNET]: CENTRAL_RPC_URLS[CHAIN_IDS.KALYCHAIN],
-  [CHAIN_ID.KALYCHAIN_TESTNET]: CENTRAL_RPC_URLS[CHAIN_IDS.KALYCHAIN_TESTNET],
 } as const;
 
-// Contract addresses for KalyChain Mainnet (Chain ID: 3888)
+/**
+ * KalyChain contracts (chain id 3890).
+ *
+ * KalyChain relaunched on 3890 with KMT as its native token. The 3888 addresses are
+ * gone — there is one address set, not mainnet/testnet/relaunch variants.
+ * Source of truth: kalychain-ops/files/kmt-3890/addresses.json
+ */
 export const MAINNET_CONTRACTS = {
   // Core Infrastructure
-  TOKEN_FACTORY_MANAGER: '0xd8C7417F6Da77D534586715Cb1187935043C5A8F',
-  MULTICALL: '0xD7a3C1253E8ddE3d61B0B6d469b241df307D399D',
+  TOKEN_FACTORY_MANAGER: '0x380C25A239B1Edf8920f8f80364e3cf0E3dF0fA1',
+  MULTICALL: '0x9FA163eF242870501Ca29CD7A082CBa2Ce24f5a2', // Uniswap InterfaceMulticall
+  MULTICALL3: '0xaee3b717fb33d9fddb4fbd0a6906bc34da5a67ab',
 
-  // Token Factories
-  STANDARD_TOKEN_FACTORY: '0xB9228A684822D557ABd419814bC6b536Fa34E3BD',
-  LIQUIDITY_GENERATOR_TOKEN_FACTORY: '0xa13567796eeB7357f48caC8d83b4c1b885B66762',
+  // Token Factories (launchpad, deployed 2026-08-25)
+  STANDARD_TOKEN_FACTORY: '0xbcdbe5901E91c8a61ec9F90bC282fbA41a0e7E39',
+  REWARDS_TOKEN_FACTORY: '0x07149004fd2973fefA1D1772dE05cf9de1D0df32',
+  KALY_ANTIBOT: '0x8d0e034611B691683377d2fC9958122a30F7DAab',
 
-  // Launchpad Contracts (V2)
-  PRESALE_FACTORY: '0x42CA326c90868e034293C679BD61F5B0e6c88149',
-  FAIRLAUNCH_FACTORY: '0xcf2A1325b32c3818B24171513cc9F71ae74592B9',
+  // Launchpad Contracts (V3 only)
+  PRESALE_V3_FACTORY: '0xa458bDf0eF62a1dF382b1Cf483B24339bF946054',
+  FAIRLAUNCH_V3_FACTORY: '0xaDFdD46404442B6067A74C23ef72d076d1405E9e',
+  V3_LIQUIDITY_HELPER: '0x6984EE7AC6be4427BCbc1f72893F7882485395F9',
 
-  // Launchpad Contracts (V3 — deployed 2026-04-06)
-  PRESALE_V3_FACTORY: '0x661614f97bA9e4f284760F5a9C824bC8342143eF',
-  FAIRLAUNCH_V3_FACTORY: '0x9Ea7cf04c9c236e54f14671c9FE1d2B88b6df671',
-  V3_LIQUIDITY_HELPER: '0xf5864C586E0e81160E61E25C0011906bf9A34bBf',
+  // DEX V3 Integration
+  V3_CORE_FACTORY: '0x79e8391b5cD2a3Cfd43F1A4Eb1a55796331e07F5',
+  V3_SWAP_ROUTER_02: '0x290F0B0cce8b9AA8F21C57BC7dDc3768D05F3f5b',
+  V3_QUOTER_V2: '0xEFfF787179045461D5Ad0aC634AC6DefA550D445',
+  V3_NONFUNGIBLE_POSITION_MANAGER: '0xCa4a8fC696ADAE8edC042cB9E32Cd7F0A28EBdf0',
+  V3_MIGRATOR: '0xE6102DaD4e0C0A5571a6dD14cB952be0008d9BE8',
+  V3_STAKER: '0x74D0BC02C633d207C35c6a1D8fda6E7104EC47Db',
+  V3_TICK_LENS: '0x91E8f0AF35B0E338C41039c0B6a342A8A324B050',
 
-  // DEX Integration
-  FACTORY: '0xD42Af909d323D88e0E933B6c50D3e91c279004ca',
-  ROUTER: '0x183F288BF7EEBe1A3f318F4681dF4a70ef32B2f3',
-  WKLC: '0x069255299Bb729399f3CECaBdc73d15d3D10a2A3',
+  // Wrapped native. Named WKLC for shape-compatibility with the other chains'
+  // contract maps; the asset is WKMT.
+  WKLC: '0xf90F0Bd56558Ac12F7FC285571D38181d2feD69b',
 
-  // Base Tokens
-  USDT: '0x2CA775C77B922A51FcF3097F52bFFdbc0250D99A',
-  USDC: '0x9cAb0c396cF0F4325913f2269a0b72BD4d46E3A9',
-  DAI: '0x6E92CAC380F7A7B86f4163fad0df2F277B16Edc6',
-  WBTC: '0xaA77D4a26d432B82DB07F8a47B7f7F623fd92455',
-  ETH: '0xfdbB253753dDE60b11211B169dC872AaE672879b',
-  BNB: '0x0e2318b62a096AC68ad2D7F37592CBf0cA9c4Ddb',
-  POL: '0x706C9a63d7c8b7Aaf85DDCca52654645f470E8Ac',
-  KSWAP: '0xCC93b84cEed74Dc28c746b7697d6fA477ffFf65a',
+  // Native staking (KalyStaking, deployed 2026-08-25)
+  STAKING: '0xcd266886e83261219b1b7ba90bd6509820dd16a4',
+
+  // Base Tokens (bridged)
+  USDT: '0x6318EcDbae6B469D39C38949eDC671f4bA8A6172',
+  USDC: '0xf00A4b733093C21b0892eae0578F0a926f9370b3',
+  DAI: '0x8fbff791fCcF596DEf2e788549d0275557F95A21',
+  WBTC: '0xE3f1A8Af16d2Dcd0B6F1F813C449375f85C9d97F',
+  ETH: '0x73b8fBACFF08DafD9a0a6cB8699C64a488d9EA2a',
 } as const;
+
+// Contract addresses for the KalyChain relaunch chain — KMT (Chain ID: 3890)
+// Source of truth: kalychain-ops/files/kmt-3890/addresses.json
+//
+// There is deliberately NO V2 DEX on this chain (no FACTORY / ROUTER / V2 pairs / farms).
+// Anything that still reaches for those keys is V2 code that has to go — see the V2 removal
+// pass. Swapping here is V3-only.
 
 /**
  * Known stablecoin addresses on KalyChain mainnet.
@@ -60,6 +78,13 @@ export const MAINNET_CONTRACTS = {
  * Symbols are not unique - anyone can create a token with any symbol.
  */
 export const STABLECOIN_ADDRESSES = [
+  MAINNET_CONTRACTS.USDT.toLowerCase(),
+  MAINNET_CONTRACTS.USDC.toLowerCase(),
+  MAINNET_CONTRACTS.DAI.toLowerCase(),
+  // KMT (3890) bridged stables. Addresses are globally unique, so keeping every chain's
+  // stables in one list is safe — and omitting these made pair ordering fall through to
+  // address sorting, which rendered pairs inverted (USDT/KMT at 5.0 instead of KMT/USDT
+  // at 0.20) and broke stablecoin-quote detection on the relaunch chain.
   MAINNET_CONTRACTS.USDT.toLowerCase(),
   MAINNET_CONTRACTS.USDC.toLowerCase(),
   MAINNET_CONTRACTS.DAI.toLowerCase(),
@@ -73,59 +98,11 @@ export function isStablecoinAddress(address: string): boolean {
   return STABLECOIN_ADDRESSES.includes(address.toLowerCase() as typeof STABLECOIN_ADDRESSES[number]);
 }
 
-/**
- * Known WKLC/USDT pair address on KalyChain mainnet.
- * This is the canonical pair for KLC price discovery.
- */
-export const WKLC_USDT_PAIR = '0x25fddaf836dc5e285823a644bb86e0b79c8e2'.toLowerCase();
-
-// Contract addresses for KalyChain Testnet (Chain ID: 3889)
-export const TESTNET_CONTRACTS = {
-  // Core Infrastructure
-  TOKEN_FACTORY_MANAGER: '0x312f9eD881cf492b9345413C5d482CEEF1B30c51',
-  MULTICALL: '0xB74aD842A69196EF9b9D900d7d37450de56Ec700',
-
-  // Token Factories
-  STANDARD_TOKEN_FACTORY: '0x90bb7c432527C3D9D1278de3B5a2781B503a940C',
-  LIQUIDITY_GENERATOR_TOKEN_FACTORY: '0x7eb64f6264fa120ffDE29531702bf60B17eCed8c',
-
-  // Launchpad Contracts (V2)
-  PRESALE_FACTORY: '0xd20889cbF4d22A21228d775BB55c09c3FB21Ec31',
-  FAIRLAUNCH_FACTORY: '0x16D0dD2ab80c872A3cF7752ED2B5900DC9961443',
-
-  // Launchpad Contracts (V3 — uses V3 pools for liquidity)
-  PRESALE_V3_FACTORY: '0xd79577196ba6a33cC96A338cE64f60E60db61A99',
-  FAIRLAUNCH_V3_FACTORY: '0xFec9b531b422049971c288DF1228A1B8b07bB027',
-  V3_LIQUIDITY_HELPER: '0xA00B4AF6107dB0008F81Db1fF4C208Ed28dfaFD6',
-
-  // DEX V2 Integration
-  FACTORY: '0xCd4AA7D066efc78793d19A9aE64B6798767B0c34',
-  ROUTER: '0x7fD3173Eef473F64AD4553169D6d334d42Df1d95',
-  WKLC: '0x069255299Bb729399f3CECaBdc73d15d3D10a2A3',
-
-  // DEX V3 Integration (deployed at block 42340167)
-  V3_CORE_FACTORY: '0x709E8f0C1dd43C81263fEAe6f0847E2d6506e57b',
-  V3_SWAP_ROUTER_02: '0x3246523054b0Bb123372ecf204740Cb04f6E713e',
-  V3_QUOTER_V2: '0x74BC8eE533ed6520457FC6C81cFC093A491e49AF',
-  V3_NONFUNGIBLE_POSITION_MANAGER: '0x8064558662896B2941B2BF88eb51182b4152d61B',
-  V3_MIGRATOR: '0x87055f15E95B37a36024B023c92737fF8a43783d',
-  V3_STAKER: '0x8831FF2f7Cd72b24c046fDcd2B5dDad6F56696E5',
-  V3_TICK_LENS: '0xD9205248cDF05aB3E40909C76fd2e59B2AF436fb',
-
-  // Base Tokens
-  KSWAP: '0x7659567Bc5057e7284856aAF331C4dea22AEd73E',
-} as const;
 
 // Get contracts for current network
-export function getContracts(chainId: number) {
-  switch (chainId) {
-    case CHAIN_ID.KALYCHAIN_MAINNET:
-      return MAINNET_CONTRACTS;
-    case CHAIN_ID.KALYCHAIN_TESTNET:
-      return TESTNET_CONTRACTS;
-    default:
-      throw new Error(`Unsupported chain ID: ${chainId}`);
-  }
+export function getContracts(chainId: number = DEFAULT_CHAIN_ID) {
+  // One KalyChain. Other chains have no KalySwap deployment of their own.
+  return MAINNET_CONTRACTS;
 }
 
 // Contract function signatures for easy reference
@@ -146,8 +123,8 @@ export const CONTRACT_FUNCTIONS = {
 // Base token options for dropdowns
 export const BASE_TOKENS = [
   {
-    symbol: 'KLC',
-    name: 'KalyCoin',
+    symbol: 'KMT',
+    name: 'KalyChain Monetary Token',
     address: '0x0000000000000000000000000000000000000000', // Native token
     decimals: 18,
     isNative: true,
@@ -156,7 +133,7 @@ export const BASE_TOKENS = [
     symbol: 'USDT',
     name: 'Tether USD',
     address: MAINNET_CONTRACTS.USDT,
-    decimals: 18, // Binance-Peg USDT has 18 decimals on KalyChain
+    decimals: 6, // bridged USDT on 3890 is 6dp (the 3888 Binance-Peg token was 18)
     isNative: false,
   },
 ] as const;
@@ -167,26 +144,14 @@ export const BASE_TOKENS = [
  */
 export const NETWORK_CONFIG = {
   [CHAIN_ID.KALYCHAIN_MAINNET]: {
-    name: CHAIN_METADATA[CHAIN_IDS.KALYCHAIN]?.name || 'KalyChain Mainnet',
-    shortName: CHAIN_METADATA[CHAIN_IDS.KALYCHAIN]?.shortName || 'KalyChain',
+    name: CHAIN_METADATA[CHAIN_IDS.KALYCHAIN]?.name || 'KalyChain',
+    shortName: CHAIN_METADATA[CHAIN_IDS.KALYCHAIN]?.shortName || 'KMT',
     chainId: CHAIN_ID.KALYCHAIN_MAINNET,
     rpcUrl: RPC_URLS[CHAIN_ID.KALYCHAIN_MAINNET],
-    blockExplorer: CHAIN_METADATA[CHAIN_IDS.KALYCHAIN]?.explorer || 'https://kalyscan.io',
+    blockExplorer: CHAIN_METADATA[CHAIN_IDS.KALYCHAIN]?.explorer || KALYCHAIN_EXPLORER_URL,
     nativeCurrency: {
-      name: 'KalyCoin',
-      symbol: CHAIN_METADATA[CHAIN_IDS.KALYCHAIN]?.symbol || 'KLC',
-      decimals: 18,
-    },
-  },
-  [CHAIN_ID.KALYCHAIN_TESTNET]: {
-    name: CHAIN_METADATA[CHAIN_IDS.KALYCHAIN_TESTNET]?.name || 'KalyChain Testnet',
-    shortName: CHAIN_METADATA[CHAIN_IDS.KALYCHAIN_TESTNET]?.shortName || 'KalyChain Testnet',
-    chainId: CHAIN_ID.KALYCHAIN_TESTNET,
-    rpcUrl: RPC_URLS[CHAIN_ID.KALYCHAIN_TESTNET],
-    blockExplorer: CHAIN_METADATA[CHAIN_IDS.KALYCHAIN_TESTNET]?.explorer || 'https://testnet.kalyscan.io',
-    nativeCurrency: {
-      name: 'KalyCoin',
-      symbol: CHAIN_METADATA[CHAIN_IDS.KALYCHAIN_TESTNET]?.symbol || 'KLC',
+      name: 'KalyChain Monetary Token',
+      symbol: CHAIN_METADATA[CHAIN_IDS.KALYCHAIN]?.symbol || 'KMT',
       decimals: 18,
     },
   },
@@ -196,20 +161,29 @@ export const NETWORK_CONFIG = {
 export const DEFAULT_CHAIN_ID = CHAIN_ID.KALYCHAIN_MAINNET;
 export const DEFAULT_CONTRACTS = MAINNET_CONTRACTS;
 
-// Helper function to get contract address by name
-export function getContractAddress(contractName: keyof typeof MAINNET_CONTRACTS, chainId: number = DEFAULT_CHAIN_ID): string {
+/** Any contract key KalyChain defines. */
+export type ContractName = keyof typeof MAINNET_CONTRACTS;
+
+/**
+ * Address of `contractName` on `chainId`, or '' when that chain has no such contract.
+ * Callers that can be pointed at a chain lacking the contract must check for ''.
+ */
+export function getContractAddress(contractName: ContractName, chainId: number = DEFAULT_CHAIN_ID): string {
   const contracts = getContracts(chainId);
-  return contracts[contractName as keyof typeof contracts];
+  return (contracts as Record<string, string>)[contractName] ?? '';
 }
 
 /**
- * The KalySwap V2 DEX (router/factory/WKLC) is only deployed on KalyChain
- * mainnet and testnet. Liquidity hooks must know whether the wallet's
- * connected chain is one we have contracts for.
+ * Chains we hold DEX contracts for. KalyChain mainnet/testnet carry the V2 DEX;
+ * KMT (3890) is V3-only — it has no router/factory/pairs at all.
  */
 export function isSupportedDexChain(chainId: number | undefined): boolean {
-  return chainId === CHAIN_ID.KALYCHAIN_MAINNET || chainId === CHAIN_ID.KALYCHAIN_TESTNET;
+  return (
+    chainId === CHAIN_ID.KALYCHAIN_MAINNET ||
+    chainId === CHAIN_ID.KALYCHAIN_MAINNET
+  );
 }
+
 
 /**
  * Resolve the chain ID to use for V2 DEX contract lookups. Uses the wallet's

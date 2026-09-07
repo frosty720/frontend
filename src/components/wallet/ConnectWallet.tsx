@@ -4,6 +4,7 @@ import { ConnectButton, darkTheme } from 'thirdweb/react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
+import { CHAIN_METADATA } from '@/config/chains'
 import { useWallet } from '@/hooks/useWallet'
 import { Wallet } from 'lucide-react'
 import { thirdwebClient, allWallets, twKalychain, thirdwebChains } from '@/config/thirdweb'
@@ -161,7 +162,7 @@ export function WalletInfo() {
         <div>
           <p className="text-xs text-gray-500 mb-1">Network</p>
           <p className="text-sm">
-            {chainId === CHAIN_IDS.KALYCHAIN ? 'KalyChain' : `Chain ${chainId}`}
+            {CHAIN_METADATA[chainId as keyof typeof CHAIN_METADATA]?.name ?? `Chain ${chainId}`}
           </p>
         </div>
 

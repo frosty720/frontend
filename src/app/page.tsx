@@ -1,9 +1,5 @@
 'use client';
 
-import { logger } from '@/lib/logger';
-
-import { useEffect } from 'react';
-import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { ArrowRight, BarChart2, Layers, Wallet, ArrowUpRight } from 'lucide-react';
@@ -12,29 +8,6 @@ import { Card, CardContent } from '@/components/ui/card';
 import './home.css';
 
 export default function Home() {
-  const router = useRouter();
-
-  useEffect(() => {
-    // Check if user is logged in with proper token validation
-    const checkAuthAndRedirect = async () => {
-      try {
-        // Import auth utilities dynamically to avoid SSR issues
-        const { getAuthToken } = await import('@/utils/auth');
-        const token = getAuthToken();
-
-        if (token) {
-          // Token exists and is valid, redirect to dashboard
-          router.push('/dashboard');
-        }
-      } catch (error) {
-        // Token is invalid or expired, stay on home page
-        logger.debug('No valid token found, staying on home page');
-      }
-    };
-
-    checkAuthAndRedirect();
-  }, [router]);
-
   return (
     <MainLayout>
       {/* Hero Section */}
@@ -48,7 +21,7 @@ export default function Home() {
               The premier decentralized exchange on KalyChain. Trade tokens, provide liquidity, and earn rewards.
             </p>
             <div className="flex flex-col sm:flex-row gap-4 justify-center">
-              <Link href="/signup">
+              <Link href="/swaps">
                 <Button size="lg" className="btn-primary">
                   Get Started <ArrowRight className="ml-2 h-4 w-4" />
                 </Button>
@@ -170,12 +143,12 @@ export default function Home() {
                 Ready to start trading on KalyChain?
               </h2>
               <p className="cta-description max-w-2xl mx-auto">
-                Join thousands of users already trading on KalySwap. Create an account in seconds and start swapping tokens.
+                Join thousands of users already trading on KalySwap. Connect a wallet and start swapping in seconds — no account needed.
               </p>
               <div className="flex flex-col sm:flex-row gap-4 justify-center">
-                <Link href="/signup">
+                <Link href="/pools">
                   <Button size="lg" className="btn-primary">
-                    Create Account
+                    Provide Liquidity
                   </Button>
                 </Link>
                 <Link href="/swaps">

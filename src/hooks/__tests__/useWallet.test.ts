@@ -7,7 +7,7 @@ import { useWallet } from '../useWallet'
 
 // Mock wagmi hooks
 const mockAddress = '0x1234567890abcdef1234567890abcdef12345678'
-const mockChainId = 3888
+const mockChainId = 3890
 let mockIsConnected = false
 
 vi.mock('wagmi', () => ({
@@ -40,8 +40,8 @@ vi.mock('wagmi', () => ({
 }))
 
 vi.mock('@/config/chains', () => ({
-  kalychain: { id: 3888, name: 'KalyChain' },
-  isSupportedChain: (id: number) => [3888, 3889, 56, 42161].includes(id),
+  kalychain: { id: 3890, name: 'KalyChain' },
+  isSupportedChain: (id: number) => [3890, 56, 42161].includes(id),
 }))
 
 vi.mock('@/lib/logger', () => ({

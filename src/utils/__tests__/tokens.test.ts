@@ -37,7 +37,7 @@ describe('normalizeSymbol', () => {
   })
 
   it('unwraps wrapped native tokens', () => {
-    expect(normalizeSymbol('WKLC')).toBe('KLC')
+    expect(normalizeSymbol('WKMT')).toBe('KMT')
     expect(normalizeSymbol('wklc')).toBe('KLC')
     expect(normalizeSymbol('WETH')).toBe('ETH')
     expect(normalizeSymbol('WBNB')).toBe('BNB')
@@ -68,8 +68,8 @@ describe('symbolsMatch', () => {
   })
 
   it('matches wrapped and native variants', () => {
-    expect(symbolsMatch('KLC', 'WKLC')).toBe(true)
-    expect(symbolsMatch('WKLC', 'KLC')).toBe(true)
+    expect(symbolsMatch('KMT', 'WKMT')).toBe(true)
+    expect(symbolsMatch('WKMT', 'KMT')).toBe(true)
     expect(symbolsMatch('ETH', 'WETH')).toBe(true)
   })
 
@@ -97,10 +97,10 @@ describe('isNativeToken', () => {
 })
 
 describe('isWrappedNativeToken', () => {
-  it('returns true for WKLC on KalyChain', () => {
+  it('returns true for WKMT on KalyChain', () => {
     const token = createToken({
-      address: '0x069255299Bb729399f3CECaBdc73d15d3D10a2A3',
-      symbol: 'WKLC',
+      address: '0xf90F0Bd56558Ac12F7FC285571D38181d2feD69b',
+      symbol: 'WKMT',
       chainId: CHAIN_IDS.KALYCHAIN,
     })
     expect(isWrappedNativeToken(token)).toBe(true)
@@ -109,7 +109,7 @@ describe('isWrappedNativeToken', () => {
   it('returns true for matching symbol', () => {
     const token = createToken({
       address: '0x1234567890123456789012345678901234567890',
-      symbol: 'WKLC',
+      symbol: 'WKMT',
       chainId: CHAIN_IDS.KALYCHAIN,
     })
     expect(isWrappedNativeToken(token)).toBe(true)
@@ -130,11 +130,11 @@ describe('getEffectiveAddress', () => {
   it('returns wrapped address for native token', () => {
     const token = createToken({
       address: NATIVE_TOKEN_ADDRESS,
-      symbol: 'KLC',
+      symbol: 'KMT',
       isNative: true,
       chainId: CHAIN_IDS.KALYCHAIN,
     })
-    expect(getEffectiveAddress(token)).toBe('0x069255299Bb729399f3CECaBdc73d15d3D10a2A3')
+    expect(getEffectiveAddress(token)).toBe('0xf90F0Bd56558Ac12F7FC285571D38181d2feD69b')
   })
 
   it('returns original address for regular tokens', () => {
@@ -144,8 +144,8 @@ describe('getEffectiveAddress', () => {
 })
 
 describe('getWrappedNativeAddress', () => {
-  it('returns WKLC address for KalyChain', () => {
-    expect(getWrappedNativeAddress(CHAIN_IDS.KALYCHAIN)).toBe('0x069255299Bb729399f3CECaBdc73d15d3D10a2A3')
+  it('returns the deployed WKMT address for KalyChain', () => {
+    expect(getWrappedNativeAddress(CHAIN_IDS.KALYCHAIN)).toBe('0xf90F0Bd56558Ac12F7FC285571D38181d2feD69b')
   })
 
   it('returns WBNB address for BSC', () => {
@@ -215,20 +215,20 @@ describe('formatTokenAddress', () => {
 describe('getDisplaySymbol', () => {
   it('returns unwrapped symbol for wrapped native when preferNative', () => {
     const token = createToken({
-      address: '0x069255299Bb729399f3CECaBdc73d15d3D10a2A3',
-      symbol: 'WKLC',
+      address: '0xf90F0Bd56558Ac12F7FC285571D38181d2feD69b',
+      symbol: 'WKMT',
       chainId: CHAIN_IDS.KALYCHAIN,
     })
-    expect(getDisplaySymbol(token, true)).toBe('KLC')
+    expect(getDisplaySymbol(token, true)).toBe('KMT')
   })
 
   it('returns original symbol when not preferNative', () => {
     const token = createToken({
-      address: '0x069255299Bb729399f3CECaBdc73d15d3D10a2A3',
-      symbol: 'WKLC',
+      address: '0xf90F0Bd56558Ac12F7FC285571D38181d2feD69b',
+      symbol: 'WKMT',
       chainId: CHAIN_IDS.KALYCHAIN,
     })
-    expect(getDisplaySymbol(token, false)).toBe('WKLC')
+    expect(getDisplaySymbol(token, false)).toBe('WKMT')
   })
 
   it('returns original symbol for regular tokens', () => {

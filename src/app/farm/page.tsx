@@ -1,6 +1,8 @@
 'use client'
 
 import React, { useState, useCallback, useEffect, useMemo } from 'react'
+import { useChainId } from 'wagmi'
+import { CHAIN_METADATA } from '@/config/chains'
 import './farm.css'
 import MainLayout from '@/components/layout/MainLayout'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -11,16 +13,13 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Search, ChevronDown, ChevronUp, Zap, TrendingUp, ArrowLeft } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { useWallet } from '@/hooks/useWallet'
-import { useFarmingDataOptimized } from '@/hooks/farming/useFarmingDataOptimized'
 import { farmingLogger } from '@/lib/logger'
 
-import FarmCard from '@/components/farming/FarmCard'
 import V3FarmCard from '@/components/farming/V3FarmCard'
 import V3ClaimRewards from '@/components/farming/V3ClaimRewards'
 import V3StakingModal from '@/components/farming/V3StakingModal'
 import V3ManageModal from '@/components/farming/V3ManageModal'
 import { formatNumber } from '@/lib/utils'
-import { useProtocolVersion } from '@/contexts/ProtocolVersionContext'
 import { useV3Staking } from '@/hooks/v3/useV3Staking'
 import type { V3Incentive } from '@/services/dex/v3-staking-types'
 
@@ -31,12 +30,12 @@ export default function FarmPage() {
   const [sortBy, setSortBy] = useState<{ field: string; desc: boolean }>({ field: 'totalStakedInUsd', desc: true })
   const [activeTab, setActiveTab] = useState('all')
 
-  // Protocol version toggle
-  const { protocolVersion, setProtocolVersion, isV3Supported } = useProtocolVersion()
-  const [farmVersion, setFarmVersion] = useState<'v2' | 'v3'>('v2')
-
-  // V2 farming data
-  const { stakingInfos, isLoading: stakingLoading, error, refetch } = useFarmingDataOptimized()
+  // Reward/native symbols follow the chain.
+  const farmChainId = useChainId()
+  const nativeSymbol = CHAIN_METADATA[farmChainId as keyof typeof CHAIN_METADATA]?.symbol ?? 'KMT'
+  // KalyChain has no MiniChef — V2 farms were never redeployed on 3890, so V3 is the
+  // only kind of farm there is.
+  const v3RewardLabel = 'reward tokens'
 
   // V3 farming data
   const {
@@ -55,12 +54,10 @@ export default function FarmPage() {
   const [selectedIncentive, setSelectedIncentive] = useState<V3Incentive | null>(null)
   const [isClaimingReward, setIsClaimingReward] = useState(false)
 
-  // Debug logging
   farmingLogger.debug('Farm page data:', {
-    stakingInfos: stakingInfos?.length || 0,
-    isLoading: stakingLoading,
-    stakingInfosData: stakingInfos,
-    error: error
+    incentives: v3Incentives?.length || 0,
+    isLoading: v3Loading,
+    error: v3Error,
   })
 
   // Keep pools loading for backward compatibility
@@ -89,39 +86,10 @@ export default function FarmPage() {
     )
   }
 
-  // Filter and sort pools
-  const filteredPools = stakingInfos?.filter(pool => {
-    const matchesSearch = !searchQuery ||
-      pool.tokens[0].symbol.toUpperCase().includes(searchQuery) ||
-      pool.tokens[1].symbol.toUpperCase().includes(searchQuery)
 
-    const matchesTab = activeTab === 'all' ||
-      (activeTab === 'staked' && pool.stakedAmount.greaterThan('0')) ||
-      (activeTab === 'super' && pool.rewardTokensAddress && pool.rewardTokensAddress.length > 0)
-
-    return matchesSearch && matchesTab
-  }) || []
-
-  const sortedPools = [...filteredPools].sort((a, b) => {
-    if (sortBy.field === 'totalStakedInUsd') {
-      const aValue = a.totalStakedInUsd?.toNumber() || 0
-      const bValue = b.totalStakedInUsd?.toNumber() || 0
-      return sortBy.desc ? bValue - aValue : aValue - bValue
-    }
-    return 0
-  })
-
-  // Calculate total stats - memoized to prevent recalculation on every render
-  const totalValueLocked = useMemo(() => {
-    return stakingInfos?.reduce((acc, pool) => {
-      return acc + (pool.totalStakedInUsd?.toNumber() || 0)
-    }, 0) || 0
-  }, [stakingInfos])
-
-  const activeFarms = useMemo(() => {
-    // Count all farms, not just active ones - let the cards show the status
-    return stakingInfos?.length || 0
-  }, [stakingInfos])
+  // Farm stats come from the V3 incentives — the V2 MiniChef stack these were computed
+  // from was never redeployed on KalyChain.
+  const activeFarms = useMemo(() => v3Incentives?.length || 0, [v3Incentives])
 
   // V3 handlers
   const handleV3Stake = useCallback((incentive: V3Incentive) => {
@@ -180,7 +148,7 @@ export default function FarmPage() {
               </Button>
               <div>
                 <h1 className="text-3xl font-bold text-white">LP Farming</h1>
-                <p className="text-gray-300">Stake your LP tokens to earn KSWAP rewards</p>
+                <p className="text-gray-300">Stake your LP tokens to earn {v3RewardLabel}</p>
               </div>
             </div>
 
@@ -199,165 +167,19 @@ export default function FarmPage() {
                 <div>
                   <h2 className="text-xl font-semibold text-white mb-2">KalySwap Liquidity Mining</h2>
                   <p className="text-gray-300 text-sm">
-                    {farmVersion === 'v2'
-                      ? 'Deposit your KalySwap Liquidity Provider KSL tokens to receive KSWAP, the KalySwap protocol governance token.'
-                      : 'Stake your V3 concentrated liquidity positions to earn KSWAP rewards with higher capital efficiency.'
-                    }
+                    {`Stake your V3 concentrated liquidity positions to earn ${v3RewardLabel} with higher capital efficiency.`}
                   </p>
                 </div>
                 <div className="text-left sm:text-right">
-                  <p className="text-gray-400 text-sm">Total Value Locked</p>
-                  <p className="text-2xl font-bold text-white">
-                    {formatNumber(totalValueLocked, 0)} KLC
-                  </p>
+                  <p className="text-gray-400 text-sm">Active Farms</p>
+                  <p className="text-2xl font-bold text-white">{activeFarms}</p>
                 </div>
               </div>
             </CardContent>
           </Card>
 
-          {/* V2/V3 Version Toggle */}
-          <div className="mb-6">
-            <div className="flex items-center bg-stone-800/50 rounded-lg p-1 border border-gray-700/50 w-full sm:w-fit">
-              <button
-                onClick={() => setFarmVersion('v2')}
-                className={`
-                  flex-1 sm:flex-none px-4 py-2 rounded-md font-semibold text-sm transition-all duration-200
-                  ${farmVersion === 'v2'
-                    ? 'bg-blue-600 text-white shadow-lg shadow-blue-600/30'
-                    : 'text-gray-400 hover:text-white hover:bg-gray-700/50'
-                  }
-                `}
-              >
-                V2 Farms
-              </button>
-              <button
-                onClick={() => setFarmVersion('v3')}
-                className={`
-                  flex-1 sm:flex-none px-4 py-2 rounded-md font-semibold text-sm transition-all duration-200
-                  ${farmVersion === 'v3'
-                    ? 'bg-purple-600 text-white shadow-lg shadow-purple-600/30'
-                    : 'text-gray-400 hover:text-white hover:bg-gray-700/50'
-                  }
-                `}
-              >
-                V3 Farms
-              </button>
-            </div>
-          </div>
-
-          {/* V2 Farms Content */}
-          {farmVersion === 'v2' && (
-            <>
-              {/* Controls */}
-              <div className="mb-6">
-                <div className="flex flex-col lg:flex-row gap-4 items-start lg:items-center justify-between">
-                  {/* Search */}
-                  <div className="relative flex-1 w-full max-w-xs sm:max-w-md">
-                    <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400 w-4 h-4" />
-                    <Input
-                      type="text"
-                      placeholder="Search farms..."
-                      value={searchQuery}
-                      onChange={handleSearch}
-                      className="pl-10 bg-slate-800/50 border-slate-700/50 text-white placeholder:text-slate-400"
-                    />
-                  </div>
-
-                  {/* Sort Controls and Refresh */}
-                  <div className="flex items-center gap-4">
-                    <div className="flex items-center gap-2">
-                      <span className="text-sm" style={{ color: '#fef3c7' }}>Sort by:</span>
-                      {getSortField('Liquidity', 'totalStakedInUsd')}
-                    </div>
-
-                    {/* Refresh Button */}
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={refetch}
-                      disabled={stakingLoading}
-                      className="border-amber-500/30 text-amber-400 hover:bg-amber-500/10"
-                    >
-                      {stakingLoading ? (
-                        <div className="w-4 h-4 border-2 border-amber-400 border-t-transparent rounded-full animate-spin" />
-                      ) : (
-                        'Refresh'
-                      )}
-                    </Button>
-                  </div>
-                </div>
-
-                {/* Tabs */}
-                <Tabs value={activeTab} onValueChange={setActiveTab} className="mt-4">
-                  <TabsList className="bg-slate-800/50 border-slate-700/50">
-                    <TabsTrigger value="all" className="data-[state=active]:bg-amber-500/20 data-[state=active]:text-amber-400">
-                      All Farms
-                    </TabsTrigger>
-                    <TabsTrigger value="staked" className="data-[state=active]:bg-amber-500/20 data-[state=active]:text-amber-400">
-                      My Farms
-                    </TabsTrigger>
-                    <TabsTrigger value="super" className="data-[state=active]:bg-amber-500/20 data-[state=active]:text-amber-400">
-                      Super Farms
-                    </TabsTrigger>
-                  </TabsList>
-                </Tabs>
-              </div>
-
-              {/* Participating Pools Header */}
-              <div className="mb-6">
-                <h2 className="text-xl font-semibold text-white">Participating pools</h2>
-              </div>
-
-              {/* Farm Cards */}
-              {error ? (
-                <Card className="farm-card border-red-500/20">
-                  <CardContent className="p-8 text-center">
-                    <div className="text-red-400 mb-4">
-                      <TrendingUp className="w-12 h-12 mx-auto mb-2 opacity-50" />
-                      <p className="font-medium">Failed to load farm data</p>
-                      <p className="text-sm text-red-300 mt-1">{error}</p>
-                    </div>
-                    <Button
-                      onClick={refetch}
-                      variant="outline"
-                      className="border-red-500/30 text-red-400 hover:bg-red-500/10"
-                    >
-                      Try Again
-                    </Button>
-                  </CardContent>
-                </Card>
-              ) : stakingLoading ? (
-                <div className="flex flex-col items-center py-12">
-                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-amber-400 mb-4"></div>
-                  <p className="text-slate-400 text-sm">Loading farms...</p>
-                </div>
-              ) : sortedPools.length === 0 ? (
-                <Card className="farm-card">
-                  <CardContent className="p-8 text-center">
-                    <p className="text-slate-400">
-                      {activeTab === 'staked'
-                        ? 'You have no active farming positions. Start farming to earn KSWAP rewards!'
-                        : 'No active rewards'
-                      }
-                    </p>
-                  </CardContent>
-                </Card>
-              ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                  {sortedPools.map((stakingInfo, index) => (
-                    <FarmCard
-                      key={`${stakingInfo.stakingRewardAddress}-${index}`}
-                      stakingInfo={stakingInfo}
-                      version="2"
-                    />
-                  ))}
-                </div>
-              )}
-            </>
-          )}
-
           {/* V3 Farms Content */}
-          {farmVersion === 'v3' && (
+          {(
             <>
               {/* V3 Controls */}
               <div className="mb-6 flex items-center justify-between">

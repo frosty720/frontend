@@ -6,7 +6,6 @@ export { DexService as default } from './DexService';
 export { DexService } from './DexService';
 
 // Individual service exports (V2)
-export { KalySwapService } from './KalySwapService';
 export { PancakeSwapService } from './PancakeSwapService';
 export { UniswapV2Service } from './UniswapV2Service';
 

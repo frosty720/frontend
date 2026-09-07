@@ -1,6 +1,6 @@
 import { useCallback } from 'react'
 import { useAccount, useDisconnect, useBalance, useChainId, useSwitchChain, useSendTransaction } from 'wagmi'
-import { isSupportedChain, type ChainId } from '@/config/chains'
+import { isSupportedChain, getChainById, type ChainId } from '@/config/chains'
 import { walletLogger } from '@/lib/logger'
 
 // Utility function to convert Hyperlane transaction to wagmi format
@@ -149,12 +149,48 @@ export function useWallet(): WalletState & WalletActions {
     }
   }, [disconnectExternal])
 
-  // Switch chain
+  // Switch chain.
+  //
+  // A wallet that has never seen the chain rejects the switch with EIP-1193 code 4902
+  // ("Unrecognized chain ID"). Wagmi does not add it for us, so we fall back to
+  // wallet_addEthereumChain and retry. Without this, anyone whose wallet lacks the chain
+  // is simply stuck — which is exactly what every holder hits at the relaunch cut-over.
   const handleSwitchChain = useCallback(async (targetChainId: ChainId) => {
     if (!isSupportedChain(targetChainId)) {
       throw new Error(`Chain ${targetChainId} is not supported`)
     }
-    if (switchChainFn) {
+    if (!switchChainFn) return
+
+    try {
+      await switchChainFn({ chainId: targetChainId })
+    } catch (err: any) {
+      const code = err?.code ?? err?.cause?.code
+      // 4902 = unrecognized chain. Some wallets surface it only in the message.
+      const unrecognized =
+        code === 4902 ||
+        /unrecognized chain|chain.*not.*added|add.*ethereum.*chain/i.test(String(err?.message ?? ''))
+
+      if (!unrecognized) throw err
+
+      const chain = getChainById(targetChainId)
+      const provider = (globalThis as any).ethereum
+      if (!chain || !provider?.request) throw err
+
+      walletLogger.debug('Chain not in wallet, adding it', { chainId: targetChainId })
+      await provider.request({
+        method: 'wallet_addEthereumChain',
+        params: [{
+          chainId: `0x${targetChainId.toString(16)}`,
+          chainName: chain.name,
+          nativeCurrency: chain.nativeCurrency,
+          rpcUrls: [...chain.rpcUrls.default.http],
+          blockExplorerUrls: chain.blockExplorers?.default?.url
+            ? [chain.blockExplorers.default.url]
+            : undefined,
+        }],
+      })
+
+      // Most wallets switch as part of adding; retry to be certain.
       await switchChainFn({ chainId: targetChainId })
     }
   }, [switchChainFn])

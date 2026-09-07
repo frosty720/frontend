@@ -1,6 +1,6 @@
 'use client';
 
-import { CHAIN_IDS } from '@/config/chains';
+import { CHAIN_IDS, KALYCHAIN_EXPLORER_URL } from '@/config/chains';
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -26,13 +26,12 @@ import { getDefaultTokenPair, isChainSupported } from '@/config/dex';
 // Custom hooks
 import { useMultichainTokenBalance } from '@/hooks/useMultichainTokenBalance';
 import { useTokenLists } from '@/hooks/useTokenLists';
-import { useSwap } from '@/hooks/useSwap';
+import { useV3Swap } from '@/hooks/useV3Swap';
 
 // Price impact utilities
 import { formatPriceImpact, getPriceImpactColor } from '@/utils/multichainPriceImpact';
 
 // V2/V3 Protocol Toggle
-import ProtocolVersionToggle from './ProtocolVersionToggle';
 
 // TokenIcon component with gradient fallback
 function TokenIcon({ token }: { token: Token }) {
@@ -90,7 +89,6 @@ export default function MultichainSwapInterface({
   const networkName = (id?: number): string => {
     switch (id) {
       case CHAIN_IDS.KALYCHAIN: return 'KalyChain';
-      case CHAIN_IDS.KALYCHAIN_TESTNET: return 'KalyChain Testnet';
       case 56: return 'BNB Smart Chain';
       case 42161: return 'Arbitrum One';
       default: return id ? `chain ${id}` : 'an unsupported network';
@@ -251,8 +249,8 @@ export default function MultichainSwapInterface({
   // Token balances
   const { balances, getFormattedBalance, isLoading: balancesLoading, refreshBalances } = useMultichainTokenBalance(supportedTokens);
 
-  // Unified swap hook — routes to V2 or V3 based on protocol version toggle
-  const { getQuote: dexGetQuote, getQuoteExactOutput: dexGetQuoteExactOutput, executeSwap: dexExecuteSwap, protocolVersion, isV3, isV3Supported } = useSwap(chainId || CHAIN_IDS.KALYCHAIN);
+  // KalySwap is V3-only; the V2/V3 dispatcher and its toggle were removed with V2.
+  const { getQuote: dexGetQuote, getQuoteExactOutput: dexGetQuoteExactOutput, executeSwap: dexExecuteSwap } = useV3Swap(chainId || CHAIN_IDS.KALYCHAIN);
 
   const [isSwapping, setIsSwapping] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
@@ -307,7 +305,6 @@ export default function MultichainSwapInterface({
     if (!chainId || !isChainSupported(chainId)) return '';
     switch (chainId) {
       case CHAIN_IDS.KALYCHAIN: return 'KalySwap';
-      case CHAIN_IDS.KALYCHAIN_TESTNET: return 'KalySwap Testnet';
       case 56: return 'PancakeSwap';
       case 42161: return 'Camelot';
       default: return '';
@@ -318,7 +315,7 @@ export default function MultichainSwapInterface({
   const getExplorerUrl = (txHash: string) => {
     if (!chainId) return '';
     switch (chainId) {
-      case CHAIN_IDS.KALYCHAIN: return `https://kalyscan.io/tx/${txHash}`;
+      case CHAIN_IDS.KALYCHAIN: return `${KALYCHAIN_EXPLORER_URL}/tx/${txHash}`;
       case 56: return `https://bscscan.com/tx/${txHash}`;
       case 42161: return `https://arbiscan.io/tx/${txHash}`;
       default: return '';
@@ -390,15 +387,14 @@ export default function MultichainSwapInterface({
         if (message.includes('Insufficient liquidity')) {
           setQuoteError(
             lastEdited === 'to'
-              ? `Not enough ${protocolVersion.toUpperCase()} liquidity to receive ${drivingAmount} ${swapState.toToken.symbol}. Try a smaller amount.`
-              : `Not enough ${protocolVersion.toUpperCase()} liquidity for this trade size. Try a smaller amount.`
+              ? `Not enough liquidity to receive ${drivingAmount} ${swapState.toToken.symbol}. Try a smaller amount.`
+              : `Not enough liquidity for this trade size. Try a smaller amount.`
           );
         } else if (message.includes('Pair not found') || message.includes('No V3 route')) {
           setQuoteError(
-            `No ${protocolVersion.toUpperCase()} liquidity found for ${swapState.fromToken.symbol}/${swapState.toToken.symbol}.` +
-            ((chainId === CHAIN_IDS.KALYCHAIN || chainId === CHAIN_IDS.KALYCHAIN_TESTNET)
-              ? ` Try switching to ${protocolVersion === 'v3' ? 'V2' : 'V3'} with the toggle above.`
-              : '')
+            `No liquidity found for ${swapState.fromToken.symbol}/${swapState.toToken.symbol}.` +
+            // Only suggest the other protocol version on chains that actually have both.
+              ''
           );
         } else {
           setQuoteError(message);
@@ -414,7 +410,7 @@ export default function MultichainSwapInterface({
     // Debounce quote requests
     const timeoutId = setTimeout(getQuote, 500);
     return () => clearTimeout(timeoutId);
-  }, [chainId, swapState.fromToken, swapState.toToken, drivingAmount, lastEdited, protocolVersion]);
+  }, [chainId, swapState.fromToken, swapState.toToken, drivingAmount, lastEdited]);
 
   // Helper function to check if tokens are valid for current chain
   const areTokensValidForChain = (fromToken: Token | null, toToken: Token | null): boolean => {
@@ -643,9 +639,6 @@ export default function MultichainSwapInterface({
               Swap {dexName && `on ${dexName}`}
             </CardTitle>
             <div className="flex items-center gap-2">
-              {(chainId === CHAIN_IDS.KALYCHAIN || chainId === CHAIN_IDS.KALYCHAIN_TESTNET) && (
-                <ProtocolVersionToggle size="sm" showLabel={false} />
-              )}
               <Button
                 variant="ghost"
                 size="sm"
@@ -661,7 +654,7 @@ export default function MultichainSwapInterface({
           {chainId && (
             <div className="text-xs text-gray-400">
               Chain: {chainId} {!isChainSupportedForSwap && '(Unsupported)'}
-              {isV3 && isV3Supported && <span className="ml-2 text-purple-400">Concentrated Liquidity</span>}
+              <span className="ml-2 text-purple-400">Concentrated Liquidity</span>
             </div>
           )}
         </CardHeader>

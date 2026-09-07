@@ -13,7 +13,7 @@ import {
   convertGeckoTerminalToChartData,
   getPoolInfo
 } from '@/lib/geckoterminal-client';
-import { getPairHourData, getPairData, getV3PoolHourData, getV3PoolForPair } from '@/lib/subgraph-client';
+import { getV3PoolHourData, getV3PoolForPair } from '@/lib/subgraph-client';
 import { transformV3HourData, shouldInvertV3Price } from '@/utils/v3ChartData';
 import { getV3Config } from '@/config/dex/v3-config';
 import { Token } from '@/config/dex/types';
@@ -21,6 +21,7 @@ import { chartLogger as logger } from '@/lib/logger';
 import { calculatePriceFromReservesRaw } from '@/utils/price';
 import { getEffectiveAddress } from '@/utils/tokens';
 import { isStablecoinAddress } from '@/config/contracts';
+import { MAINNET_CONTRACTS } from '@/config/contracts';
 
 // Re-export types for convenience
 export interface PricePoint {
@@ -32,11 +33,13 @@ export interface PricePoint {
   volume: number;
 }
 
-// Wrapped token addresses for native token matching
+// Wrapped token addresses for native token matching. KalyChain's comes from the
+// contract config — a copy here went stale across the 3890 relaunch and pointed at the
+// Hyperlane mailbox.
 const WRAPPED_ADDRESSES = {
   WBNB: '0xbb4cdb9cbd36b01bd1cbaebf2de08d9173bc095c', // BSC
   WETH: '0x82af49447d8a07e3bd95bd0d56f35241523fbab1', // Arbitrum
-  WKLC: '0x069255299Bb729399f3CECaBdc73d15d3D10a2A3', // KalyChain
+  WKLC: MAINNET_CONTRACTS.WKLC, // KalyChain (WKMT)
 } as const;
 
 const NATIVE_ADDR = '0x0000000000000000000000000000000000000000';
@@ -81,7 +84,6 @@ interface UseChartDataOptions {
   tokenB: Token | null;
   enabled?: boolean;
   refetchInterval?: number;
-  protocolVersion?: 'v2' | 'v3';
 }
 
 interface UseChartDataResult {
@@ -97,7 +99,7 @@ interface UseChartDataResult {
  * Uses TanStack Query for caching and deduplication.
  * Supports both GeckoTerminal (external chains) and Subgraph (KalyChain).
  */
-export function useChartData({ tokenA, tokenB, enabled = true, refetchInterval, protocolVersion = 'v2' }: UseChartDataOptions): UseChartDataResult {
+export function useChartData({ tokenA, tokenB, enabled = true, refetchInterval }: UseChartDataOptions): UseChartDataResult {
   const publicClient = usePublicClient();
 
   const hasValidTokens = Boolean(tokenA && tokenB && tokenA.address !== tokenB.address);
@@ -106,16 +108,16 @@ export function useChartData({ tokenA, tokenB, enabled = true, refetchInterval, 
     [tokenA?.address, tokenA?.symbol, tokenB?.address, tokenB?.symbol]
   );
 
-  // Query for pair/pool address — protocol-aware: V2 uses the factory's
-  // getPair, V3 looks up the deepest pool in the V3 subgraph
+  // Query for the pool address: the deepest V3 pool for the pair. The V2 branch
+  // (factory getPair) was deleted with the V2 subgraph on 2026-08-26.
   const pairAddressQuery = useQuery({
-    queryKey: ['pairAddress', protocolVersion, normalizedTokenA?.address, normalizedTokenB?.address, normalizedTokenA?.chainId],
+    queryKey: ['pairAddress', normalizedTokenA?.address, normalizedTokenB?.address, normalizedTokenA?.chainId],
     queryFn: async () => {
       if (!normalizedTokenA || !normalizedTokenB) return null;
 
       const chainId = normalizedTokenA.chainId || normalizedTokenB.chainId || CHAIN_IDS.KALYCHAIN;
 
-      if (protocolVersion === 'v3' && !isGeckoTerminalSupported(chainId)) {
+      if (!isGeckoTerminalSupported(chainId)) {
         const v3Config = getV3Config(chainId);
         if (!v3Config) return null;
         const pool = await getV3PoolForPair(
@@ -135,7 +137,7 @@ export function useChartData({ tokenA, tokenB, enabled = true, refetchInterval, 
 
   // Main chart data query
   const chartQuery = useQuery<PricePoint[], Error>({
-    queryKey: ['chartData', protocolVersion, normalizedTokenA?.address, normalizedTokenB?.address, normalizedTokenA?.chainId, pairAddressQuery.data],
+    queryKey: ['chartData', normalizedTokenA?.address, normalizedTokenB?.address, normalizedTokenA?.chainId, pairAddressQuery.data],
     queryFn: async (): Promise<PricePoint[]> => {
       const chainId = normalizedTokenA?.chainId || normalizedTokenB?.chainId || CHAIN_IDS.KALYCHAIN;
       const pairAddress = pairAddressQuery.data;
@@ -147,11 +149,8 @@ export function useChartData({ tokenA, tokenB, enabled = true, refetchInterval, 
         return fetchGeckoTerminalData(chainId, normalizedTokenA!, normalizedTokenB!, tokenA!, tokenB!, pairAddress ?? null);
       }
 
-      // Use subgraph for KalyChain
-      if (protocolVersion === 'v3') {
-        return fetchV3SubgraphData(chainId, normalizedTokenA!, normalizedTokenB!, pairAddress ?? null);
-      }
-      return fetchSubgraphData(chainId, normalizedTokenA!, normalizedTokenB!, pairAddress ?? null);
+      // KalyChain-family chains: V3 subgraph only.
+      return fetchV3SubgraphData(chainId, normalizedTokenA!, normalizedTokenB!, pairAddress ?? null);
     },
     enabled: enabled && hasValidTokens,
     staleTime: 30 * 1000, // 30 seconds
@@ -220,72 +219,6 @@ async function fetchGeckoTerminalData(
   logger.debug('GeckoTerminal price orientation:', { shouldInvert, isTokenABase, isTokenAQuote });
 
   return convertGeckoTerminalToChartData(ohlcvList, shouldInvert);
-}
-
-// Subgraph data fetcher for KalyChain
-async function fetchSubgraphData(
-  chainId: number,
-  normalizedTokenA: Token,
-  normalizedTokenB: Token,
-  pairAddress: string | null
-): Promise<PricePoint[]> {
-  logger.debug('Using subgraph for KalyChain');
-
-  if (!pairAddress) {
-    throw new Error('No liquidity pool exists for this token pair');
-  }
-
-  const [hourData, pairData] = await Promise.all([
-    getPairHourData(pairAddress.toLowerCase(), 168, 0, chainId),
-    getPairData(pairAddress.toLowerCase(), chainId)
-  ]);
-
-  if (!hourData || !pairData || hourData.length === 0) {
-    throw new Error('Chart data not available - pair not indexed in subgraph yet');
-  }
-
-  const pairInfo = pairData;
-
-  // Convert hourly data to OHLCV format
-  const historicalData: PricePoint[] = hourData
-    .map((hour: any) => {
-      const reserve0 = parseFloat(hour.reserve0 || '0');
-      const reserve1 = parseFloat(hour.reserve1 || '0');
-      const volume = parseFloat(hour.hourlyVolumeUSD || '0');
-
-      if (reserve0 <= 0 || reserve1 <= 0) return null;
-
-      // Use centralized price calculation utility
-      const tokenAAddress = getEffectiveAddress(normalizedTokenA);
-      const price = calculatePriceFromReservesRaw(tokenAAddress, {
-        token0: { id: pairInfo?.token0?.id || '' },
-        token1: { id: pairInfo?.token1?.id || '' },
-        reserve0: hour.reserve0,
-        reserve1: hour.reserve1,
-      });
-
-      return {
-        time: parseInt(hour.hourStartUnix),
-        open: price,
-        high: price * 1.005,
-        low: price * 0.995,
-        close: price,
-        volume
-      };
-    })
-    .filter((point: PricePoint | null): point is PricePoint => point !== null && point.close > 0)
-    .sort((a: PricePoint, b: PricePoint) => a.time - b.time);
-
-  // Deduplicate by timestamp
-  const deduplicatedData = Array.from(
-    historicalData.reduce((map, point) => {
-      map.set(point.time, point);
-      return map;
-    }, new Map<number, PricePoint>()).values()
-  );
-
-  logger.debug(`Processed ${deduplicatedData.length} historical price points from subgraph`);
-  return deduplicatedData;
 }
 
 // V3 Subgraph data fetcher

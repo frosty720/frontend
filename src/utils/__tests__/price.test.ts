@@ -10,7 +10,7 @@ import {
 import { Token } from '@/config/dex/types'
 
 // Mock token factory
-const createToken = (address: string, symbol: string, chainId = 3888): Token => ({
+const createToken = (address: string, symbol: string, chainId = 3890): Token => ({
   address,
   symbol,
   name: symbol,
@@ -305,7 +305,6 @@ describe('SECURITY: Address-based token identification', () => {
 
     // Non-stablecoin addresses should return false
     expect(isStablecoinAddress(MAINNET_CONTRACTS.WKLC)).toBe(false)
-    expect(isStablecoinAddress(MAINNET_CONTRACTS.KSWAP)).toBe(false)
     expect(isStablecoinAddress('0x0000000000000000000000000000000000000000')).toBe(false)
 
     // Random address should return false

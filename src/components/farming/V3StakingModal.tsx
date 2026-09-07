@@ -9,12 +9,11 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { AlertCircle, CheckCircle, Clock, Zap, Loader2, ChevronDown } from 'lucide-react'
 import { useV3Staking } from '@/hooks/v3/useV3Staking'
-import { useAccount, usePublicClient, useChainId } from 'wagmi'
-import { useActiveAccount, useActiveWalletChain } from 'thirdweb/react'
+import { useAccount, usePublicClient } from 'wagmi'
 import { V3NonfungiblePositionManagerABI } from '@/config/abis'
 import { getV3Config } from '@/config/dex/v3-config'
-import { DEFAULT_CHAIN_ID } from '@/config/contracts'
 import type { V3Incentive } from '@/services/dex/v3-staking-types'
+import { useResolvedChainId } from '@/hooks/useResolvedChainId';
 
 interface V3Position {
     tokenId: bigint;
@@ -70,15 +69,7 @@ export default function V3StakingModal({
     const [isLoadingPositions, setIsLoadingPositions] = useState(false)
     const [positionError, setPositionError] = useState<string | null>(null)
 
-    // Resolve chain: Thirdweb in-app wallet > wagmi connected chain > DEFAULT_CHAIN_ID.
-    // Was hardcoded to KALYCHAIN_TESTNET during V3 testing.
-    const thirdwebAccount = useActiveAccount()
-    const thirdwebChain = useActiveWalletChain()
-    const wagmiChainId = useChainId()
-    const chainId =
-        (thirdwebAccount ? thirdwebChain?.id : undefined) ||
-        wagmiChainId ||
-        DEFAULT_CHAIN_ID
+    const chainId = useResolvedChainId()
     const { depositAndStake } = useV3Staking(chainId)
     const { address } = useAccount()
     const publicClient = usePublicClient({ chainId })

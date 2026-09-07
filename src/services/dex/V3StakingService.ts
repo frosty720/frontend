@@ -3,7 +3,7 @@
  * Handles incentive creation, NFT deposit/stake, unstake/withdraw, and reward claims
  */
 
-import { CHAIN_IDS, getChainTransport, kalychain, kalychainTestnet } from '@/config/chains';
+import { CHAIN_IDS, getChainTransport, getChainById, kalychain } from '@/config/chains';
 import { getV3Config, V3DexConfig } from '@/config/dex/v3-config';
 import { V3StakerABI, V3NonfungiblePositionManagerABI, ERC20ABI } from '@/config/abis';
 import { dexLogger as logger } from '@/lib/logger';
@@ -14,6 +14,8 @@ import type {
     V3Deposit,
     CreateIncentiveParams,
 } from './v3-staking-types';
+import { kalyFeeOverrides } from '@/config/gas';
+import { assertTxSucceeded } from '@/utils/transactions';
 
 /**
  * V3 Staking Service for managing liquidity mining incentives
@@ -35,7 +37,10 @@ export class V3StakingService {
         this.stakerABI = V3StakerABI;
         this.positionManagerABI = V3NonfungiblePositionManagerABI;
 
-        const chain = chainId === CHAIN_IDS.KALYCHAIN_TESTNET ? kalychainTestnet : kalychain;
+        // Resolve the real chain definition. This used to be a two-way ternary that sent
+        // every non-testnet chain to the 3888 mainnet def, so on KMT (3890) the public
+        // client carried the wrong chain id while talking to the 3890 transport.
+        const chain = getChainById(chainId) ?? kalychain;
 
         this.publicClient = createPublicClient({
             chain,
@@ -150,6 +155,9 @@ export class V3StakingService {
 
         // Step 1: Approve the staker contract to spend reward tokens
         const approveHash = await walletClient.writeContract({
+            // KalyChain advertises a ~0 priority fee; without this the wallet builds
+            // the tx below the 21 gwei inclusion floor. No-op on other chains.
+            ...kalyFeeOverrides(walletClient.chain?.id),
             address: params.rewardToken as `0x${string}`,
             abi: ERC20ABI,
             functionName: 'approve',
@@ -157,7 +165,7 @@ export class V3StakingService {
         } as any);
 
         // Wait for approval to be mined
-        await this.publicClient.waitForTransactionReceipt({ hash: approveHash });
+        await assertTxSucceeded(this.publicClient, approveHash);
 
         logger.debug('V3StakingService: Creating incentive', {
             pool: params.pool,
@@ -177,6 +185,9 @@ export class V3StakingService {
 
         // eslint-disable-next-line @typescript-eslint/no-explicit-any -- dynamic ABI from config
         const hash = await walletClient.writeContract({
+            // KalyChain advertises a ~0 priority fee; without this the wallet builds
+            // the tx below the 21 gwei inclusion floor. No-op on other chains.
+            ...kalyFeeOverrides(walletClient.chain?.id),
             address: this.stakerAddress as `0x${string}`,
             abi: this.stakerABI,
             functionName: 'createIncentive',
@@ -194,6 +205,9 @@ export class V3StakingService {
 
         // eslint-disable-next-line @typescript-eslint/no-explicit-any -- dynamic ABI from config
         const hash = await walletClient.writeContract({
+            // KalyChain advertises a ~0 priority fee; without this the wallet builds
+            // the tx below the 21 gwei inclusion floor. No-op on other chains.
+            ...kalyFeeOverrides(walletClient.chain?.id),
             address: this.stakerAddress as `0x${string}`,
             abi: this.stakerABI,
             functionName: 'endIncentive',
@@ -216,6 +230,9 @@ export class V3StakingService {
         // safeTransferFrom(owner, stakerAddress, tokenId)
         // eslint-disable-next-line @typescript-eslint/no-explicit-any -- dynamic ABI from config
         const hash = await walletClient.writeContract({
+            // KalyChain advertises a ~0 priority fee; without this the wallet builds
+            // the tx below the 21 gwei inclusion floor. No-op on other chains.
+            ...kalyFeeOverrides(walletClient.chain?.id),
             address: this.positionManagerAddress as `0x${string}`,
             abi: this.positionManagerABI,
             functionName: 'safeTransferFrom',
@@ -242,6 +259,9 @@ export class V3StakingService {
 
         // eslint-disable-next-line @typescript-eslint/no-explicit-any -- dynamic ABI from config
         const hash = await walletClient.writeContract({
+            // KalyChain advertises a ~0 priority fee; without this the wallet builds
+            // the tx below the 21 gwei inclusion floor. No-op on other chains.
+            ...kalyFeeOverrides(walletClient.chain?.id),
             address: this.stakerAddress as `0x${string}`,
             abi: this.stakerABI,
             functionName: 'stakeToken',
@@ -267,6 +287,9 @@ export class V3StakingService {
 
         // eslint-disable-next-line @typescript-eslint/no-explicit-any -- dynamic ABI from config
         const hash = await walletClient.writeContract({
+            // KalyChain advertises a ~0 priority fee; without this the wallet builds
+            // the tx below the 21 gwei inclusion floor. No-op on other chains.
+            ...kalyFeeOverrides(walletClient.chain?.id),
             address: this.stakerAddress as `0x${string}`,
             abi: this.stakerABI,
             functionName: 'unstakeToken',
@@ -292,6 +315,9 @@ export class V3StakingService {
 
         // eslint-disable-next-line @typescript-eslint/no-explicit-any -- dynamic ABI from config
         const hash = await walletClient.writeContract({
+            // KalyChain advertises a ~0 priority fee; without this the wallet builds
+            // the tx below the 21 gwei inclusion floor. No-op on other chains.
+            ...kalyFeeOverrides(walletClient.chain?.id),
             address: this.stakerAddress as `0x${string}`,
             abi: this.stakerABI,
             functionName: 'withdrawToken',
@@ -318,6 +344,9 @@ export class V3StakingService {
 
         // eslint-disable-next-line @typescript-eslint/no-explicit-any -- dynamic ABI from config
         const hash = await walletClient.writeContract({
+            // KalyChain advertises a ~0 priority fee; without this the wallet builds
+            // the tx below the 21 gwei inclusion floor. No-op on other chains.
+            ...kalyFeeOverrides(walletClient.chain?.id),
             address: this.stakerAddress as `0x${string}`,
             abi: this.stakerABI,
             functionName: 'claimReward',

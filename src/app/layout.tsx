@@ -3,7 +3,7 @@ import localFont from 'next/font/local';
 import './globals.css';
 import { WalletProviders } from '@/components/providers/WalletProviders';
 import { ToastProvider } from '@/components/ui/toast';
-import { ProtocolVersionProvider } from '@/contexts/ProtocolVersionContext';
+import { CutoverNotice } from '@/components/wallet/CutoverNotice';
 
 const inter = localFont({
   src: [
@@ -43,9 +43,8 @@ export default function RootLayout({
       <body className={`${inter.className}`} suppressHydrationWarning={true}>
         <ToastProvider>
           <WalletProviders>
-            <ProtocolVersionProvider>
               {children}
-            </ProtocolVersionProvider>
+              <CutoverNotice />
           </WalletProviders>
         </ToastProvider>
       </body>

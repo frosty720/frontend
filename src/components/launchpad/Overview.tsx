@@ -25,6 +25,7 @@ import {
   Link as LinkIcon
 } from 'lucide-react';
 import Link from 'next/link';
+import { formatAddress } from '@/config/contracts';
 
 interface LaunchpadProject {
   id: string;
@@ -37,10 +38,7 @@ interface LaunchpadProject {
   presaleStart: string;
   presaleEnd: string;
   createdAt: string;
-  user: {
-    id: string;
-    username: string;
-  };
+  ownerAddress: string;
   // Properties added during mapping
   type: 'presale' | 'fairlaunch';
   startTime: string;
@@ -172,10 +170,7 @@ export default function Overview({ onSwitchToPresale }: OverviewProps) {
                 blockNumber
                 deployedAt
                 createdAt
-                user {
-                  id
-                  username
-                }
+                ownerAddress
               }
               confirmedFairlaunches {
                 id
@@ -200,10 +195,7 @@ export default function Overview({ onSwitchToPresale }: OverviewProps) {
                 blockNumber
                 deployedAt
                 createdAt
-                user {
-                  id
-                  username
-                }
+                ownerAddress
               }
             }
           `
@@ -468,7 +460,7 @@ export default function Overview({ onSwitchToPresale }: OverviewProps) {
                     <div className="flex items-start justify-between">
                       <div>
                         <h4 className="text-lg font-semibold text-white">{project.name}</h4>
-                        <p className="text-sm text-gray-400">by {project.user.username}</p>
+                        <p className="text-sm text-gray-400">by {formatAddress(project.ownerAddress)}</p>
                       </div>
                       <div className="flex items-center gap-2">
                         <Badge className={`${

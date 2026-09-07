@@ -44,7 +44,6 @@ export interface ProjectData {
   type?: 'presale' | 'fairlaunch'
 
   // V3-specific fields (populated when dexVersion is 'v3')
-  dexVersion?: 'v2' | 'v3'
   v3PoolAddress?: string
   v3PositionTokenId?: number
   v3PoolFee?: number
@@ -193,7 +192,6 @@ export function useProjectDetails(contractAddress: string): UseProjectDetailsRet
                 presaleEnd
                 lpLockDuration
                 lpRecipient
-                dexVersion
                 contractAddress
               }
             }
@@ -237,7 +235,6 @@ export function useProjectDetails(contractAddress: string): UseProjectDetailsRet
                 fairlaunchEnd
                 isWhitelist
                 referrer
-                dexVersion
                 contractAddress
               }
             }
@@ -268,7 +265,7 @@ export function useProjectDetails(contractAddress: string): UseProjectDetailsRet
       return null // Not found in either table
     }
 
-    const fetchContractData = async (address: string, type: 'presale' | 'fairlaunch', dexVersion: 'v2' | 'v3' = 'v2') => {
+    const fetchContractData = async (address: string, type: 'presale' | 'fairlaunch') => {
       try {
         // Skip if wagmi not ready
         if (!publicClient || !isHydrated) {
@@ -276,9 +273,7 @@ export function useProjectDetails(contractAddress: string): UseProjectDetailsRet
           return null
         }
 
-        const abi = dexVersion === 'v3'
-          ? (type === 'presale' ? PRESALE_V3_ABI : FAIRLAUNCH_V3_ABI)
-          : (type === 'presale' ? PRESALE_ABI : FAIRLAUNCH_ABI)
+        const abi = type === 'presale' ? PRESALE_V3_ABI : FAIRLAUNCH_V3_ABI
 
         // Use Promise.all for efficient parallel contract reads
         const contractReads = await Promise.all([
@@ -484,32 +479,17 @@ export function useProjectDetails(contractAddress: string): UseProjectDetailsRet
         // Use project type from database if available, otherwise detect from contract
         const projectType = dbData.type || await detectProjectType(currentAddress)
 
-        // Detect dex version: prefer DB field, fallback to on-chain detection
-        let dexVersion: 'v2' | 'v3' = (dbData.dexVersion === 'v3') ? 'v3' : 'v2'
-        if (!dbData.dexVersion && publicClient && isHydrated) {
-          try {
-            const v3Abi = projectType === 'presale' ? PRESALE_V3_ABI : FAIRLAUNCH_V3_ABI
-            await publicClient.readContract({
-              address: currentAddress as `0x${string}`,
-              abi: v3Abi,
-              functionName: 'v3PoolAddress',
-            })
-            dexVersion = 'v3'
-          } catch {
-            dexVersion = 'v2'
-          }
-        }
+        // Only the V3 launchpad exists on KalyChain, so there is nothing to detect —
+        // the old on-chain probe told V2 and V3 presales apart.
 
         // Fetch contract data (replaces broken subgraph)
-        const contractAggregateData = await fetchContractData(currentAddress, projectType, dexVersion)
+        const contractAggregateData = await fetchContractData(currentAddress, projectType)
 
         // Fetch live contract data
         let contractData: Record<string, any> = {}
         if (publicClient && isHydrated) {
           try {
-            const abi = dexVersion === 'v3'
-              ? (projectType === 'presale' ? PRESALE_V3_ABI : FAIRLAUNCH_V3_ABI)
-              : (projectType === 'presale' ? PRESALE_ABI : FAIRLAUNCH_ABI)
+            const abi = projectType === 'presale' ? PRESALE_V3_ABI : FAIRLAUNCH_V3_ABI
 
             // Get basic contract info and status
             const [contractStatus, owner, finalized] = await Promise.all([
@@ -541,7 +521,7 @@ export function useProjectDetails(contractAddress: string): UseProjectDetailsRet
             }
 
             // Read V3-specific state when detected
-            if (dexVersion === 'v3') {
+            if (true) {
               try {
                 const v3Abi = projectType === 'presale' ? PRESALE_V3_ABI : FAIRLAUNCH_V3_ABI
                 const [poolAddress, tokenId, poolFee] = await Promise.all([
@@ -580,7 +560,6 @@ export function useProjectDetails(contractAddress: string): UseProjectDetailsRet
         const mergedData: ProjectData = {
           ...dbData,
           type: projectType,
-          dexVersion,
           ...computedFields,
           ...contractData
         }

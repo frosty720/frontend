@@ -8,7 +8,6 @@ class TestV3Service extends BaseV3Service {
     getName(): string { return 'Test'; }
     getChainId(): number { return 1; }
     async executeSwap(): Promise<string> { return '0x'; }
-    async migrateLiquidity(): Promise<string> { return '0x'; }
     async createAndInitializePool(): Promise<string> { return '0x'; }
 }
 

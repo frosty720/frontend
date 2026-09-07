@@ -19,8 +19,12 @@ import { arbitrum, bsc, polygon } from 'viem/chains'
 // CHAIN IDs - Use these constants throughout the app
 // ============================================================================
 export const CHAIN_IDS = {
-  KALYCHAIN: 3888,
-  KALYCHAIN_TESTNET: 3889,
+  // KalyChain relaunched on chain id 3890 with KMT as its native token (2026-08). It is
+  // the same chain and the same brand — only the id and the native token changed, so
+  // there is exactly ONE KalyChain here, not a "KMT chain" beside an old one.
+  // The 3888 fleet and its contracts are gone; the testnet (3889) fleet became 3890,
+  // which is why the RPC/explorer hostnames still say "testnet" until DNS cuts over.
+  KALYCHAIN: 3890,
   ARBITRUM: 42161,
   BSC: 56,
   POLYGON: 137,
@@ -29,75 +33,45 @@ export const CHAIN_IDS = {
 export type ChainIdValue = typeof CHAIN_IDS[keyof typeof CHAIN_IDS];
 
 // ============================================================================
+// KALYCHAIN HOSTNAMES — env-only cut-over
+// ============================================================================
+// The hostnames say "testnet" until DNS cuts over. CUT DAY: set these two env vars on the
+// server and restart — nothing else in the frontend hardcodes a KalyChain host.
+export const KALYCHAIN_RPC_URL =
+  process.env.NEXT_PUBLIC_KALYCHAIN_RPC_URL || 'https://mainrpc.kalychain.io/rpc';
+export const KALYCHAIN_EXPLORER_URL =
+  process.env.NEXT_PUBLIC_KALYCHAIN_EXPLORER_URL || 'https://testnet.kalyscan.io';
+
+// ============================================================================
 // VIEM CHAIN DEFINITIONS
 // ============================================================================
 
-// KalyChain Mainnet Configuration
+// KalyChain (relaunched on 3890, native token KMT)
 export const kalychain = defineChain({
-  id: 3888,
+  id: CHAIN_IDS.KALYCHAIN,
   name: 'KalyChain',
   nativeCurrency: {
     decimals: 18,
-    name: 'KalyChain',
-    symbol: 'KLC',
+    name: 'KalyChain Monetary Token',
+    symbol: 'KMT',
   },
   rpcUrls: {
-    default: {
-      http: ['https://rpc.kalychain.io/rpc', 'https://rpc2.kalychain.io/rpc'],
-    },
-    public: {
-      http: ['https://rpc.kalychain.io/rpc', 'https://rpc2.kalychain.io/rpc'],
-    },
+    default: { http: [KALYCHAIN_RPC_URL] },
+    public: { http: [KALYCHAIN_RPC_URL] },
   },
   blockExplorers: {
     default: {
-      name: 'KalyChain Explorer',
-      url: 'https://kalyscan.io',
+      name: 'KalyScan',
+      url: KALYCHAIN_EXPLORER_URL,
     },
   },
-  contracts: {
-    // Add multicall contract if available
-    // multicall3: {
-    //   address: '0x...',
-    //   blockCreated: 0,
-    // },
-  },
-  // Add custom icon for Rainbow Kit
-  iconUrl: '/tokens/klc.png',
-})
-
-// KalyChain Testnet Configuration (for future use)
-export const kalychainTestnet = defineChain({
-  id: 3889, // Assuming testnet chain ID
-  name: 'KalyChain Testnet',
-  nativeCurrency: {
-    decimals: 18,
-    name: 'KalyChain',
-    symbol: 'KLC',
-  },
-  rpcUrls: {
-    default: {
-      http: ['https://testnetrpc.kalychain.io/rpc'],
-    },
-    public: {
-      http: ['https://testnetrpc.kalychain.io/rpc'],
-    },
-  },
-  blockExplorers: {
-    default: {
-      name: 'KalyChain Testnet Explorer',
-      url: 'https://testnet.kalyscan.io', // Update with actual testnet explorer
-    },
-  },
-  testnet: true,
-  // Add custom icon for Rainbow Kit
+  contracts: {},
   iconUrl: '/tokens/klc.png',
 })
 
 // Bridge-supported chains - Required for bridge functionality
 export const supportedChains = [
   kalychain,
-  kalychainTestnet, // Enabled for V3 testing
   arbitrum,
   bsc,
   polygon,
@@ -146,13 +120,6 @@ export const CHAIN_CONFIG = {
     faucetUrl: null,
     bridgeUrl: null,
   },
-  [kalychainTestnet.id]: {
-    name: 'KalyChain Testnet',
-    shortName: 'KLC-T',
-    isTestnet: true,
-    faucetUrl: 'https://faucet.kalychain.io', // Update with actual faucet URL
-    bridgeUrl: null,
-  },
 } as const
 
 // Export types for TypeScript
@@ -186,8 +153,7 @@ const PUBLIC_RPC_FALLBACK: Record<number, string> = {
 };
 
 export const RPC_URLS: Record<number, string> = {
-  [CHAIN_IDS.KALYCHAIN]: process.env.NEXT_PUBLIC_KALYCHAIN_RPC_URL || 'https://rpc.kalychain.io/rpc',
-  [CHAIN_IDS.KALYCHAIN_TESTNET]: process.env.NEXT_PUBLIC_KALYCHAIN_TESTNET_RPC_URL || 'https://testnetrpc.kalychain.io/rpc',
+  [CHAIN_IDS.KALYCHAIN]: KALYCHAIN_RPC_URL,
   [CHAIN_IDS.ARBITRUM]: process.env.NEXT_PUBLIC_ARBITRUM_RPC_URL || thirdwebRpc(CHAIN_IDS.ARBITRUM) || PUBLIC_RPC_FALLBACK[CHAIN_IDS.ARBITRUM],
   [CHAIN_IDS.BSC]: process.env.NEXT_PUBLIC_BSC_RPC_URL || thirdwebRpc(CHAIN_IDS.BSC) || PUBLIC_RPC_FALLBACK[CHAIN_IDS.BSC],
   [CHAIN_IDS.POLYGON]: process.env.NEXT_PUBLIC_POLYGON_RPC_URL || thirdwebRpc(CHAIN_IDS.POLYGON) || PUBLIC_RPC_FALLBACK[CHAIN_IDS.POLYGON],
@@ -204,13 +170,7 @@ export const RPC_URLS: Record<number, string> = {
  * env value or the thirdweb client ID is absent.
  */
 export const RPC_URLS_ALL: Record<number, string[]> = {
-  [CHAIN_IDS.KALYCHAIN]: [
-    process.env.NEXT_PUBLIC_KALYCHAIN_RPC_URL || 'https://rpc.kalychain.io/rpc',
-    'https://rpc2.kalychain.io/rpc',
-  ],
-  [CHAIN_IDS.KALYCHAIN_TESTNET]: [
-    process.env.NEXT_PUBLIC_KALYCHAIN_TESTNET_RPC_URL || 'https://testnetrpc.kalychain.io/rpc',
-  ],
+  [CHAIN_IDS.KALYCHAIN]: [KALYCHAIN_RPC_URL],
   [CHAIN_IDS.ARBITRUM]: [
     process.env.NEXT_PUBLIC_ARBITRUM_RPC_URL || thirdwebRpc(CHAIN_IDS.ARBITRUM),
     PUBLIC_RPC_FALLBACK[CHAIN_IDS.ARBITRUM],
@@ -243,21 +203,12 @@ export interface ChainMetadata {
 export const CHAIN_METADATA: Record<number, ChainMetadata> = {
   [CHAIN_IDS.KALYCHAIN]: {
     name: 'KalyChain',
-    shortName: 'KLC',
-    symbol: 'KLC',
+    shortName: 'KMT',
+    symbol: 'KMT',
     logo: '/tokens/klc.png',
-    explorer: 'https://kalyscan.io',
-    explorerApi: 'https://kalyscan.io/api',
+    explorer: KALYCHAIN_EXPLORER_URL,
+    explorerApi: `${KALYCHAIN_EXPLORER_URL}/api`,
     isTestnet: false,
-  },
-  [CHAIN_IDS.KALYCHAIN_TESTNET]: {
-    name: 'KalyChain Testnet',
-    shortName: 'KLC-T',
-    symbol: 'KLC',
-    logo: '/tokens/klc.png',
-    explorer: 'https://testnet.kalyscan.io',
-    isTestnet: true,
-    faucetUrl: 'https://faucet.kalychain.io',
   },
   [CHAIN_IDS.ARBITRUM]: {
     name: 'Arbitrum One',

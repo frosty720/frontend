@@ -34,7 +34,7 @@ function pickSessionRpc(chainId: number): string {
   return urls[Math.floor(Math.random() * urls.length)]
 }
 
-// KalyChain (3888/3889) isn't in thirdweb's public chain registry, so it can't
+// KalyChain (3890) isn't in thirdweb's public chain registry, so it can't
 // resolve an icon or native-currency symbol by id the way it does for Arbitrum/
 // BSC. Supply them explicitly so the in-app-wallet network selector renders the
 // KalyChain logo instead of a broken-image placeholder.
@@ -45,17 +45,12 @@ const KLC_ICON = {
   format: 'png',
 }
 
+// KalyChain (3890). Native currency is KMT, not KLC — without this the thirdweb in-app
+// wallet labels balances with the pre-relaunch symbol.
 export const twKalychain = defineChain({
   id: CHAIN_IDS.KALYCHAIN,
   rpc: pickSessionRpc(CHAIN_IDS.KALYCHAIN),
-  nativeCurrency: { name: 'KalyCoin', symbol: 'KLC', decimals: 18 },
-  icon: KLC_ICON,
-})
-
-export const twKalychainTestnet = defineChain({
-  id: CHAIN_IDS.KALYCHAIN_TESTNET,
-  rpc: pickSessionRpc(CHAIN_IDS.KALYCHAIN_TESTNET),
-  nativeCurrency: { name: 'KalyCoin', symbol: 'KLC', decimals: 18 },
+  nativeCurrency: { name: 'KalyChain Monetary Token', symbol: 'KMT', decimals: 18 },
   icon: KLC_ICON,
 })
 
@@ -76,7 +71,6 @@ export const twPolygon = defineChain({
 
 export const thirdwebChains = [
   twKalychain,
-  twKalychainTestnet,
   twArbitrum,
   twBsc,
   twPolygon,

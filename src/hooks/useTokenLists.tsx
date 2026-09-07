@@ -12,9 +12,9 @@ import { useState, useEffect, useCallback } from 'react';
 import { tokenListService } from '@/services/tokenListService';
 import { Token } from '@/config/dex/types';
 import { KALYCHAIN_TOKENS } from '@/config/dex/tokens/kalychain';
-import { KALYCHAIN_TESTNET_TOKENS } from '@/config/dex/tokens/kalychain-testnet';
 import { BSC_TOKENS } from '@/config/dex/tokens/bsc';
 import { ARBITRUM_TOKENS } from '@/config/dex/tokens/arbitrum';
+
 import { logger } from '@/lib/logger';
 
 // Enhanced token interface with additional metadata from subgraph
@@ -51,6 +51,8 @@ export interface UseTokenListsOptions {
 function getBundledTokens(chainId: number): Token[] {
   if (chainId === 56) return BSC_TOKENS.filter(t => t.chainId === 56);
   if (chainId === 42161) return ARBITRUM_TOKENS.filter(t => t.chainId === 42161);
+  // KMT (3890) has no remote token list published yet, so the bundled list IS the list.
+  if (chainId === CHAIN_IDS.KALYCHAIN) return KALYCHAIN_TOKENS.filter((t: Token) => t.chainId === CHAIN_IDS.KALYCHAIN);
   return [];
 }
 
@@ -212,20 +214,20 @@ export function useTokenLists(options: UseTokenListsOptions = {}): UseTokenLists
             chainId: CHAIN_IDS.KALYCHAIN,
             address: '0x0000000000000000000000000000000000000000',
             decimals: 18,
-            name: 'KalyCoin',
-            symbol: 'KLC',
+            name: 'KalyChain Monetary Token',
+            symbol: 'KMT',
             logoURI: '/tokens/klc.png',
             isNative: true
           };
           break;
 
-        case CHAIN_IDS.KALYCHAIN_TESTNET: // KalyChain Testnet
+        case CHAIN_IDS.KALYCHAIN: // KalyChain relaunch chain
           nativeToken = {
-            chainId: CHAIN_IDS.KALYCHAIN_TESTNET,
+            chainId: CHAIN_IDS.KALYCHAIN,
             address: '0x0000000000000000000000000000000000000000',
             decimals: 18,
-            name: 'KalyCoin',
-            symbol: 'KLC',
+            name: 'KalyChain Monetary Token',
+            symbol: 'KMT',
             logoURI: '/tokens/klc.png',
             isNative: true
           };
@@ -287,9 +289,6 @@ export function useTokenLists(options: UseTokenListsOptions = {}): UseTokenLists
       if (chainId === CHAIN_IDS.KALYCHAIN) {
         tokenListTokens = KALYCHAIN_TOKENS.filter(t => t.chainId === CHAIN_IDS.KALYCHAIN);
         logger.debug(`Using local KalyChain token list: ${tokenListTokens.length} tokens`);
-      } else if (chainId === CHAIN_IDS.KALYCHAIN_TESTNET) {
-        tokenListTokens = KALYCHAIN_TESTNET_TOKENS.filter(t => t.chainId === CHAIN_IDS.KALYCHAIN_TESTNET);
-        logger.debug(`Using local KalyChain Testnet token list: ${tokenListTokens.length} tokens`);
       } else {
         // For other chains, fetch the official remote list first.
         tokenListTokens = await tokenListService.getTokensForChain(chainId);
@@ -329,6 +328,8 @@ export function useTokenLists(options: UseTokenListsOptions = {}): UseTokenLists
           fallbackTokens = KALYCHAIN_TOKENS.filter(t => t.chainId === CHAIN_IDS.KALYCHAIN);
           logger.warn(`Using local KalyChain tokens as fallback: ${fallbackTokens.length} tokens`);
         } else {
+          // NOTE: never fall back to KALYCHAIN_TOKENS here — those are 3888 addresses and
+          // would put wKLC/KSWAP in the selector on a chain where they do not exist.
           fallbackTokens = getBundledTokens(chainId);
           logger.warn(`Using ${fallbackTokens.length} bundled fallback tokens for chain ${chainId}`);
         }

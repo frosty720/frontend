@@ -24,16 +24,23 @@ import {
   getContractAddress,
   DEFAULT_CHAIN_ID,
   CONTRACT_FEES,
-  MAINNET_CONTRACTS
+  MAINNET_CONTRACTS,
 } from '@/config/contracts';
 import {
   STANDARD_TOKEN_FACTORY_ABI,
-  LIQUIDITY_GENERATOR_TOKEN_FACTORY_ABI
+  LIQUIDITY_GENERATOR_TOKEN_FACTORY_ABI,
+  REWARDS_TOKEN_FACTORY_ABI
 } from '@/config/abis';
+import { getTokenList, getNativeToken } from '@/config/dex';
+import { CHAIN_METADATA, KALYCHAIN_EXPLORER_URL } from '@/config/chains';
+import RewardsTokenManager from './RewardsTokenManager';
 
 // Wagmi imports for contract interaction
 import { useAccount, usePublicClient, useWalletClient } from 'wagmi';
-import { parseEther, getContract } from 'viem';
+import { parseEther, parseUnits, getContract } from 'viem';
+import { kalyFeeOverrides } from '@/config/gas';
+import { assertTxSucceeded } from '@/utils/transactions';
+import { useResolvedChainId } from '@/hooks/useResolvedChainId';
 
 interface TokenFormData {
   name: string;
@@ -46,7 +53,43 @@ interface TokenFormData {
   taxFeeBps?: string;
   liquidityFeeBps?: string;
   charityBps?: string;
+  // Rewards token fields (RewardsTokenFactory)
+  rewardToken?: string;
+  minRewardBalance?: string;
 }
+
+/**
+ * The token types this UI can create, and what each needs.
+ *
+ * `rewards` is the V3-safe replacement for the BabyToken / BuybackBaby family: those
+ * funded dividends with a transfer fee, which a Uniswap V3 pool structurally rejects
+ * (proved on a 3890 fork — buys succeed, sells revert, an accidental honeypot). It is
+ * untaxed and funded by explicit depositRewards() calls instead.
+ *
+ * The old `liquidity-generator` type is gone with V2: it skimmed a transfer fee to fund
+ * auto-liquidity through a V2 router, and KalyChain has neither.
+ */
+const TOKEN_TYPES = {
+  standard: {
+    label: 'Standard Token',
+    addressKey: 'STANDARD_TOKEN_FACTORY' as const,
+    abi: STANDARD_TOKEN_FACTORY_ABI,
+    gas: BigInt(2000000),
+    // TokenCreated(address indexed tokenAddress, address indexed creator, ...)
+    tokenAddressTopic: 1,
+  },
+  rewards: {
+    label: 'Rewards Token',
+    addressKey: 'REWARDS_TOKEN_FACTORY' as const,
+    abi: REWARDS_TOKEN_FACTORY_ABI,
+    gas: BigInt(6000000),
+    // TokenCreated(address indexed tokenAddress, address indexed creator,
+    //              address indexed rewardToken, ...) — token is topics[1], as standard
+    tokenAddressTopic: 1,
+  },
+} as const;
+
+type TokenType = keyof typeof TOKEN_TYPES;
 
 // Contract parameter interfaces
 interface StandardTokenParams {
@@ -73,7 +116,20 @@ export default function TokenCreator() {
   const publicClient = usePublicClient();
   const { data: walletClient } = useWalletClient();
 
-  const [activeTokenType, setActiveTokenType] = useState('standard');
+  const chainId = useResolvedChainId();
+  const nativeSymbol = getNativeToken(chainId)?.symbol ?? 'KLC';
+  // Tokens holders can be paid rewards in — the chain's own list, stablecoins first.
+  const rewardTokenOptions = getTokenList(chainId).filter((t) => !t.isNative);
+  const availableTokenTypes = Object.keys(TOKEN_TYPES) as TokenType[];
+
+  const [activeTokenType, setActiveTokenType] = useState<TokenType>('standard');
+
+  // A stale tab selection must not survive a chain switch onto a V3-only chain.
+  React.useEffect(() => {
+    if (!availableTokenTypes.includes(activeTokenType)) {
+      setActiveTokenType('standard');
+    }
+  }, [availableTokenTypes.join(','), activeTokenType]);
   const [formData, setFormData] = useState<TokenFormData>({
     name: '',
     symbol: '',
@@ -91,13 +147,8 @@ export default function TokenCreator() {
     if (!publicClient) return;
 
     try {
-      const factoryAddress = activeTokenType === 'standard'
-        ? getContractAddress('STANDARD_TOKEN_FACTORY', DEFAULT_CHAIN_ID)
-        : getContractAddress('LIQUIDITY_GENERATOR_TOKEN_FACTORY', DEFAULT_CHAIN_ID);
-
-      const factoryABI = activeTokenType === 'standard'
-        ? STANDARD_TOKEN_FACTORY_ABI
-        : LIQUIDITY_GENERATOR_TOKEN_FACTORY_ABI;
+      const factoryAddress = getContractAddress(TOKEN_TYPES[activeTokenType].addressKey, chainId);
+      const factoryABI = TOKEN_TYPES[activeTokenType].abi;
 
       const factoryContract = getContract({
         address: factoryAddress as `0x${string}`,
@@ -106,12 +157,12 @@ export default function TokenCreator() {
       });
 
       const fee = await factoryContract.read.flatFee([]);
-      const feeInKLC = parseFloat((Number(fee) / 1e18).toFixed(6));
-      setActualFee(feeInKLC.toString());
+      const feeInNative = parseFloat((Number(fee) / 1e18).toFixed(6));
+      setActualFee(feeInNative.toString());
     } catch (error) {
       launchpadLogger.warn('Failed to fetch actual fee from contract:', error);
       // Fallback to configured fee
-      setActualFee(activeTokenType === 'standard' ? CONTRACT_FEES.STANDARD_TOKEN : CONTRACT_FEES.LIQUIDITY_GENERATOR_TOKEN);
+      setActualFee(CONTRACT_FEES.STANDARD_TOKEN);
     }
   };
 
@@ -120,18 +171,7 @@ export default function TokenCreator() {
     if (publicClient) {
       fetchActualFee();
     }
-  }, [publicClient, activeTokenType]);
-
-  // Auto-populate router address for Liquidity Generator tokens
-  React.useEffect(() => {
-    if (activeTokenType === 'liquidity-generator' && !formData.router) {
-      const routerAddress = getContractAddress('ROUTER', DEFAULT_CHAIN_ID);
-      setFormData(prev => ({
-        ...prev,
-        router: routerAddress
-      }));
-    }
-  }, [activeTokenType]);
+  }, [publicClient, activeTokenType, chainId]);
 
   const handleInputChange = (field: keyof TokenFormData, value: string) => {
     setFormData(prev => ({
@@ -151,21 +191,13 @@ export default function TokenCreator() {
       return 'Decimals must be between 0 and 18';
     }
 
-    // Additional validation for LiquidityGeneratorToken
-    if (activeTokenType === 'liquidity-generator') {
-      if (!formData.router?.trim()) return 'Router address is required for Liquidity Generator tokens';
-      if (!formData.charity?.trim()) return 'Charity address is required for Liquidity Generator tokens';
-
-      const taxFee = Number(formData.taxFeeBps || 0);
-      const liquidityFee = Number(formData.liquidityFeeBps || 0);
-      const charityFee = Number(formData.charityBps || 0);
-
-      if (taxFee < 0 || taxFee > 2500) return 'Tax fee must be between 0 and 2500 BPS';
-      if (liquidityFee < 0 || liquidityFee > 2500) return 'Liquidity fee must be between 0 and 2500 BPS';
-      if (charityFee < 0 || charityFee > 2500) return 'Charity fee must be between 0 and 2500 BPS';
-
-      const totalFees = taxFee + liquidityFee + charityFee;
-      if (totalFees > 2500) return 'Total fees cannot exceed 2500 BPS (25%)';
+    if (activeTokenType === 'rewards') {
+      if (!formData.rewardToken?.trim()) return 'Reward token is required for Rewards tokens';
+      const min = Number(formData.minRewardBalance || 0);
+      if (isNaN(min) || min < 0) return 'Minimum balance to earn must be zero or greater';
+      if (min > Number(formData.totalSupply)) {
+        return 'Minimum balance to earn cannot exceed the total supply';
+      }
     }
 
     return null;
@@ -211,14 +243,17 @@ export default function TokenCreator() {
       setError(null);
       setCurrentStep('creating');
 
-      // Get contract parameters and addresses based on token type
-      const factoryAddress = activeTokenType === 'standard'
-        ? getContractAddress('STANDARD_TOKEN_FACTORY', DEFAULT_CHAIN_ID)
-        : getContractAddress('LIQUIDITY_GENERATOR_TOKEN_FACTORY', DEFAULT_CHAIN_ID);
+      // Factory for the selected type ON THE CONNECTED CHAIN. This used to be pinned to
+      // DEFAULT_CHAIN_ID, so creating a token while connected to any other chain sent
+      // the transaction at a mainnet address.
+      const factoryAddress = getContractAddress(TOKEN_TYPES[activeTokenType].addressKey, chainId);
+      const factoryABI = TOKEN_TYPES[activeTokenType].abi;
 
-      const factoryABI = activeTokenType === 'standard'
-        ? STANDARD_TOKEN_FACTORY_ABI
-        : LIQUIDITY_GENERATOR_TOKEN_FACTORY_ABI;
+      if (!factoryAddress) {
+        throw new Error(
+          `${TOKEN_TYPES[activeTokenType].label} is not deployed on this chain.`
+        );
+      }
 
       // Get actual fee from contract
       const factoryContract = getContract({
@@ -231,7 +266,7 @@ export default function TokenCreator() {
       const creationFee = contractFee as bigint;
 
       // Step 1: Create the token
-      launchpadLogger.debug(`🚀 Creating ${activeTokenType === 'standard' ? 'Standard' : 'Liquidity Generator'} Token:`, {
+      launchpadLogger.debug(`🚀 Creating ${TOKEN_TYPES[activeTokenType].label}:`, {
         address: factoryAddress,
         function: 'create',
         fee: `${(Number(creationFee) / 1e18).toFixed(6)} KLC`
@@ -239,11 +274,38 @@ export default function TokenCreator() {
 
       launchpadLogger.debug('📝 Deploying token contract...');
 
-      let hash: `0x${string}`;
+      let hash: `0x${string}` | undefined;
 
-      if (activeTokenType === 'standard') {
+      if (activeTokenType === 'rewards') {
+        const contractParams = formatStandardTokenParams();
+        const decimals = Number(formData.decimals);
+        // minimumTokenBalanceForDividends is in the NEW token's own decimals.
+        const minBalance = parseUnits(formData.minRewardBalance || '0', decimals);
+
+        hash = await walletClient.writeContract({
+          // KalyChain advertises a ~0 priority fee; without this the wallet builds
+          // the tx below the 21 gwei inclusion floor. No-op on other chains.
+          ...kalyFeeOverrides(walletClient.chain?.id),
+          address: factoryAddress as `0x${string}`,
+          abi: REWARDS_TOKEN_FACTORY_ABI,
+          functionName: 'create',
+          args: [
+            contractParams.name,
+            contractParams.symbol,
+            contractParams.decimals,
+            BigInt(contractParams.totalSupply),
+            formData.rewardToken as `0x${string}`,
+            minBalance,
+          ],
+          value: creationFee,
+          gas: TOKEN_TYPES.rewards.gas,
+        });
+      } else if (activeTokenType === 'standard') {
         const contractParams = formatStandardTokenParams();
         hash = await walletClient.writeContract({
+          // KalyChain advertises a ~0 priority fee; without this the wallet builds
+          // the tx below the 21 gwei inclusion floor. No-op on other chains.
+          ...kalyFeeOverrides(walletClient.chain?.id),
           address: factoryAddress as `0x${string}`,
           abi: STANDARD_TOKEN_FACTORY_ABI,
           functionName: 'create',
@@ -254,35 +316,15 @@ export default function TokenCreator() {
             BigInt(contractParams.totalSupply),
           ],
           value: creationFee,
-          gas: BigInt(2000000), // Gas limit for standard token
-        });
-      } else {
-        const contractParams = formatLiquidityGeneratorTokenParams();
-        const routerAddress = getContractAddress('ROUTER', DEFAULT_CHAIN_ID);
-
-        hash = await walletClient.writeContract({
-          address: factoryAddress as `0x${string}`,
-          abi: LIQUIDITY_GENERATOR_TOKEN_FACTORY_ABI,
-          functionName: 'create',
-          args: [
-            contractParams.name,
-            contractParams.symbol,
-            BigInt(contractParams.totalSupply),
-            routerAddress, // Use configured router address
-            contractParams.charity as `0x${string}`,
-            contractParams.taxFeeBps,
-            contractParams.liquidityFeeBps,
-            contractParams.charityBps,
-          ],
-          value: creationFee,
-          gas: BigInt(6500000), // Higher gas limit for liquidity generator token
+          gas: TOKEN_TYPES.standard.gas,
         });
       }
 
+      if (!hash) throw new Error('Token creation produced no transaction');
       launchpadLogger.debug(`📝 Transaction hash: ${hash}`);
       launchpadLogger.debug('⏳ Waiting for transaction confirmation...');
 
-      const receipt = await publicClient.waitForTransactionReceipt({ hash });
+      const receipt = await assertTxSucceeded(publicClient, hash, 'Token creation');
       launchpadLogger.debug(`✅ Transaction confirmed in block ${receipt.blockNumber}`);
 
       // Step 2: Parse token address from events
@@ -296,22 +338,17 @@ export default function TokenCreator() {
           if (log.topics.length >= 2) {
             // Check if this is a TokenCreated event by looking at the factory address
             if (log.address.toLowerCase() === factoryAddress.toLowerCase()) {
-              if (activeTokenType === 'standard') {
-                // For Standard Token: token address is in topics[1] (first indexed parameter)
-                const addressHex = log.topics[1];
-                if (addressHex && addressHex.length >= 42) {
-                  tokenAddress = `0x${addressHex.slice(-40)}`;
-                  launchpadLogger.debug(`Found standard token address from event: ${tokenAddress}`);
-                  break;
-                }
-              } else {
-                // For Liquidity Generator: token address is in topics[2] (second indexed parameter)
-                const addressHex = log.topics[2];
-                if (addressHex && addressHex.length >= 42) {
-                  tokenAddress = `0x${addressHex.slice(-40)}`;
-                  launchpadLogger.debug(`Found liquidity generator token address from event: ${tokenAddress}`);
-                  break;
-                }
+              // Which topic carries the new token differs per factory; the index is
+              // recorded on TOKEN_TYPES from each factory's own ABI. Treating anything
+              // non-standard as a Liquidity Generator would have read the wrong topic
+              // for a Rewards token.
+              const addressHex = log.topics[TOKEN_TYPES[activeTokenType].tokenAddressTopic];
+              if (addressHex && addressHex.length >= 42) {
+                tokenAddress = `0x${addressHex.slice(-40)}`;
+                launchpadLogger.debug(
+                  `Found ${TOKEN_TYPES[activeTokenType].label} address from event: ${tokenAddress}`
+                );
+                break;
               }
             }
           }
@@ -346,25 +383,15 @@ export default function TokenCreator() {
   };
 
   const getCreationFee = () => {
-    if (activeTokenType === 'standard' && actualFee) {
-      return actualFee;
-    }
-    return activeTokenType === 'standard'
-      ? CONTRACT_FEES.STANDARD_TOKEN
-      : CONTRACT_FEES.LIQUIDITY_GENERATOR_TOKEN;
+    // actualFee is read from the factory itself, so it is right even after setFlatFee.
+    if (actualFee) return actualFee;
+    return CONTRACT_FEES.STANDARD_TOKEN;
   };
 
-  const getContractAddressForType = () => {
-    return activeTokenType === 'standard'
-      ? getContractAddress('STANDARD_TOKEN_FACTORY', DEFAULT_CHAIN_ID)
-      : getContractAddress('LIQUIDITY_GENERATOR_TOKEN_FACTORY', DEFAULT_CHAIN_ID);
-  };
+  const getContractAddressForType = () =>
+    getContractAddress(TOKEN_TYPES[activeTokenType].addressKey, chainId);
 
-  const getContractABIForType = () => {
-    return activeTokenType === 'standard'
-      ? STANDARD_TOKEN_FACTORY_ABI
-      : LIQUIDITY_GENERATOR_TOKEN_FACTORY_ABI;
-  };
+  const getContractABIForType = () => TOKEN_TYPES[activeTokenType].abi;
 
   return (
     <div className="space-y-6">
@@ -377,11 +404,41 @@ export default function TokenCreator() {
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <Tabs value={activeTokenType} onValueChange={setActiveTokenType}>
-            <TabsList className="grid w-full grid-cols-2 launchpad-tabs">
-              <TabsTrigger value="standard" className="launchpad-tab">Standard Token</TabsTrigger>
-              <TabsTrigger value="liquidity-generator" className="launchpad-tab">Liquidity Generator</TabsTrigger>
+          <Tabs
+            value={activeTokenType}
+            onValueChange={(value) => setActiveTokenType(value as TokenType)}
+          >
+            <TabsList
+              className="grid w-full launchpad-tabs"
+              style={{ gridTemplateColumns: `repeat(${availableTokenTypes.length}, minmax(0, 1fr))` }}
+            >
+              {availableTokenTypes.map((t) => (
+                <TabsTrigger key={t} value={t} className="launchpad-tab">
+                  {TOKEN_TYPES[t].label}
+                </TabsTrigger>
+              ))}
             </TabsList>
+
+            <TabsContent value="rewards" className="mt-6">
+              <div className="space-y-4">
+                <div className="flex items-start gap-3 p-4 bg-emerald-900/20 border border-emerald-500/20 rounded-lg">
+                  <Info className="h-5 w-5 text-emerald-400 mt-0.5 flex-shrink-0" />
+                  <div>
+                    <h4 className="font-medium text-white mb-1">Rewards Token</h4>
+                    <p className="text-sm text-gray-300">
+                      An untaxed ERC20 whose holders earn a reward token. Rewards are funded by
+                      explicit deposits from your treasury or revenue rather than a transfer fee,
+                      so the token trades normally on V3 — a fee-on-transfer token cannot.
+                    </p>
+                    <div className="mt-2">
+                      <Badge className="badge-upcoming text-xs">
+                        Fee: {getCreationFee()} {nativeSymbol}
+                      </Badge>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </TabsContent>
 
             <TabsContent value="standard" className="mt-6">
               <div className="space-y-4">
@@ -394,7 +451,7 @@ export default function TokenCreator() {
                     </p>
                     <div className="mt-2">
                       <Badge className="badge-upcoming text-xs">
-                        Fee: {getCreationFee()} KLC
+                        Fee: {getCreationFee()} {nativeSymbol}
                       </Badge>
                     </div>
                   </div>
@@ -414,7 +471,7 @@ export default function TokenCreator() {
                     </p>
                     <div className="mt-2">
                       <Badge className="badge-presale text-xs">
-                        Fee: {getCreationFee()} KLC
+                        Fee: {getCreationFee()} {nativeSymbol}
                       </Badge>
                     </div>
                   </div>
@@ -483,74 +540,50 @@ export default function TokenCreator() {
             </div>
           </div>
 
-          {/* Advanced Settings for Liquidity Generator Token */}
-          {activeTokenType === 'liquidity-generator' && (
-            <div className="space-y-6 pt-6 border-t border-blue-500/20">
-              <h3 className="text-lg font-medium text-white">Advanced Settings</h3>
+          {/* Reward settings (RewardsTokenFactory) */}
+          {activeTokenType === 'rewards' && (
+            <div className="space-y-6 pt-6 border-t border-emerald-500/20">
+              <h3 className="text-lg font-medium text-white">Reward Settings</h3>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div className="space-y-2">
-                  <Label htmlFor="router" className="text-gray-300">Router Address</Label>
-                  <Input
-                    id="router"
-                    placeholder="0x..."
-                    value={formData.router || ''}
-                    onChange={(e) => handleInputChange('router', e.target.value)}
-                    className="h-12 form-input"
-                  />
+                  <Label htmlFor="rewardToken" className="text-gray-300">Reward Token</Label>
+                  <Select
+                    value={formData.rewardToken || ''}
+                    onValueChange={(value) => handleInputChange('rewardToken', value)}
+                  >
+                    <SelectTrigger id="rewardToken" className="h-12 form-input">
+                      <SelectValue placeholder="Choose the token holders earn" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {rewardTokenOptions.map((t) => (
+                        <SelectItem key={t.address} value={t.address}>
+                          {t.symbol} — {t.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-gray-400">
+                    Holders are paid in this token. You fund the pool yourself by calling
+                    depositRewards() — there is no transfer fee.
+                  </p>
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="charity" className="text-gray-300">Charity Address</Label>
+                  <Label htmlFor="minRewardBalance" className="text-gray-300">
+                    Minimum Balance to Earn
+                  </Label>
                   <Input
-                    id="charity"
-                    placeholder="0x..."
-                    value={formData.charity || ''}
-                    onChange={(e) => handleInputChange('charity', e.target.value)}
+                    id="minRewardBalance"
+                    type="number"
+                    placeholder="10000"
+                    value={formData.minRewardBalance || ''}
+                    onChange={(e) => handleInputChange('minRewardBalance', e.target.value)}
                     className="h-12 form-input"
                   />
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="taxFeeBps" className="text-gray-300">Tax Fee (BPS)</Label>
-                  <Input
-                    id="taxFeeBps"
-                    placeholder="e.g., 100 (1%)"
-                    value={formData.taxFeeBps || ''}
-                    onChange={(e) => handleInputChange('taxFeeBps', e.target.value)}
-                    className="h-12 form-input"
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="liquidityFeeBps" className="text-gray-300">Liquidity Fee (BPS)</Label>
-                  <Input
-                    id="liquidityFeeBps"
-                    placeholder="e.g., 200 (2%)"
-                    value={formData.liquidityFeeBps || ''}
-                    onChange={(e) => handleInputChange('liquidityFeeBps', e.target.value)}
-                    className="h-12 form-input"
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="charityBps" className="text-gray-300">Charity Fee (BPS)</Label>
-                  <Input
-                    id="charityBps"
-                    placeholder="e.g., 50 (0.5%)"
-                    value={formData.charityBps || ''}
-                    onChange={(e) => handleInputChange('charityBps', e.target.value)}
-                    className="h-12 form-input"
-                  />
-                </div>
-              </div>
-
-              <div className="flex items-start gap-3 p-4 bg-yellow-900/20 border border-yellow-500/20 rounded-lg">
-                <AlertTriangle className="h-5 w-5 text-yellow-400 mt-0.5 flex-shrink-0" />
-                <div>
-                  <h4 className="font-medium text-white mb-1">Fee Configuration</h4>
-                  <p className="text-sm text-gray-300">
-                    BPS = Basis Points (1 BPS = 0.01%). Total fees should not exceed 25% (2500 BPS).
+                  <p className="text-xs text-gray-400">
+                    Wallets holding less than this earn nothing. Keeps dust wallets from
+                    making distribution expensive.
                   </p>
                 </div>
               </div>
@@ -581,12 +614,31 @@ export default function TokenCreator() {
                   variant="outline"
                   size="sm"
                   className="text-green-400 border-green-500/20 hover:bg-green-500/20"
-                  onClick={() => window.open(`https://kalyscan.io/address/${createdToken}`, '_blank')}
+                  onClick={() =>
+                    window.open(
+                      // Falls back to the KalyChain explorer when the chain has no metadata; was once hardcoded to
+                      // token was actually deployed to.
+                      `${CHAIN_METADATA[chainId]?.explorer ?? KALYCHAIN_EXPLORER_URL}/address/${createdToken}`,
+                      '_blank'
+                    )
+                  }
                 >
                   <ExternalLink className="h-4 w-4 mr-2" />
-                  View on KalyScan
+                  View on {CHAIN_METADATA[chainId]?.name ?? 'KalyScan'}
                 </Button>
               </div>
+            </div>
+          )}
+
+          {/* A rewards token is inert until its pool is funded, so hand the owner the
+              funding form straight away rather than making them find it. */}
+          {createdToken && activeTokenType === 'rewards' && (
+            <div className="pt-6 border-t border-emerald-500/20">
+              <h3 className="text-lg font-medium text-white mb-1">Fund your reward pool</h3>
+              <p className="text-sm text-gray-300 mb-4">
+                Holders earn only what you deposit — there is no transfer fee taking a cut.
+              </p>
+              <RewardsTokenManager tokenAddress={createdToken} />
             </div>
           )}
 

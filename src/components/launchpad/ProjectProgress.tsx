@@ -15,6 +15,7 @@ import {
 import { ProjectData } from '@/hooks/launchpad/useProjectDetails'
 import { useWallet } from '@/hooks/useWallet'
 import ParticipationForm from './ParticipationForm'
+import { useParticipation } from '@/hooks/launchpad/useParticipation'
 import { launchpadLogger } from '@/lib/logger'
 
 interface ProjectProgressProps {
@@ -28,6 +29,29 @@ export default function ProjectProgress({
   onRefresh, 
   isRefreshing = false 
 }: ProjectProgressProps) {
+  // The status button used to have an empty onClick behind a TODO, so 'Claim Tokens'
+  // and 'Claim Refund' looked live and did nothing at all.
+  const { claimTokens, claimRefund, isLoading: isClaiming, error: claimError } = useParticipation()
+
+  const handleStatusAction = async () => {
+    if (!projectData.contractAddress) return
+    // `type` is optional on ProjectData; presale is the default the launchpad creates.
+    const projectType = projectData.type ?? 'presale'
+
+    switch (projectData.status) {
+      case 'Successful':
+        await claimTokens(projectData.contractAddress, projectType)
+        onRefresh()
+        break
+      case 'Failed':
+        await claimRefund(projectData.contractAddress, projectType)
+        onRefresh()
+        break
+      default:
+        // 'Pending' (Notify Me) has no contract action; the rest just re-read chain state.
+        onRefresh()
+    }
+  }
   const { isConnected } = useWallet()
   
   const baseTokenSymbol = projectData.baseToken === '0x0000000000000000000000000000000000000000' ? 'KLC' : 'Token'
@@ -174,16 +198,22 @@ export default function ProjectProgress({
               />
             </div>
           ) : projectData.status !== 'Pending' && (
-            <Button
-              className={`${statusInfo.buttonClass} text-white min-w-[160px]`}
-              disabled={!isConnected}
-              onClick={() => {
-                // TODO: Implement claim/refund logic
-                launchpadLogger.debug('Action button clicked:', projectData.status)
-              }}
-            >
-              {isConnected ? statusInfo.buttonText : 'Connect Wallet'}
-            </Button>
+            <div className="flex flex-col items-center gap-2">
+              <Button
+                className={`${statusInfo.buttonClass} text-white min-w-[160px]`}
+                disabled={!isConnected || isClaiming}
+                onClick={handleStatusAction}
+              >
+                {!isConnected
+                  ? 'Connect Wallet'
+                  : isClaiming
+                    ? 'Confirming…'
+                    : statusInfo.buttonText}
+              </Button>
+              {claimError && (
+                <span className="text-sm text-red-400 text-center max-w-xs">{claimError}</span>
+              )}
+            </div>
           )}
 
           {/* Additional Info for Active Projects */}
