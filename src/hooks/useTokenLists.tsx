@@ -133,7 +133,7 @@ export function useTokenLists(options: UseTokenListsOptions = {}): UseTokenLists
             totalLiquidity: token.totalLiquidity,
             derivedKLC: token.derivedKLC,
             txCount: token.txCount,
-            priceUSD: undefined // Price calculation requires real-time KLC price from market
+            priceUSD: undefined // Price calculation requires real-time KMT price from market
           }));
 
           logger.debug(`Fetched ${subgraphTokens.length} tokens from subgraph`);
@@ -195,7 +195,7 @@ export function useTokenLists(options: UseTokenListsOptions = {}): UseTokenLists
 
   /**
    * Add native tokens if not present in token lists
-   * Supports KLC (KalyChain), BNB (BSC), ETH (Arbitrum)
+   * Supports KMT (KalyChain), BNB (BSC), ETH (Arbitrum)
    */
   const addNativeTokenIfMissing = useCallback((tokens: EnhancedToken[]): EnhancedToken[] => {
     // Check if native token is already present

@@ -121,7 +121,7 @@ export default function UserContributions({
     )
   }
 
-  const baseTokenSymbol = projectData.baseToken === '0x0000000000000000000000000000000000000000' ? 'KLC' : 'USDT'
+  const baseTokenSymbol = projectData.baseToken === '0x0000000000000000000000000000000000000000' ? 'KMT' : 'USDT'
 
   return (
     <div className="space-y-6">

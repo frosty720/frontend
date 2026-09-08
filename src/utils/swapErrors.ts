@@ -162,8 +162,8 @@ export function parseSwapError(error: any): SwapError {
       type: SwapErrorType.INSUFFICIENT_GAS,
       severity: SwapErrorSeverity.MEDIUM,
       title: 'Insufficient Gas',
-      message: 'Not enough KLC to pay for transaction fees.',
-      suggestion: 'Add more KLC to your wallet to cover gas fees.',
+      message: 'Not enough KMT to pay for transaction fees.',
+      suggestion: 'Add more KMT to your wallet to cover gas fees.',
       retryable: true,
       actionLabel: 'Retry',
       actionType: 'retry'

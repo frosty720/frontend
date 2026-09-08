@@ -133,8 +133,8 @@ describe('getPriceImpactColor', () => {
 
 describe('computePriceImpactFromProbe', () => {
   it('computes impact from execution rate vs marginal (probe) rate', () => {
-    // Probe: 10 KLC -> 0.025 USDT (marginal rate 0.0025)
-    // Trade: 1000 KLC -> 2.4 USDT (execution rate 0.0024) => 4% impact
+    // Probe: 10 KMT -> 0.025 USDT (marginal rate 0.0025)
+    // Trade: 1000 KMT -> 2.4 USDT (execution rate 0.0024) => 4% impact
     expect(computePriceImpactFromProbe('1000', '2.4', '10', '0.025')).toBeCloseTo(4, 6)
   })
 

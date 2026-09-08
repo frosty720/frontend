@@ -37,7 +37,7 @@ function TokenIcon({ token, size = 'md' }: TokenIconProps) {
     );
   }
 
-  // KLC/KMT (and their wrapped forms) all use the KalyChain mark — the same mapping
+  // KMT/KMT (and their wrapped forms) all use the KalyChain mark — the same mapping
   // the token lists declare via logoURI. Without the KMT entries WKMT fell through to
   // a missing /tokens/wkmt.png and rendered as a grey initials blob.
   const getTokenIconPath = (symbol: string) => {

@@ -42,7 +42,7 @@ function formatNumber(value: string | number): string {
   const num = typeof value === 'string' ? parseFloat(value) : value
   if (isNaN(num)) return '0'
 
-  // Convert from wei to KLC (divide by 10^18) if the number is very large
+  // Convert from wei to KMT (divide by 10^18) if the number is very large
   const klcAmount = num > 1000000000000000 ? num / 1000000000000000000 : num
 
   if (klcAmount >= 1000000) {
@@ -54,7 +54,7 @@ function formatNumber(value: string | number): string {
 }
 
 export default function ProjectStats({ projectData }: ProjectStatsProps) {
-  const baseTokenSymbol = projectData.baseToken === '0x0000000000000000000000000000000000000000' ? 'KLC' : 'Token'
+  const baseTokenSymbol = projectData.baseToken === '0x0000000000000000000000000000000000000000' ? 'KMT' : 'Token'
   
   return (
     <div className="space-y-6">

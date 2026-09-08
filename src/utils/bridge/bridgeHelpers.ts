@@ -110,11 +110,11 @@ export const bridgeHelpers = {
   getTokenSymbol: (addressOrDenom: string): string => {
     // Known token addresses from warp routes configuration
     const knownTokens: Record<string, string> = {
-      // KLC addresses
-      '0x8A1ABbB167b149F2493C8141091028fD812Da6E4': 'KLC', // KalyChain
-      '0x7542c62565f48520A34Cf79884656efDEdD38176': 'KLC', // Arbitrum
-      '0x02CF1778c07584D92b610E0C03fA285DfD00c354': 'KLC', // BSC
-      '0x285C14145EB75A1918B48f93E126139ea1a0f294': 'KLC', // Polygon
+      // KMT addresses
+      '0x8A1ABbB167b149F2493C8141091028fD812Da6E4': 'KMT', // KalyChain
+      '0x7542c62565f48520A34Cf79884656efDEdD38176': 'KMT', // Arbitrum
+      '0x02CF1778c07584D92b610E0C03fA285DfD00c354': 'KMT', // BSC
+      '0x285C14145EB75A1918B48f93E126139ea1a0f294': 'KMT', // Polygon
 
       // BNB addresses
       '0x8d0e034611B691683377d2fC9958122a30F7DAab': 'BNB', // BSC

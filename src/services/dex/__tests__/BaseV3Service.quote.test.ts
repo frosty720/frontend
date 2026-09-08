@@ -159,7 +159,7 @@ describe('BaseV3Service quote path with native KMT', () => {
 			}
 			if (call.functionName === 'quoteExactInputSingle') {
 				const amountIn = call.args[0].amountIn as bigint;
-				// Marginal rate 0.0025 USDT/KLC; the 1000-KLC trade fills at 0.0024 (4% impact)
+				// Marginal rate 0.0025 USDT/KMT; the 1000-KMT trade fills at 0.0024 (4% impact)
 				if (amountIn === 1000n * 10n ** 18n) return [2400000n, 0n, 1, 100000n];
 				return [(amountIn / 10n ** 18n) * 2500n, 0n, 1, 100000n];
 			}
@@ -239,7 +239,7 @@ describe('getQuoteExactOutput', () => {
 				const { amount, fee } = call.args[0];
 				// probe (1% of 2.5 USDT = 25000n raw) prices at marginal rate
 				if (amount === 25000n) return [10n * 10n ** 18n, 0n, 1, 100000n];
-				// full 2.5 USDT: fee 500 needs 900 KLC, fee 3000 needs 1000 KLC
+				// full 2.5 USDT: fee 500 needs 900 KMT, fee 3000 needs 1000 KMT
 				if (amount === 2500000n) {
 					return [(fee === 500 ? 900n : 1000n) * 10n ** 18n, 0n, 1, 100000n];
 				}
@@ -281,7 +281,7 @@ describe('getQuoteExactOutput', () => {
 			if (call.functionName === 'quoteExactOutput') {
 				const [, amount] = call.args;
 				if (amount === 10n * 10n ** 16n) return [10n * 10n ** 18n, [], [], 100000n]; // probe: 0.1 DAI
-				return [1000n * 10n ** 18n, [], [], 100000n]; // 10 DAI costs 1000 KLC
+				return [1000n * 10n ** 18n, [], [], 100000n]; // 10 DAI costs 1000 KMT
 			}
 			throw new Error(`unexpected call ${call.functionName}`);
 		});

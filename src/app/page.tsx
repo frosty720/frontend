@@ -92,7 +92,7 @@ export default function Home() {
                   </div>
                   <h3 className="feature-title">Stake & Earn</h3>
                   <p className="feature-description">
-                    Stake KLC and earn rewards from the platform. Maximize your returns with our staking program.
+                    Stake KMT and earn rewards from the platform. Maximize your returns with our staking program.
                   </p>
                 </div>
                 <div className="feature-footer">

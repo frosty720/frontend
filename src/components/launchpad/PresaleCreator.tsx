@@ -148,7 +148,7 @@ export default function PresaleCreator() {
 
     // Token Configuration
     saleToken: '',
-    baseToken: 'native', // KLC
+    baseToken: 'native', // KMT
     tokenRate: '',
     liquidityRate: '',
     softCap: '',
@@ -858,7 +858,7 @@ export default function PresaleCreator() {
               </p>
               <div className="mt-2">
                 <Badge className="badge-presale text-xs">
-                  Fee: {getCreationFee()} KLC
+                  Fee: {getCreationFee()} KMT
                 </Badge>
               </div>
             </div>
@@ -1320,9 +1320,9 @@ export default function PresaleCreator() {
               <div>
                 <h4 className="font-medium text-white mb-1">Token Requirements Calculation</h4>
                 <div className="text-sm text-gray-300 space-y-1">
-                  <p>• <strong>Hard Cap:</strong> {formData.hardCap} KLC</p>
-                  <p>• <strong>Token Rate:</strong> {formData.tokenRate} tokens per KLC</p>
-                  <p>• <strong>Liquidity Rate:</strong> {formData.liquidityRate} tokens per KLC</p>
+                  <p>• <strong>Hard Cap:</strong> {formData.hardCap} KMT</p>
+                  <p>• <strong>Token Rate:</strong> {formData.tokenRate} tokens per KMT</p>
+                  <p>• <strong>Liquidity Rate:</strong> {formData.liquidityRate} tokens per KMT</p>
                   <p>• <strong>Liquidity %:</strong> {formData.liquidityPercent}%</p>
                   <div className="mt-2 pt-2 border-t border-purple-500/20">
                     <p>• <strong>Presale Tokens:</strong> {formData.hardCap} × {formData.tokenRate} = {Number(formData.hardCap) * Number(formData.tokenRate)} tokens</p>
@@ -1487,7 +1487,7 @@ export default function PresaleCreator() {
             <div>
               <h4 className="font-medium text-white mb-1">Creation Fee</h4>
               <p className="text-sm text-gray-300">
-                A fee of <strong className="text-white">{getCreationFee()} KLC</strong> is required to create your presale.
+                A fee of <strong className="text-white">{getCreationFee()} KMT</strong> is required to create your presale.
                 This covers deployment and platform costs.
               </p>
             </div>
@@ -1531,7 +1531,7 @@ export default function PresaleCreator() {
             ) : (
               <>
                 <Rocket className="h-4 w-4 mr-2" />
-                Create Presale ({getCreationFee()} KLC)
+                Create Presale ({getCreationFee()} KMT)
               </>
             )}
           </Button>

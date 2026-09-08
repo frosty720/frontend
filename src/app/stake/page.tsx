@@ -51,8 +51,8 @@ export default function StakePage() {
                 <Coins className="h-8 w-8 text-blue-400" />
               </div>
               <div>
-                <h1 className="text-3xl font-bold text-white">KLC Staking</h1>
-                <p className="text-gray-300">Stake your KLC tokens and earn rewards</p>
+                <h1 className="text-3xl font-bold text-white">KMT Staking</h1>
+                <p className="text-gray-300">Stake your KMT tokens and earn rewards</p>
               </div>
               <Badge variant="secondary" className="ml-auto stake-badge">
                 Native Staking
@@ -66,10 +66,10 @@ export default function StakePage() {
                   <Info className="h-5 w-5 text-blue-400 mt-0.5 flex-shrink-0" />
                   <div className="flex-1">
                     <h3 className="font-semibold text-white mb-2">
-                      Secure Native KLC Staking
+                      Secure Native KMT Staking
                     </h3>
                     <p className="text-gray-300 text-sm mb-3">
-                      Stake your KLC tokens directly in the native staking contract to earn rewards.
+                      Stake your KMT tokens directly in the native staking contract to earn rewards.
                       Your tokens remain secure and you can withdraw at any time.
                     </p>
                     <div className="flex flex-wrap gap-4 text-xs text-gray-400">
@@ -125,8 +125,8 @@ export default function StakePage() {
                         <span className="text-xs font-medium text-amber-400">1</span>
                       </div>
                       <div>
-                        <p className="font-medium text-white">Stake KLC</p>
-                        <p>Lock your KLC tokens in the staking contract to start earning rewards</p>
+                        <p className="font-medium text-white">Stake KMT</p>
+                        <p>Lock your KMT tokens in the staking contract to start earning rewards</p>
                       </div>
                     </div>
                     <div className="flex gap-3">
@@ -135,7 +135,7 @@ export default function StakePage() {
                       </div>
                       <div>
                         <p className="font-medium text-white">Earn Rewards</p>
-                        <p>Receive KLC rewards based on the current APR and your stake duration</p>
+                        <p>Receive KMT rewards based on the current APR and your stake duration</p>
                       </div>
                     </div>
                     <div className="flex gap-3">

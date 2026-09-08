@@ -234,18 +234,11 @@ export default function Overview({ onSwitchToPresale }: OverviewProps) {
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to fetch launchpad data');
       launchpadLogger.error('Error fetching launchpad data:', err);
-      
-      // Set mock data for development
-      setOverview({
-        totalProjects: 12,
-        activeProjects: 3,
-        totalTokensCreated: 9, // Completed projects
-        totalFundsRaised: '4', // This month's projects
-        totalParticipants: 4, // This month's projects
-        totalFeesCollected: '125,000',
-        recentProjects: [],
-        lastUpdated: new Date().toISOString()
-      });
+
+      // Show nothing rather than invent numbers. This used to fall back to a hardcoded
+      // {12 projects, 3 active, 9 completed, 125,000 fees} block, which rendered in the stat
+      // cards indistinguishably from real on-chain data whenever the query failed.
+      setOverview(null);
       setProjects([]);
     } finally {
       setLoading(false);
@@ -372,7 +365,7 @@ export default function Overview({ onSwitchToPresale }: OverviewProps) {
               </div>
               <div className="ml-4">
                 <p className="text-sm font-medium text-gray-300">Total Projects</p>
-                <p className="text-2xl font-bold text-white">{overview?.totalProjects || 0}</p>
+                <p className="text-2xl font-bold text-white">{overview ? overview.totalProjects : '\u2014'}</p>
               </div>
             </div>
           </CardContent>
@@ -386,7 +379,7 @@ export default function Overview({ onSwitchToPresale }: OverviewProps) {
               </div>
               <div className="ml-4">
                 <p className="text-sm font-medium text-gray-300">Active Projects</p>
-                <p className="text-2xl font-bold text-white">{overview?.activeProjects || 0}</p>
+                <p className="text-2xl font-bold text-white">{overview ? overview.activeProjects : '\u2014'}</p>
               </div>
             </div>
           </CardContent>
@@ -400,7 +393,7 @@ export default function Overview({ onSwitchToPresale }: OverviewProps) {
               </div>
               <div className="ml-4">
                 <p className="text-sm font-medium text-gray-300">Completed Projects</p>
-                <p className="text-2xl font-bold text-white">{overview?.totalTokensCreated || 0}</p>
+                <p className="text-2xl font-bold text-white">{overview ? overview.totalTokensCreated : '\u2014'}</p>
               </div>
             </div>
           </CardContent>
@@ -414,7 +407,7 @@ export default function Overview({ onSwitchToPresale }: OverviewProps) {
               </div>
               <div className="ml-4">
                 <p className="text-sm font-medium text-gray-300">This Month's Projects</p>
-                <p className="text-2xl font-bold text-white">{overview?.totalParticipants || 0}</p>
+                <p className="text-2xl font-bold text-white">{overview ? overview.totalParticipants : '\u2014'}</p>
               </div>
             </div>
           </CardContent>
@@ -434,8 +427,18 @@ export default function Overview({ onSwitchToPresale }: OverviewProps) {
         <CardContent>
           {error && (
             <div className="text-center py-8">
-              <p className="text-gray-300 mb-4">Unable to load projects data</p>
-              <p className="text-sm text-gray-400">Using mock data for demonstration</p>
+              <p className="text-gray-300 mb-4">Unable to load launchpad data</p>
+              <p className="text-sm text-gray-400">
+                The stats above are unavailable, not zero. Please try again.
+              </p>
+              <Button
+                variant="outline"
+                size="sm"
+                className="mt-4 border-blue-500/20 text-white hover:bg-blue-500/20"
+                onClick={fetchLaunchpadData}
+              >
+                Try Again
+              </Button>
             </div>
           )}
 
@@ -482,10 +485,10 @@ export default function Overview({ onSwitchToPresale }: OverviewProps) {
 
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 text-sm text-gray-300">
                       <div>
-                        <span className="font-medium text-white">Soft Cap:</span> {project.softCap} KLC
+                        <span className="font-medium text-white">Soft Cap:</span> {project.softCap} KMT
                       </div>
                       <div>
-                        <span className="font-medium text-white">Hard Cap:</span> {project.hardCap} KLC
+                        <span className="font-medium text-white">Hard Cap:</span> {project.hardCap} KMT
                       </div>
                       {project.type === 'presale' && project.tokenRate && (
                         <div>

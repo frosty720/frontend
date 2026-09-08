@@ -110,12 +110,12 @@ describe('CRITICAL: Price Display Rate Calculations', () => {
     return parseFloat(toAmount) / parseFloat(fromAmount)
   }
 
-  it('calculates correct rate for KLC->USDT (50 USDT per KLC)', () => {
+  it('calculates correct rate for KMT->USDT (50 USDT per KMT)', () => {
     const rate = calculateDisplayRate('50', '1')
     expect(rate).toBe(50)
   })
 
-  it('calculates correct rate for USDT->KLC (0.02 KLC per USDT)', () => {
+  it('calculates correct rate for USDT->KMT (0.02 KMT per USDT)', () => {
     const rate = calculateDisplayRate('0.02', '1')
     expect(rate).toBe(0.02)
   })
@@ -289,13 +289,13 @@ describe('CRITICAL: Gas Estimation', () => {
 
   it('calculates gas cost correctly at 10 Gwei with 250k gas', () => {
     const cost = estimateGasCost(10, 250000)
-    // 10 Gwei * 250000 = 2500000 Gwei = 0.0025 KLC
+    // 10 Gwei * 250000 = 2500000 Gwei = 0.0025 KMT
     expect(parseFloat(cost)).toBeCloseTo(0.0025, 6)
   })
 
   it('calculates gas cost correctly at 50 Gwei with 300k gas', () => {
     const cost = estimateGasCost(50, 300000)
-    // 50 Gwei * 300000 = 15000000 Gwei = 0.015 KLC
+    // 50 Gwei * 300000 = 15000000 Gwei = 0.015 KMT
     expect(parseFloat(cost)).toBeCloseTo(0.015, 6)
   })
 })

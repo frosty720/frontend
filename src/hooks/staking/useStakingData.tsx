@@ -31,9 +31,9 @@ function useContractReadSafe(config: any) {
 }
 
 /**
- * Get user's native KLC balance
+ * Get user's native KMT balance
  * @param address - User wallet address
- * @returns KLC balance in Wei (bigint)
+ * @returns KMT balance in Wei (bigint)
  */
 export function useKLCBalance(address?: string) {
   let walletBalance: any = null
@@ -79,7 +79,7 @@ export function useKLCBalance(address?: string) {
 }
 
 /**
- * Get user's staked KLC balance
+ * Get user's staked KMT balance
  * @param address - User wallet address
  * @returns Staked balance in Wei (bigint)
  */

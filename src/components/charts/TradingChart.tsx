@@ -60,7 +60,7 @@ export default function TradingChart({
   tokenA,
   tokenB,
   // Legacy props for backward compatibility
-  symbol = 'KLC',
+  symbol = 'KMT',
   baseSymbol = 'USDT',
   height = 400,
   showChartTypes = true,

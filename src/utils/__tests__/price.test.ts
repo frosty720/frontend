@@ -33,75 +33,75 @@ const createPairInfo = (
 })
 
 describe('calculatePriceFromReserves', () => {
-  const KLC = createToken('0x069255299Bb729399f3CECaBdc73d15d3D10a2A3', 'KLC')
+  const KMT = createToken('0x069255299Bb729399f3CECaBdc73d15d3D10a2A3', 'KMT')
   const USDT = createToken('0x2CA775C77B922A51FcF3097F52bFFdbc0250D99A', 'USDT')
 
   it('returns 0 for null/undefined inputs', () => {
-    expect(calculatePriceFromReserves(KLC, null)).toBe(0)
-    expect(calculatePriceFromReserves(KLC, undefined)).toBe(0)
+    expect(calculatePriceFromReserves(KMT, null)).toBe(0)
+    expect(calculatePriceFromReserves(KMT, undefined)).toBe(0)
     // @ts-expect-error testing null token
     expect(calculatePriceFromReserves(null, createPairInfo('0x1', '0x2', '100', '200'))).toBe(0)
   })
 
   it('returns 0 for zero reserves', () => {
-    const pairInfo = createPairInfo(KLC.address, USDT.address, '0', '100')
-    expect(calculatePriceFromReserves(KLC, pairInfo)).toBe(0)
+    const pairInfo = createPairInfo(KMT.address, USDT.address, '0', '100')
+    expect(calculatePriceFromReserves(KMT, pairInfo)).toBe(0)
   })
 
   it('returns 0 for negative reserves', () => {
-    const pairInfo = createPairInfo(KLC.address, USDT.address, '-100', '100')
-    expect(calculatePriceFromReserves(KLC, pairInfo)).toBe(0)
+    const pairInfo = createPairInfo(KMT.address, USDT.address, '-100', '100')
+    expect(calculatePriceFromReserves(KMT, pairInfo)).toBe(0)
   })
 
   it('calculates price correctly when tokenA is token0', () => {
-    // 1000 KLC, 50000 USDT => 1 KLC = 50 USDT
+    // 1000 KMT, 50000 USDT => 1 KMT = 50 USDT
     const pairInfo = createPairInfo(
-      KLC.address.toLowerCase(),
+      KMT.address.toLowerCase(),
       USDT.address.toLowerCase(),
       '1000',
       '50000'
     )
-    const price = calculatePriceFromReserves(KLC, pairInfo)
+    const price = calculatePriceFromReserves(KMT, pairInfo)
     expect(price).toBe(50)
   })
 
   it('calculates price correctly when tokenA is token1', () => {
-    // Pair has USDT as token0, KLC as token1
-    // 50000 USDT, 1000 KLC => 1 KLC = 50 USDT
+    // Pair has USDT as token0, KMT as token1
+    // 50000 USDT, 1000 KMT => 1 KMT = 50 USDT
     const pairInfo = createPairInfo(
       USDT.address.toLowerCase(),
-      KLC.address.toLowerCase(),
+      KMT.address.toLowerCase(),
       '50000',
       '1000'
     )
-    const price = calculatePriceFromReserves(KLC, pairInfo)
+    const price = calculatePriceFromReserves(KMT, pairInfo)
     expect(price).toBe(50)
   })
 
   it('handles string reserves', () => {
-    const pairInfo = createPairInfo(KLC.address.toLowerCase(), USDT.address.toLowerCase(), '1000', '50000')
-    expect(calculatePriceFromReserves(KLC, pairInfo)).toBe(50)
+    const pairInfo = createPairInfo(KMT.address.toLowerCase(), USDT.address.toLowerCase(), '1000', '50000')
+    expect(calculatePriceFromReserves(KMT, pairInfo)).toBe(50)
   })
 
   it('handles numeric reserves', () => {
-    const pairInfo = createPairInfo(KLC.address.toLowerCase(), USDT.address.toLowerCase(), 1000, 50000)
-    expect(calculatePriceFromReserves(KLC, pairInfo)).toBe(50)
+    const pairInfo = createPairInfo(KMT.address.toLowerCase(), USDT.address.toLowerCase(), 1000, 50000)
+    expect(calculatePriceFromReserves(KMT, pairInfo)).toBe(50)
   })
 
   it('returns inverse price when priceOfA is false', () => {
-    const pairInfo = createPairInfo(KLC.address.toLowerCase(), USDT.address.toLowerCase(), '1000', '50000')
-    const price = calculatePriceFromReserves(KLC, pairInfo, { priceOfA: false })
+    const pairInfo = createPairInfo(KMT.address.toLowerCase(), USDT.address.toLowerCase(), '1000', '50000')
+    const price = calculatePriceFromReserves(KMT, pairInfo, { priceOfA: false })
     expect(price).toBe(0.02) // 1/50
   })
 
   it('handles case-insensitive address matching', () => {
     const pairInfo = createPairInfo(
-      KLC.address.toUpperCase(),
+      KMT.address.toUpperCase(),
       USDT.address.toUpperCase(),
       '1000',
       '50000'
     )
-    const price = calculatePriceFromReserves(KLC, pairInfo)
+    const price = calculatePriceFromReserves(KMT, pairInfo)
     expect(price).toBe(50)
   })
 
@@ -112,7 +112,7 @@ describe('calculatePriceFromReserves', () => {
       reserve0: '1000',
       reserve1: '50000',
     }
-    expect(calculatePriceFromReserves(KLC, pairInfo)).toBe(0)
+    expect(calculatePriceFromReserves(KMT, pairInfo)).toBe(0)
   })
 })
 
@@ -202,39 +202,39 @@ describe('formatUsdPrice', () => {
  * The bug occurred when using token SYMBOL instead of ADDRESS to determine
  * which token is token0/token1 in a pair.
  *
- * The problem: If User A selects "KLC/USDT" and User B selects "USDT/KLC",
+ * The problem: If User A selects "KMT/USDT" and User B selects "USDT/KMT",
  * they should see the SAME exchange rate (just inverted). But if we use symbols
  * and the pair data loads in different order, users could see different prices.
  *
  * The fix: Always use token ADDRESS (not symbol) to determine price.
  */
 describe('REGRESSION: Price Inversion Bug', () => {
-  const KLC = createToken('0x069255299Bb729399f3CECaBdc73d15d3D10a2A3', 'KLC')
+  const KMT = createToken('0x069255299Bb729399f3CECaBdc73d15d3D10a2A3', 'KMT')
   const USDT = createToken('0x2CA775C77B922A51FcF3097F52bFFdbc0250D99A', 'USDT')
 
   it('two users see consistent prices regardless of token selection order', () => {
     // Simulate the same liquidity pool data
-    // Pool has 1000 KLC and 50000 USDT (1 KLC = 50 USDT)
+    // Pool has 1000 KMT and 50000 USDT (1 KMT = 50 USDT)
 
-    // User A: pair data comes with KLC as token0
+    // User A: pair data comes with KMT as token0
     const pairDataA = createPairInfo(
-      KLC.address.toLowerCase(),
+      KMT.address.toLowerCase(),
       USDT.address.toLowerCase(),
-      '1000',  // reserve0 = KLC
+      '1000',  // reserve0 = KMT
       '50000'  // reserve1 = USDT
     )
 
     // User B: pair data comes with USDT as token0 (different API response order)
     const pairDataB = createPairInfo(
       USDT.address.toLowerCase(),
-      KLC.address.toLowerCase(),
+      KMT.address.toLowerCase(),
       '50000', // reserve0 = USDT
-      '1000'   // reserve1 = KLC
+      '1000'   // reserve1 = KMT
     )
 
-    // Both users want to know: "How much USDT for 1 KLC?"
-    const priceForUserA = calculatePriceFromReserves(KLC, pairDataA)
-    const priceForUserB = calculatePriceFromReserves(KLC, pairDataB)
+    // Both users want to know: "How much USDT for 1 KMT?"
+    const priceForUserA = calculatePriceFromReserves(KMT, pairDataA)
+    const priceForUserB = calculatePriceFromReserves(KMT, pairDataB)
 
     // CRITICAL: Both users MUST see the same price
     expect(priceForUserA).toBe(50)
@@ -243,22 +243,22 @@ describe('REGRESSION: Price Inversion Bug', () => {
   })
 
   it('price calculation uses address, not symbol', () => {
-    // Create a FAKE token with the same symbol as KLC but different address
-    const FAKE_KLC = createToken('0xFAKE000000000000000000000000000000000000', 'KLC')
+    // Create a FAKE token with the same symbol as KMT but different address
+    const FAKE_KLC = createToken('0xFAKE000000000000000000000000000000000000', 'KMT')
 
-    // Pool data says token0 is the REAL KLC
+    // Pool data says token0 is the REAL KMT
     const pairData = createPairInfo(
-      KLC.address.toLowerCase(),
+      KMT.address.toLowerCase(),
       USDT.address.toLowerCase(),
       '1000',
       '50000'
     )
 
-    // Querying with REAL KLC should give correct price
-    const realPrice = calculatePriceFromReserves(KLC, pairData)
+    // Querying with REAL KMT should give correct price
+    const realPrice = calculatePriceFromReserves(KMT, pairData)
     expect(realPrice).toBe(50)
 
-    // Querying with FAKE KLC (same symbol, different address) should give DIFFERENT result
+    // Querying with FAKE KMT (same symbol, different address) should give DIFFERENT result
     // because we use ADDRESS not SYMBOL
     const fakePrice = calculatePriceFromReserves(FAKE_KLC, pairData)
     // FAKE_KLC address doesn't match token0, so it's treated as token1
@@ -272,7 +272,7 @@ describe('REGRESSION: Price Inversion Bug', () => {
   it('swap rate calculation is deterministic', () => {
     // Simulate calculating swap rate from router output
     // This mimics what SwapInterface.tsx does
-    const amountIn = '10'  // 10 KLC
+    const amountIn = '10'  // 10 KMT
     const amountOut = '500' // Router returns 500 USDT
 
     // Rate calculation (used in UI): toAmount / fromAmount

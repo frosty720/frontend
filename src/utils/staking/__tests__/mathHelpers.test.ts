@@ -146,13 +146,13 @@ describe('validateStakeAmount', () => {
 })
 
 describe('formatKLCAmount', () => {
-  it('formats amount with KLC suffix', () => {
+  it('formats amount with KMT suffix', () => {
     const amount = BigInt('1000000000000000000') // 1 token
-    expect(formatKLCAmount(amount)).toMatch(/1\.0+\s*KLC/)
+    expect(formatKLCAmount(amount)).toMatch(/1\.0+\s*KMT/)
   })
 
   it('handles zero', () => {
-    expect(formatKLCAmount(BigInt(0))).toMatch(/0\.0+\s*KLC/)
+    expect(formatKLCAmount(BigInt(0))).toMatch(/0\.0+\s*KMT/)
   })
 })
 

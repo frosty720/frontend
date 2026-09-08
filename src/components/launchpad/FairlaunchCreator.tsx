@@ -139,7 +139,7 @@ export default function FairlaunchCreator() {
 
     // Fairlaunch Configuration
     saleToken: '',
-    baseToken: 'native', // KLC
+    baseToken: 'native', // KMT
     isNative: true,
     buybackRate: '',
     sellingAmount: '',
@@ -683,7 +683,7 @@ export default function FairlaunchCreator() {
               </p>
               <div className="mt-2 space-x-2">
                 <Badge className="badge-fairlaunch text-xs">
-                  Fee: {getCreationFee()} KLC
+                  Fee: {getCreationFee()} KMT
                 </Badge>
                 <Badge className="badge-fairlaunch text-xs">
                   Fair Distribution
@@ -956,7 +956,7 @@ export default function FairlaunchCreator() {
                 <Label htmlFor="buybackRate" className="text-gray-300">Initial Rate (Reference Only) *</Label>
                 <Input
                   id="buybackRate"
-                  placeholder="e.g., 1000 (tokens per KLC)"
+                  placeholder="e.g., 1000 (tokens per KMT)"
                   value={formData.buybackRate}
                   onChange={(e) => handleInputChange('buybackRate', e.target.value)}
                   className="h-12 form-input"
@@ -1145,7 +1145,7 @@ export default function FairlaunchCreator() {
                 </p>
                 <div className="mt-2 pt-2 border-t border-green-500/20">
                   <p className="text-xs text-gray-400">
-                    <strong>Example:</strong> If 1,000,000 tokens are offered and 500 KLC is raised total, the final rate is 2,000 tokens per KLC for everyone, regardless of the initial rate setting.
+                    <strong>Example:</strong> If 1,000,000 tokens are offered and 500 KMT is raised total, the final rate is 2,000 tokens per KMT for everyone, regardless of the initial rate setting.
                   </p>
                 </div>
               </div>
@@ -1237,7 +1237,7 @@ export default function FairlaunchCreator() {
             <div>
               <h4 className="font-medium text-white mb-1">Creation Fee</h4>
               <p className="text-sm text-gray-300">
-                A fee of <strong className="text-white">{getCreationFee()} KLC</strong> is required to create your fairlaunch.
+                A fee of <strong className="text-white">{getCreationFee()} KMT</strong> is required to create your fairlaunch.
                 This covers deployment and platform costs.
               </p>
             </div>
@@ -1280,7 +1280,7 @@ export default function FairlaunchCreator() {
             ) : (
               <>
                 <Zap className="h-4 w-4 mr-2" />
-                Create Fairlaunch ({getCreationFee()} KLC)
+                Create Fairlaunch ({getCreationFee()} KMT)
               </>
             )}
           </Button>

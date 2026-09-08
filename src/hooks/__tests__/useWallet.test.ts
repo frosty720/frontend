@@ -27,7 +27,7 @@ vi.mock('wagmi', () => ({
   }),
   useBalance: () => ({
     data: mockIsConnected
-      ? { value: BigInt('1000000000000000000'), decimals: 18, formatted: '1.0', symbol: 'KLC' }
+      ? { value: BigInt('1000000000000000000'), decimals: 18, formatted: '1.0', symbol: 'KMT' }
       : undefined,
   }),
   useChainId: () => (mockIsConnected ? mockChainId : undefined),
@@ -105,7 +105,7 @@ describe('useWallet', () => {
       const { result } = renderHook(() => useWallet())
 
       expect(result.current.balance).toBeDefined()
-      expect(result.current.balance?.symbol).toBe('KLC')
+      expect(result.current.balance?.symbol).toBe('KMT')
       expect(result.current.balance?.formatted).toBe('1.0')
     })
   })

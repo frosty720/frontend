@@ -15,7 +15,7 @@ import { useWallet } from '@/hooks/useWallet';
 import { useToast } from '@/components/ui/toast';
 import '@/app/launchpad/launchpad.css';
 
-// Simple TokenIcon component for KLC
+// Simple TokenIcon component for KMT
 function TokenIcon({ symbol, size = 24 }: { symbol: string; size?: number }) {
   const [imageError, setImageError] = useState(false);
 
@@ -82,7 +82,7 @@ export default function StakingForm({ className }: StakingFormProps) {
 
   const handleStake = async () => {
     if (!isConnected) {
-      toast.error('Wallet not connected', 'Please connect your wallet to stake KLC');
+      toast.error('Wallet not connected', 'Please connect your wallet to stake KMT');
       return;
     }
 
@@ -96,7 +96,7 @@ export default function StakingForm({ className }: StakingFormProps) {
     try {
       await stakeKLC(stakeAmount);
 
-      toast.success('Stake successful!', `Successfully staked ${stakeAmount} KLC`);
+      toast.success('Stake successful!', `Successfully staked ${stakeAmount} KMT`);
 
       setStakeAmount('');
     } catch (error) {
@@ -109,7 +109,7 @@ export default function StakingForm({ className }: StakingFormProps) {
 
   const handleWithdraw = async () => {
     if (!isConnected) {
-      toast.error('Wallet not connected', 'Please connect your wallet to withdraw KLC');
+      toast.error('Wallet not connected', 'Please connect your wallet to withdraw KMT');
       return;
     }
 
@@ -123,7 +123,7 @@ export default function StakingForm({ className }: StakingFormProps) {
     try {
       await withdrawKLC(withdrawAmount);
 
-      toast.success('Withdrawal successful!', `Successfully withdrew ${withdrawAmount} KLC`);
+      toast.success('Withdrawal successful!', `Successfully withdrew ${withdrawAmount} KMT`);
 
       setWithdrawAmount('');
     } catch (error) {
@@ -162,7 +162,7 @@ export default function StakingForm({ className }: StakingFormProps) {
           <Coins className="h-12 w-12 text-gray-400 mb-4" />
           <h3 className="text-lg font-medium text-gray-900 mb-2">Connect Wallet</h3>
           <p className="text-gray-500 text-center">
-            Connect your wallet to start staking KLC and earning rewards
+            Connect your wallet to start staking KMT and earning rewards
           </p>
         </CardContent>
       </Card>
@@ -176,7 +176,7 @@ export default function StakingForm({ className }: StakingFormProps) {
           <div className="p-1 rounded-lg icon-bg-blue">
             <Coins className="h-4 w-4" />
           </div>
-          Stake KLC
+          Stake KMT
         </CardTitle>
       </CardHeader>
       <CardContent>
@@ -215,13 +215,13 @@ export default function StakingForm({ className }: StakingFormProps) {
                     MAX
                   </Button>
                   <div className="flex items-center gap-1 bg-blue-500/20 border border-blue-500/30 rounded-md px-2 py-1 h-8">
-                    <TokenIcon symbol="KLC" size={16} />
-                    <span className="text-xs font-medium text-white">KLC</span>
+                    <TokenIcon symbol="KMT" size={16} />
+                    <span className="text-xs font-medium text-white">KMT</span>
                   </div>
                 </div>
               </div>
               <p className="text-xs text-gray-400">
-                Available: {isLoading ? 'Loading...' : `${klcBalanceFormatted} KLC`}
+                Available: {isLoading ? 'Loading...' : `${klcBalanceFormatted} KMT`}
               </p>
             </div>
 
@@ -237,7 +237,7 @@ export default function StakingForm({ className }: StakingFormProps) {
                   Staking...
                 </>
               ) : (
-                'Stake KLC'
+                'Stake KMT'
               )}
             </Button>
           </TabsContent>
@@ -265,13 +265,13 @@ export default function StakingForm({ className }: StakingFormProps) {
                     MAX
                   </Button>
                   <div className="flex items-center gap-1 bg-blue-500/20 border border-blue-500/30 rounded-md px-2 py-1 h-7">
-                    <TokenIcon symbol="KLC" size={14} />
-                    <span className="text-xs font-medium text-white">KLC</span>
+                    <TokenIcon symbol="KMT" size={14} />
+                    <span className="text-xs font-medium text-white">KMT</span>
                   </div>
                 </div>
               </div>
               <p className="text-xs text-gray-400">
-                Staked: {isLoading ? 'Loading...' : `${stakedBalanceFormatted} KLC`}
+                Staked: {isLoading ? 'Loading...' : `${stakedBalanceFormatted} KMT`}
               </p>
             </div>
 
@@ -287,7 +287,7 @@ export default function StakingForm({ className }: StakingFormProps) {
                   Withdrawing...
                 </>
               ) : (
-                'Withdraw KLC'
+                'Withdraw KMT'
               )}
             </Button>
           </TabsContent>

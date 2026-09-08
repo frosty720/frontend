@@ -357,7 +357,7 @@ export function useProjectDetails(contractAddress: string): UseProjectDetailsRet
       const softCap = dbData.softCap || '0'
 
       // Calculate progress percentage
-      // Convert totalRaised from wei to KLC if it's a large number
+      // Convert totalRaised from wei to KMT if it's a large number
       const raisedAmount = parseFloat(totalRaised)
       const raisedInKLC = raisedAmount > 1000000000000000 ? raisedAmount / 1000000000000000000 : raisedAmount
       const hardCapAmount = parseFloat(hardCap)

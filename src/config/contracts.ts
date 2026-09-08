@@ -203,14 +203,27 @@ export function isNativeToken(address: string): boolean {
 
 // Helper function to format address for display
 export function formatAddress(address: string): string {
-  if (isNativeToken(address)) return 'Native KLC';
+  if (isNativeToken(address)) return 'Native KMT';
   return `${address.slice(0, 6)}...${address.slice(-4)}`;
 }
 
-// Contract creation fees (in KLC)
+// Contract creation fees (in KMT)
+/**
+ * Launch fees, in KMT. These MUST match `flatFee()` on the live factories — they are what the
+ * UI quotes to the user and what it attaches as msg.value.
+ *
+ * Verified on chain 3890 (2026-09-07):
+ *   presaleV3Factory   0xa458bDf0…  flatFee() = 1800 KMT
+ *   fairLaunchV3Factory 0xaDFdD464… flatFee() = 1800 KMT
+ *   standardTokenFactory 0xbcdbe590… flatFee() = 3 KMT
+ *
+ * Presale/fairlaunch were still carrying the pre-relaunch 200,000 KLC figure, which was never
+ * rebased at 110:1 (200,000 / 110 ≈ 1,818). Quoting 200,000 KMT told users a launch cost ~$40k
+ * instead of ~$360. The boss adjusts these via setFlatFee — re-read the chain before editing.
+ */
 export const CONTRACT_FEES = {
   STANDARD_TOKEN: '3.0',
   LIQUIDITY_GENERATOR_TOKEN: '3.0',
-  PRESALE: '200000.0',
-  FAIRLAUNCH: '200000.0',  // Fixed: Updated from 5.0 to 200000.0 KLC
+  PRESALE: '1800.0',
+  FAIRLAUNCH: '1800.0',
 } as const;

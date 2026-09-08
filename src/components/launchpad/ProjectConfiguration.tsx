@@ -58,7 +58,7 @@ function formatDuration(days: string | undefined): string {
 }
 
 export default function ProjectConfiguration({ projectData }: ProjectConfigurationProps) {
-  const baseTokenSymbol = projectData.baseToken === '0x0000000000000000000000000000000000000000' ? 'KLC' : 'Token'
+  const baseTokenSymbol = projectData.baseToken === '0x0000000000000000000000000000000000000000' ? 'KMT' : 'Token'
   const isPresale = projectData.type === 'presale'
   const isFairlaunch = projectData.type === 'fairlaunch'
 

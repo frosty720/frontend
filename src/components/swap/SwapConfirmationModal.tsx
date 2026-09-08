@@ -168,7 +168,7 @@ export default function SwapConfirmationModal({
               {estimatedGas && (
                 <div className="flex justify-between">
                   <span style={{ color: '#fef3c7' }}>Network Fee</span>
-                  <span className="font-medium text-white">~{estimatedGas} KLC</span>
+                  <span className="font-medium text-white">~{estimatedGas} KMT</span>
                 </div>
               )}
             </div>

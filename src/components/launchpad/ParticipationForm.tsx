@@ -94,9 +94,9 @@ export default function ParticipationForm({
 
   const watchedAmount = form.watch('amount')
 
-  // Check if project uses native token (KLC) or ERC20
+  // Check if project uses native token (KMT) or ERC20
   const isNativeContribution = isNativeToken(projectData.baseToken)
-  const baseTokenSymbol = isNativeContribution ? 'KLC' : 'USDT' // Default to USDT for ERC20
+  const baseTokenSymbol = isNativeContribution ? 'KMT' : 'USDT' // Default to USDT for ERC20
 
   // Fetch user balance, contribution, and limits
   useEffect(() => {
@@ -319,7 +319,7 @@ export default function ParticipationForm({
                 <div className="grid grid-cols-2 gap-4 text-sm">
                   <div>
                     <span className="text-gray-400">Estimated Gas:</span>
-                    <span className="text-white ml-2">{gasEstimate} KLC</span>
+                    <span className="text-white ml-2">{gasEstimate} KMT</span>
                   </div>
                   <div>
                     <span className="text-gray-400">Token Rate:</span>

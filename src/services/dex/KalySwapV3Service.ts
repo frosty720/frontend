@@ -133,7 +133,7 @@ export class KalySwapV3Service extends BaseV3Service {
         return {
             chainId: this.chainId,
             symbol: 'wKLC',
-            name: 'Wrapped KLC',
+            name: 'Wrapped KMT',
             address: this.getWethAddress(),
             decimals: 18,
             logoURI: 'https://raw.githubusercontent.com/kalycoinproject/sdk/main/src/images/chains/kaly.png',
@@ -142,7 +142,7 @@ export class KalySwapV3Service extends BaseV3Service {
     }
 
     /**
-     * Get the native token (KLC)
+     * Get the native token (KMT)
      */
     getNativeToken(): Token {
         return {

@@ -83,17 +83,17 @@ export const calculateAPR = (rewardRate: bigint, totalSupply: bigint): number =>
 };
 
 /**
- * Format KLC amount for display
+ * Format KMT amount for display
  * @param amount - Amount in Wei (bigint)
- * @returns Formatted string with KLC suffix
+ * @returns Formatted string with KMT suffix
  */
 export const formatKLCAmount = (amount: bigint): string => {
   const ethAmount = Number(amount) / 10 ** 18;
-  return `${toFixedDigits(ethAmount)} KLC`;
+  return `${toFixedDigits(ethAmount)} KMT`;
 };
 
 /**
- * Parse KLC amount from string to Wei
+ * Parse KMT amount from string to Wei
  * @param amount - Amount string (e.g., "1.5")
  * @returns Amount in Wei (bigint)
  */

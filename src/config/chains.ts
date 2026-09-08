@@ -94,7 +94,7 @@ export const DEFAULT_CHAIN = kalychain
 export const CHAIN_CONFIG = {
   [kalychain.id]: {
     name: 'KalyChain',
-    shortName: 'KLC',
+    shortName: 'KMT',
     isTestnet: false,
     faucetUrl: null,
     bridgeUrl: null, // Add bridge URL when available

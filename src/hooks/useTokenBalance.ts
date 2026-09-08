@@ -41,7 +41,7 @@ export function useTokenBalance(token: Token | null) {
         setError(null);
 
         if (token.isNative) {
-          // Get native KLC balance with timeout
+          // Get native KMT balance with timeout
           const nativeBalance = await Promise.race([
             publicClient.getBalance({ address }),
             new Promise((_, reject) =>
@@ -159,7 +159,7 @@ export function useTokenBalances(tokens: (Token | null)[]) {
           if (!token) return null;
 
           try {
-            // Check if token is native KLC (zero address or isNative flag)
+            // Check if token is native KMT (zero address or isNative flag)
             const isNativeToken = token.isNative ||
                                  token.address === '0x0000000000000000000000000000000000000000' ||
                                  token.address.toLowerCase() === '0x0000000000000000000000000000000000000000';

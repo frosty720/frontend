@@ -54,7 +54,7 @@ export default function ProjectProgress({
   }
   const { isConnected } = useWallet()
   
-  const baseTokenSymbol = projectData.baseToken === '0x0000000000000000000000000000000000000000' ? 'KLC' : 'Token'
+  const baseTokenSymbol = projectData.baseToken === '0x0000000000000000000000000000000000000000' ? 'KMT' : 'Token'
   
   const getProgressColor = () => {
     if (!projectData.progress) return 'bg-gray-500'
@@ -167,7 +167,7 @@ export default function ProjectProgress({
             <div className="flex justify-between text-xs text-gray-500">
               <span>{(() => {
                 const amount = parseFloat(projectData.totalRaised || '0')
-                // Convert from wei to KLC if the number is very large
+                // Convert from wei to KMT if the number is very large
                 const klcAmount = amount > 1000000000000000 ? amount / 1000000000000000000 : amount
                 return klcAmount.toFixed(2)
               })()} {baseTokenSymbol} raised</span>
@@ -249,7 +249,7 @@ export default function ProjectProgress({
                   <div className="text-white font-medium">
                     {(() => {
                       const amount = parseFloat(projectData.totalRaised || '0')
-                      // Convert from wei to KLC if the number is very large
+                      // Convert from wei to KMT if the number is very large
                       const klcAmount = amount > 1000000000000000 ? amount / 1000000000000000000 : amount
                       return klcAmount.toFixed(2)
                     })()} {baseTokenSymbol}

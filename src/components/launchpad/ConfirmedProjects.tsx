@@ -292,10 +292,10 @@ export default function ConfirmedProjects() {
 
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 text-sm text-gray-300">
                   <div>
-                    <span className="font-medium text-white">Soft Cap:</span> {project.softCap} KLC
+                    <span className="font-medium text-white">Soft Cap:</span> {project.softCap} KMT
                   </div>
                   <div>
-                    <span className="font-medium text-white">Hard Cap:</span> {project.hardCap} KLC
+                    <span className="font-medium text-white">Hard Cap:</span> {project.hardCap} KMT
                   </div>
                   {project.tokenRate && (
                     <div>

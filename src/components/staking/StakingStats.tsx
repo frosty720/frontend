@@ -57,9 +57,9 @@ export default function StakingStats({ className }: StakingStatsProps) {
   const statsCards = [
     {
       title: 'Total Staked',
-      value: isLoading ? 'Loading...' : `${totalStakedFormatted} KLC`,
+      value: isLoading ? 'Loading...' : `${totalStakedFormatted} KMT`,
       icon: Users,
-      description: 'Total KLC staked in the pool',
+      description: 'Total KMT staked in the pool',
       iconBgClass: 'icon-bg-blue'
     },
     {
@@ -78,7 +78,7 @@ export default function StakingStats({ className }: StakingStatsProps) {
     },
     {
       title: 'Your Stake',
-      value: isLoading ? 'Loading...' : `${stakedBalanceFormatted} KLC`,
+      value: isLoading ? 'Loading...' : `${stakedBalanceFormatted} KMT`,
       icon: Coins,
       description: hasStakedBalance ? `${poolSharePercentage.toFixed(4)}% of pool` : 'No stake yet',
       iconBgClass: 'icon-bg-purple'
@@ -112,7 +112,7 @@ export default function StakingStats({ className }: StakingStatsProps) {
               {index === 3 && hasEarnedRewards && (
                 <div className="mt-2">
                   <Badge variant="secondary" className="text-xs bg-green-500/20 text-green-400 border-green-500/30">
-                    +{earnedRewardsFormatted} KLC rewards
+                    +{earnedRewardsFormatted} KMT rewards
                   </Badge>
                 </div>
               )}

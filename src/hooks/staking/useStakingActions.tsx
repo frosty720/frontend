@@ -21,7 +21,7 @@ import {
 import { useToast } from '@/components/ui/toast'
 
 /**
- * Hook for staking KLC tokens
+ * Hook for staking KMT tokens
  */
 export function useStakeKLC() {
   const [isLoading, setIsLoading] = useState(false)
@@ -44,7 +44,7 @@ export function useStakeKLC() {
         throw new Error('Invalid stake amount')
       }
 
-      stakingLogger.debug('🥩 Staking KLC:', {
+      stakingLogger.debug('🥩 Staking KMT:', {
         amount,
         amountWei: amountWei.toString(),
         contractAddress: STAKING_CONTRACT.address
@@ -54,7 +54,7 @@ export function useStakeKLC() {
       const transaction = createStakingTransaction(functionData, amountWei)
       const txHash = await signTransaction(transaction)
 
-      toast.success('Stake Transaction Sent', `Staking ${amount} KLC tokens...`)
+      toast.success('Stake Transaction Sent', `Staking ${amount} KMT tokens...`)
 
       stakingLogger.debug('✅ Stake transaction sent:', txHash)
       return txHash
@@ -65,12 +65,12 @@ export function useStakeKLC() {
       stakingLogger.error('❌ Error message:', err instanceof Error ? err.message : 'Unknown error')
       stakingLogger.error('❌ Error stack:', err instanceof Error ? err.stack : 'No stack trace')
 
-      const errorMessage = err instanceof Error ? err.message : 'Failed to stake KLC'
+      const errorMessage = err instanceof Error ? err.message : 'Failed to stake KMT'
       setError(errorMessage)
 
       // More specific error messages based on common issues
       if (errorMessage.includes('insufficient funds') || errorMessage.includes('insufficient balance')) {
-        toast.error('Insufficient Funds', 'You do not have enough KLC for this transaction')
+        toast.error('Insufficient Funds', 'You do not have enough KMT for this transaction')
       } else if (errorMessage.includes('user rejected') || errorMessage.includes('denied')) {
         toast.error('Transaction Cancelled', 'You cancelled the transaction')
       } else if (errorMessage.includes('Wallet not connected')) {
@@ -94,7 +94,7 @@ export function useStakeKLC() {
 }
 
 /**
- * Hook for withdrawing staked KLC tokens
+ * Hook for withdrawing staked KMT tokens
  */
 export function useWithdrawKLC() {
   const [isLoading, setIsLoading] = useState(false)
@@ -121,18 +121,18 @@ export function useWithdrawKLC() {
       const functionData = encodeWithdrawCall(amountWei)
       const transaction = createStakingTransaction(functionData)
 
-      stakingLogger.debug('💰 Withdrawing KLC:', { amount, amountWei: amountWei.toString() })
+      stakingLogger.debug('💰 Withdrawing KMT:', { amount, amountWei: amountWei.toString() })
 
       // Sign and send transaction
       const txHash = await signTransaction(transaction)
 
-      toast.success('Withdrawal Transaction Sent', `Withdrawing ${amount} KLC tokens...`)
+      toast.success('Withdrawal Transaction Sent', `Withdrawing ${amount} KMT tokens...`)
 
       stakingLogger.debug('✅ Withdrawal transaction sent:', txHash)
       return txHash
 
     } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : 'Failed to withdraw KLC'
+      const errorMessage = err instanceof Error ? err.message : 'Failed to withdraw KMT'
       setError(errorMessage)
       
       toast.error('Withdrawal Failed', errorMessage)
@@ -230,7 +230,7 @@ export function useExitStaking() {
       // Sign and send transaction
       const txHash = await signTransaction(transaction)
 
-      toast.success('Exit Transaction Sent', 'Withdrawing all staked KLC and claiming rewards...')
+      toast.success('Exit Transaction Sent', 'Withdrawing all staked KMT and claiming rewards...')
 
       stakingLogger.debug('✅ Exit transaction sent:', txHash)
       return txHash

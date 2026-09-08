@@ -39,15 +39,15 @@ export interface PriceCalculationOptions {
  * @returns Price of tokenA in terms of the other token, or 0 if calculation fails
  * 
  * @example
- * // Get price of KLC in USDT (how many USDT per 1 KLC)
+ * // Get price of KMT in USDT (how many USDT per 1 KMT)
  * const price = calculatePriceFromReserves(klcToken, pairInfo);
- * // If KLC is token0 and reserves are [1000 KLC, 50000 USDT]
- * // Returns 50 (50 USDT per KLC)
+ * // If KMT is token0 and reserves are [1000 KMT, 50000 USDT]
+ * // Returns 50 (50 USDT per KMT)
  * 
  * @example
- * // Get price of USDT in KLC (how many KLC per 1 USDT)
+ * // Get price of USDT in KMT (how many KMT per 1 USDT)
  * const price = calculatePriceFromReserves(usdtToken, pairInfo);
- * // Returns 0.02 (0.02 KLC per USDT)
+ * // Returns 0.02 (0.02 KMT per USDT)
  */
 export function calculatePriceFromReserves(
   tokenA: Token,

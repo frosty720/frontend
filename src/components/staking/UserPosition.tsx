@@ -56,7 +56,7 @@ export default function UserPosition({ className }: UserPositionProps) {
     try {
       await claimRewards();
 
-      toast.success('Rewards claimed!', `Successfully claimed ${earnedRewardsFormatted} KLC rewards`);
+      toast.success('Rewards claimed!', `Successfully claimed ${earnedRewardsFormatted} KMT rewards`);
     } catch (error) {
       stakingLogger.error('Claim rewards error:', error);
       toast.error('Claim failed', 'Please try again or check your wallet');
@@ -70,7 +70,7 @@ export default function UserPosition({ className }: UserPositionProps) {
 
     // Confirmation for exit action
     const confirmed = window.confirm(
-      `Are you sure you want to exit staking? This will withdraw all your staked KLC (${stakedBalanceFormatted}) and claim all rewards (${earnedRewardsFormatted}).`
+      `Are you sure you want to exit staking? This will withdraw all your staked KMT (${stakedBalanceFormatted}) and claim all rewards (${earnedRewardsFormatted}).`
     );
 
     if (!confirmed) return;
@@ -79,7 +79,7 @@ export default function UserPosition({ className }: UserPositionProps) {
     try {
       await exitStaking();
 
-      toast.success('Successfully exited staking!', `Withdrew ${stakedBalanceFormatted} KLC and claimed ${earnedRewardsFormatted} KLC rewards`);
+      toast.success('Successfully exited staking!', `Withdrew ${stakedBalanceFormatted} KMT and claimed ${earnedRewardsFormatted} KMT rewards`);
     } catch (error) {
       stakingLogger.error('Exit staking error:', error);
       toast.error('Exit failed', 'Please try again or check your wallet');
@@ -135,7 +135,7 @@ export default function UserPosition({ className }: UserPositionProps) {
           <Coins className="h-12 w-12 text-gray-400 mb-4" />
           <h3 className="text-lg font-medium text-gray-900 mb-2">No Active Position</h3>
           <p className="text-gray-500 text-center">
-            Start staking KLC to earn rewards and see your position here
+            Start staking KMT to earn rewards and see your position here
           </p>
         </CardContent>
       </Card>
@@ -163,7 +163,7 @@ export default function UserPosition({ className }: UserPositionProps) {
               </Badge>
             </div>
             <div className="text-2xl font-bold text-white">
-              {isLoading ? 'Loading...' : `${stakedBalanceFormatted} KLC`}
+              {isLoading ? 'Loading...' : `${stakedBalanceFormatted} KMT`}
             </div>
 
             {/* APR Info */}
@@ -187,7 +187,7 @@ export default function UserPosition({ className }: UserPositionProps) {
                 </Badge>
               </div>
               <div className="text-2xl font-bold text-green-400">
-                {isLoading ? 'Loading...' : `${earnedRewardsFormatted} KLC`}
+                {isLoading ? 'Loading...' : `${earnedRewardsFormatted} KMT`}
               </div>
             </div>
           </>
@@ -216,7 +216,7 @@ export default function UserPosition({ className }: UserPositionProps) {
               ) : (
                 <>
                   <Gift className="mr-2 h-4 w-4" />
-                  Claim Rewards ({earnedRewardsFormatted} KLC)
+                  Claim Rewards ({earnedRewardsFormatted} KMT)
                 </>
               )}
             </Button>
@@ -246,7 +246,7 @@ export default function UserPosition({ className }: UserPositionProps) {
         {/* Info Note */}
         <div className="bg-blue-500/10 border border-blue-500/30 rounded-lg p-3">
           <p className="text-xs text-blue-300">
-            <strong>Note:</strong> You can withdraw your staked KLC at any time.
+            <strong>Note:</strong> You can withdraw your staked KMT at any time.
             Rewards are calculated continuously and can be claimed separately or together when exiting.
           </p>
         </div>

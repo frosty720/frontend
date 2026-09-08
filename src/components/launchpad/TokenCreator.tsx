@@ -117,7 +117,7 @@ export default function TokenCreator() {
   const { data: walletClient } = useWalletClient();
 
   const chainId = useResolvedChainId();
-  const nativeSymbol = getNativeToken(chainId)?.symbol ?? 'KLC';
+  const nativeSymbol = getNativeToken(chainId)?.symbol ?? 'KMT';
   // Tokens holders can be paid rewards in — the chain's own list, stablecoins first.
   const rewardTokenOptions = getTokenList(chainId).filter((t) => !t.isNative);
   const availableTokenTypes = Object.keys(TOKEN_TYPES) as TokenType[];
@@ -269,7 +269,7 @@ export default function TokenCreator() {
       launchpadLogger.debug(`🚀 Creating ${TOKEN_TYPES[activeTokenType].label}:`, {
         address: factoryAddress,
         function: 'create',
-        fee: `${(Number(creationFee) / 1e18).toFixed(6)} KLC`
+        fee: `${(Number(creationFee) / 1e18).toFixed(6)} KMT`
       });
 
       launchpadLogger.debug('📝 Deploying token contract...');
@@ -648,7 +648,7 @@ export default function TokenCreator() {
             <div>
               <h4 className="font-medium text-white mb-1">Creation Fee</h4>
               <p className="text-sm text-gray-300">
-                A fee of <strong className="text-white">{getCreationFee()} KLC</strong> is required to create your token.
+                A fee of <strong className="text-white">{getCreationFee()} KMT</strong> is required to create your token.
                 This fee covers deployment costs and platform maintenance.
               </p>
             </div>
@@ -697,7 +697,7 @@ export default function TokenCreator() {
             ) : (
               <>
                 <Coins className="h-4 w-4 mr-2" />
-                Create Token ({getCreationFee()} KLC)
+                Create Token ({getCreationFee()} KMT)
               </>
             )}
           </Button>

@@ -2,9 +2,9 @@ import stakingABI from '@/config/abis/staking/stakingABI.json'
 import { kalychain } from '@/config/chains'
 
 /**
- * KLC Staking Contract Configuration
+ * KMT Staking Contract Configuration
  * 
- * This contract handles native KLC token staking with reward distribution.
+ * This contract handles native KMT token staking with reward distribution.
  * Based on the production implementation at https://staking.kalychain.io/stake
  */
 

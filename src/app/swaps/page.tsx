@@ -296,8 +296,8 @@ function SwapsPageContent({
     let tokenA, tokenB;
 
     if (chainId === CHAIN_IDS.KALYCHAIN) {
-      // KalyChain: KLC/USDT
-      tokenA = dynamicTokens.find(token => token.symbol === 'KLC');
+      // KalyChain: KMT/USDT
+      tokenA = dynamicTokens.find(token => token.symbol === 'KMT');
       tokenB = dynamicTokens.find(token => token.symbol === 'USDT' || token.symbol === 'USDt');
     } else if (chainId === 56) {
       // BSC: BNB/BUSD (BUSD is the preferred stablecoin on BSC with better liquidity)
@@ -441,7 +441,7 @@ function SwapsPageContent({
               <div className="transaction-data-container">
                 <TransactionData
                   selectedPair={{
-                    token0Symbol: swapState.fromToken?.symbol || 'KLC',
+                    token0Symbol: swapState.fromToken?.symbol || 'KMT',
                     token1Symbol: swapState.toToken?.symbol || 'USDT',
                     pairAddress: pairAddress || undefined
                   }}
@@ -504,7 +504,7 @@ function SwapsPageContent({
                     <CardContent className="pt-6">
                       <AlchemyPayWidget
                         defaultFiat="USD"
-                        defaultCrypto="KLC"
+                        defaultCrypto="KMT"
                         defaultNetwork="KALYCHAIN"
                         height={625}
                       />

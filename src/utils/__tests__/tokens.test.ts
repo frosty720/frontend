@@ -38,6 +38,8 @@ describe('normalizeSymbol', () => {
 
   it('unwraps wrapped native tokens', () => {
     expect(normalizeSymbol('WKMT')).toBe('KMT')
+    // Pre-relaunch symbol: normalizeSymbol deliberately keeps KLC beside KMT so cached/user
+    // data from the old chain still unwraps instead of looking like an unrelated token.
     expect(normalizeSymbol('wklc')).toBe('KLC')
     expect(normalizeSymbol('WETH')).toBe('ETH')
     expect(normalizeSymbol('WBNB')).toBe('BNB')
@@ -58,8 +60,8 @@ describe('normalizeSymbol', () => {
 
 describe('symbolsMatch', () => {
   it('returns false for empty inputs', () => {
-    expect(symbolsMatch('', 'KLC')).toBe(false)
-    expect(symbolsMatch('KLC', '')).toBe(false)
+    expect(symbolsMatch('', 'KMT')).toBe(false)
+    expect(symbolsMatch('KMT', '')).toBe(false)
   })
 
   it('matches same symbols', () => {
@@ -75,7 +77,7 @@ describe('symbolsMatch', () => {
 
   it('does not match different tokens', () => {
     expect(symbolsMatch('USDT', 'USDC')).toBe(false)
-    expect(symbolsMatch('KLC', 'ETH')).toBe(false)
+    expect(symbolsMatch('KMT', 'ETH')).toBe(false)
   })
 })
 
