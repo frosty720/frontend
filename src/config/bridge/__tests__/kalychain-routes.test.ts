@@ -115,6 +115,19 @@ describe('the route graph is closed', () => {
 		expect(dangling).toEqual([]);
 	});
 
+	// The relayer only relays to/from KalyChain. A remote<->remote connection is a route the
+	// UI can start but nothing can finish: 514 DAI was stranded on Polygon -> BSC that way.
+	it('every connection has KalyChain on one side', () => {
+		const offenders: string[] = [];
+		for (const t of tokens) {
+			for (const c of t.connections ?? []) {
+				const [, chain] = c.token.split('|');
+				if (t.chainName !== 'kalychain' && chain !== 'kalychain') offenders.push(`${t.chainName}/${t.symbol} -> ${chain}`);
+			}
+		}
+		expect(offenders).toEqual([]);
+	});
+
 	it('no longer offers the retired KLC', () => {
 		// KalyChain relaunched as KMT; synthetic KLC on other chains has no home to return to.
 		expect(tokens.map((t) => t.symbol)).not.toContain('KLC');
