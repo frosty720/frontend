@@ -32,6 +32,22 @@ describe('humanizeBridgeError', () => {
     ).toBe('Transaction timed out, the network may be busy. Please try again.');
   });
 
+  // Regression: a wallet still pointed at the retired testnetrpc host reported
+  // "Failed to sign transfer transaction", sending the user after their signature instead of
+  // their network settings. Unreachable-network errors must name the real fault.
+  it('maps unreachable-network errors to an RPC/connection message, not a signing failure', () => {
+    const expected =
+      'Could not reach the network. Check your wallet is connected to KalyChain (chain 3890) with a working RPC, then try again.';
+    for (const raw of [
+      'HttpRequestError: HTTP request failed. URL: https://testnetrpc.kalychain.io/rpc',
+      'TypeError: Failed to fetch',
+      'fetch failed',
+      'NetworkError when attempting to fetch resource',
+    ]) {
+      expect(humanizeBridgeError(new Error(raw), TransferStatus.SigningTransfer)).toBe(expected);
+    }
+  });
+
   it('falls back to the message for the stage where the error occurred', () => {
     expect(
       humanizeBridgeError(

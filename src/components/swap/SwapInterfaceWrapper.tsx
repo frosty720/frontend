@@ -14,7 +14,11 @@ interface SwapInterfaceWrapperProps {
 
 // Dynamically import MultichainSwapInterface to prevent SSR issues with Wagmi
 const MultichainSwapInterface = dynamic(
-  () => import('./MultichainSwapInterface').catch(() => {
+  () => import('./MultichainSwapInterface').catch((err) => {
+    // The reason the chunk failed to load is the only useful thing here — swallowing it left
+    // "Error loading swap interface. Please refresh the page." on screen with nothing in the
+    // console to act on.
+    console.error('[KalySwap] MultichainSwapInterface failed to load:', err);
     // Fallback component if import fails
     return {
       default: () => (

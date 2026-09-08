@@ -1,6 +1,7 @@
 'use client';
 
 import { CHAIN_IDS } from '@/config/chains';
+import { getV3Config } from '@/config/dex/v3-config';
 
 import React, { useEffect, useRef, useState } from 'react';
 import {
@@ -472,6 +473,38 @@ export default function TradingChart({
           <div className="text-center">
             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-4"></div>
             <p className="text-gray-500">Loading chart data...</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Native <-> wrapped-native is a 1:1 wrap handled by the WKMT contract, never a pool. There is
+  // no chart to draw and there never will be, so this must short-circuit BEFORE the dataError
+  // branch — otherwise the (expected) "no liquidity pool" throw renders as "Failed to Load Chart
+  // Data", which reads as a broken app for a swap that actually works fine.
+  const wrappedNative = getV3Config(currentTokenA?.chainId ?? currentTokenB?.chainId ?? 0)?.wethAddress?.toLowerCase();
+  const isWrapPair = !!wrappedNative && !!currentTokenA && !!currentTokenB && (
+    (currentTokenA.isNative === true && currentTokenB.address?.toLowerCase() === wrappedNative) ||
+    (currentTokenB.isNative === true && currentTokenA.address?.toLowerCase() === wrappedNative)
+  );
+
+  if (isWrapPair) {
+    return (
+      <div className={`bg-white rounded-lg border ${className}`}>
+        <div className="p-4 border-b">
+          <h3 className="text-lg font-semibold text-gray-900">
+            {currentTokenA?.symbol}/{currentTokenB?.symbol}
+          </h3>
+        </div>
+        <div className="flex items-center justify-center" style={{ height: `${height}px` }}>
+          <div className="text-center">
+            <TrendingUp className="mx-auto h-12 w-12 text-gray-400 mb-4" />
+            <h3 className="text-lg font-medium text-gray-900 mb-2">Always 1:1</h3>
+            <p className="text-gray-500 max-w-sm">
+              {currentTokenA?.symbol} and {currentTokenB?.symbol} are the same asset — wrapping and
+              unwrapping is always 1:1, so there is no price chart. You can still make the swap.
+            </p>
           </div>
         </div>
       </div>

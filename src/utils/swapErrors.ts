@@ -155,15 +155,32 @@ export function parseSwapError(error: any): SwapError {
     };
   }
   
-  // Gas estimation errors
-  if (errorMessage.toLowerCase().includes('gas') || 
-      errorMessage.toLowerCase().includes('out of gas')) {
+  // Genuinely out of gas money. Deliberately narrow: only phrases that mean the wallet could
+  // not PAY. ("insufficient funds…" is already caught by the balance branch above.)
+  if (/out of gas|gas required exceeds allowance|insufficient funds for gas|intrinsic transaction cost/i.test(errorMessage)) {
     return {
       type: SwapErrorType.INSUFFICIENT_GAS,
       severity: SwapErrorSeverity.MEDIUM,
       title: 'Insufficient Gas',
       message: 'Not enough KMT to pay for transaction fees.',
       suggestion: 'Add more KMT to your wallet to cover gas fees.',
+      retryable: true,
+      actionLabel: 'Retry',
+      actionType: 'retry'
+    };
+  }
+
+  // Any OTHER gas-shaped error is an estimation failure — almost always an unreachable RPC or a
+  // call that would revert, NOT an empty wallet. This used to match the bare substring "gas", so
+  // "failed to estimate gas" told a holder with 7,807 KMT to "add more KMT": the advice was wrong
+  // and it hid the real fault (their wallet RPC was pointing at a dead host).
+  if (/gas/i.test(errorMessage)) {
+    return {
+      type: SwapErrorType.GAS_ESTIMATION_FAILED,
+      severity: SwapErrorSeverity.MEDIUM,
+      title: 'Could Not Estimate Gas',
+      message: 'The network could not simulate this transaction.',
+      suggestion: 'Check that your wallet is connected to KalyChain (chain 3890) with a working RPC, then try again.',
       retryable: true,
       actionLabel: 'Retry',
       actionType: 'retry'

@@ -232,6 +232,14 @@ export function humanizeBridgeError(error: unknown, stage: TransferStatus): stri
   if (details.includes('block height exceeded') || details.includes('timeout')) {
     return 'Transaction timed out, the network may be busy. Please try again.';
   }
+  // The wallet could not REACH the chain at all (dead/wrong RPC host, offline, DNS failure) —
+  // distinct from the chain replying with an error. Without this the failure fell through to
+  // "Failed to sign transfer transaction", which points the user at their signature when the
+  // real fault is their network config. Seen 2026-09-08: a holder whose wallet RPC still pointed
+  // at the retired testnetrpc host was told his signing had failed.
+  if (/HttpRequestError|Failed to fetch|fetch failed|NetworkError|ERR_NAME_NOT_RESOLVED|ENOTFOUND|ECONNREFUSED/i.test(details)) {
+    return 'Could not reach the network. Check your wallet is connected to KalyChain (chain 3890) with a working RPC, then try again.';
+  }
   return (
     errorMessages[stage as keyof typeof errorMessages] ||
     'Unable to transfer tokens. Please try again.'

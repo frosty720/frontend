@@ -1,18 +1,26 @@
 import stakingABI from '@/config/abis/staking/stakingABI.json'
 import { kalychain } from '@/config/chains'
+import { MAINNET_CONTRACTS } from '@/config/contracts'
 
 /**
  * KMT Staking Contract Configuration
- * 
+ *
  * This contract handles native KMT token staking with reward distribution.
  * Based on the production implementation at https://staking.kalychain.io/stake
  */
 
-// Get staking contract address from environment
-const STAKING_CONTRACT_ADDRESS = process.env.NEXT_PUBLIC_STAKING_CONTRACT_ADDRESS as `0x${string}`
+// The address book (config/contracts.ts) is the source of truth; the env var is only an override
+// for pointing a local build at a different deployment.
+//
+// This used to read the env var ALONE and throw when it was unset. Deployments were still carrying
+// the 3888 address 0xF670A2D3…, which has no code on 3890, so the stake page silently queried a
+// non-existent contract and reported 0 staked / 0% APR. Falling back to the address book means a
+// stale env can no longer point this at a dead contract.
+const STAKING_CONTRACT_ADDRESS = (process.env.NEXT_PUBLIC_STAKING_CONTRACT_ADDRESS ||
+  MAINNET_CONTRACTS.STAKING) as `0x${string}`
 
 if (!STAKING_CONTRACT_ADDRESS) {
-  throw new Error('NEXT_PUBLIC_STAKING_CONTRACT_ADDRESS environment variable is required')
+  throw new Error('No staking contract address: set NEXT_PUBLIC_STAKING_CONTRACT_ADDRESS or MAINNET_CONTRACTS.STAKING')
 }
 
 /**
