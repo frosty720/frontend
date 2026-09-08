@@ -29,6 +29,18 @@ describe('Thirdweb Configuration', () => {
       const chainIds = thirdwebChains.map(c => c.id)
       expect(chainIds).toEqual([3890, 42161, 56, 137])
     })
+
+    // Regression: thirdweb resolves chain metadata from its public registry, which does not
+    // know 3890. Without an explicit name the wallet details modal rendered "Unknown chain #3890".
+    it('names KalyChain explicitly so thirdweb never falls back to "Unknown chain"', async () => {
+      const { twKalychain } = await getThirdwebConfig()
+
+      expect(twKalychain.name).toBe('KalyChain')
+      expect(twKalychain.nativeCurrency?.symbol).toBe('KMT')
+      expect(twKalychain.blockExplorers?.[0]?.name).toBe('KalyScan')
+      // explorer host is env-driven (NEXT_PUBLIC_KALYCHAIN_EXPLORER_URL); only its presence is asserted
+      expect(twKalychain.blockExplorers?.[0]?.url).toMatch(/^https:\/\//)
+    })
   })
 
   describe('wallet configuration', () => {

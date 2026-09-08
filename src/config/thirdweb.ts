@@ -7,7 +7,7 @@
 
 import { createThirdwebClient, defineChain } from 'thirdweb'
 import { inAppWallet, createWallet } from 'thirdweb/wallets'
-import { CHAIN_IDS, RPC_URLS, RPC_URLS_ALL } from './chains'
+import { CHAIN_IDS, KALYCHAIN_EXPLORER_URL, RPC_URLS, RPC_URLS_ALL } from './chains'
 
 // ============================================================================
 // THIRDWEB CLIENT
@@ -46,11 +46,15 @@ const KLC_ICON = {
 }
 
 // KalyChain (3890). Native currency is KMT, not KLC — without this the thirdweb in-app
-// wallet labels balances with the pre-relaunch symbol.
+// wallet labels balances with the pre-relaunch symbol. `name` and `blockExplorers` must be
+// given too: thirdweb looks unknown ids up in its public registry, and 3890 isn't there, so
+// the wallet details modal showed "Unknown chain #3890" until they were supplied.
 export const twKalychain = defineChain({
   id: CHAIN_IDS.KALYCHAIN,
+  name: 'KalyChain',
   rpc: pickSessionRpc(CHAIN_IDS.KALYCHAIN),
   nativeCurrency: { name: 'KalyChain Monetary Token', symbol: 'KMT', decimals: 18 },
+  blockExplorers: [{ name: 'KalyScan', url: KALYCHAIN_EXPLORER_URL, apiUrl: `${KALYCHAIN_EXPLORER_URL}/api` }],
   icon: KLC_ICON,
 })
 
