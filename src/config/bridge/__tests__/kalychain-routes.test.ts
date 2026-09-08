@@ -14,13 +14,13 @@ import { CHAIN_IDS } from '@/config/chains';
 const tokens = warpRouteConfigs.tokens;
 const kmtTokens = tokens.filter((t) => t.chainName === 'kalychain');
 
-/** Enrolment read from chain 3890 on 2026-08-26. */
+/** Enrolment read from chain 3890 on 2026-08-26; BSC (DAI, ETH) and Polygon (USDC, DAI, ETH, WBTC) added 2026-09-08. */
 const ON_CHAIN = {
 	USDT: { address: '0x6318EcDbae6B469D39C38949eDC671f4bA8A6172', decimals: 6, remotes: ['arbitrum', 'polygon'] },
-	USDC: { address: '0xf00A4b733093C21b0892eae0578F0a926f9370b3', decimals: 6, remotes: ['arbitrum'] },
-	DAI: { address: '0x8fbff791fCcF596DEf2e788549d0275557F95A21', decimals: 18, remotes: ['arbitrum'] },
-	WBTC: { address: '0xE3f1A8Af16d2Dcd0B6F1F813C449375f85C9d97F', decimals: 8, remotes: ['arbitrum'] },
-	ETH: { address: '0x73b8fBACFF08DafD9a0a6cB8699C64a488d9EA2a', decimals: 18, remotes: ['arbitrum'] },
+	USDC: { address: '0xf00A4b733093C21b0892eae0578F0a926f9370b3', decimals: 6, remotes: ['arbitrum', 'polygon'] },
+	DAI: { address: '0x8fbff791fCcF596DEf2e788549d0275557F95A21', decimals: 18, remotes: ['arbitrum', 'bsc', 'polygon'] },
+	WBTC: { address: '0xE3f1A8Af16d2Dcd0B6F1F813C449375f85C9d97F', decimals: 8, remotes: ['arbitrum', 'polygon'] },
+	ETH: { address: '0x73b8fBACFF08DafD9a0a6cB8699C64a488d9EA2a', decimals: 18, remotes: ['arbitrum', 'bsc', 'polygon'] },
 } as const;
 
 describe('KalyChain bridge chain', () => {
