@@ -2,9 +2,12 @@ import { useCallback } from 'react'
 import { useAccount, useDisconnect, useBalance, useChainId, useSwitchChain, useSendTransaction } from 'wagmi'
 import { isSupportedChain, getChainById, type ChainId } from '@/config/chains'
 import { walletLogger } from '@/lib/logger'
+import { kalyFeeOverrides } from '@/config/gas'
 
-// Utility function to convert Hyperlane transaction to wagmi format
-function hyperlaneToWagmiTx(tx: any) {
+// Utility function to convert Hyperlane transaction to wagmi format.
+// `chainId` is the chain the wallet will sign on; it decides whether the KalyChain fee
+// floor applies (see @/config/gas).
+function hyperlaneToWagmiTx(tx: any, chainId?: number | null) {
   walletLogger.debug('Converting transaction:', tx);
 
   // Handle different transaction structures
@@ -25,14 +28,26 @@ function hyperlaneToWagmiTx(tx: any) {
     return BigInt(value);
   };
 
+  // Hyperlane's populated transactions carry no fee fields. If we pass them through
+  // as-is the wallet prices them from the node's suggestion, and on a quiet KalyChain
+  // that suggestion is a 0 tip: the in-app wallet then builds a ~14 wei transaction
+  // that the RPC node rejects ("Failed to sign transfer transaction" in the bridge UI).
+  // Pin the same floor every other write path uses; fees the SDK did set are kept.
+  const hasFees = Boolean(transaction.gasPrice || transaction.maxFeePerGas || transaction.maxPriorityFeePerGas);
+  const feeFields = hasFees
+    ? {
+        gasPrice: transaction.gasPrice ? convertToBigInt(transaction.gasPrice) : undefined,
+        maxFeePerGas: transaction.maxFeePerGas ? convertToBigInt(transaction.maxFeePerGas) : undefined,
+        maxPriorityFeePerGas: transaction.maxPriorityFeePerGas ? convertToBigInt(transaction.maxPriorityFeePerGas) : undefined,
+      }
+    : kalyFeeOverrides(transaction.chainId ?? chainId);
+
   const wagmiTx = {
     to: transaction.to as `0x${string}`,
     value: convertToBigInt(transaction.value),
     data: (transaction.data || '0x') as `0x${string}`,
     gas: transaction.gasLimit ? convertToBigInt(transaction.gasLimit) : undefined,
-    gasPrice: transaction.gasPrice ? convertToBigInt(transaction.gasPrice) : undefined,
-    maxFeePerGas: transaction.maxFeePerGas ? convertToBigInt(transaction.maxFeePerGas) : undefined,
-    maxPriorityFeePerGas: transaction.maxPriorityFeePerGas ? convertToBigInt(transaction.maxPriorityFeePerGas) : undefined,
+    ...feeFields,
   };
 
   walletLogger.debug('Converted transaction:', wagmiTx);
@@ -207,7 +222,7 @@ export function useWallet(): WalletState & WalletActions {
         keys: Object.keys(transaction || {}),
       })
 
-      const wagmiTx = hyperlaneToWagmiTx(transaction)
+      const wagmiTx = hyperlaneToWagmiTx(transaction, currentChainId)
       const result = await sendTransaction(wagmiTx)
 
       if (!result) {
@@ -221,7 +236,7 @@ export function useWallet(): WalletState & WalletActions {
       walletLogger.error('Transaction failed:', error)
       throw error
     }
-  }, [sendTransaction])
+  }, [sendTransaction, currentChainId])
 
   // Legacy stubs for backward compatibility during migration
   const switchToInternalWallet = useCallback(async (_walletId: string) => {

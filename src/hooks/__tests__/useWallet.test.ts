@@ -4,11 +4,13 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { renderHook } from '@testing-library/react'
 import { useWallet } from '../useWallet'
+import { KALYCHAIN_MAX_FEE_WEI, KALYCHAIN_MIN_PRIORITY_FEE_WEI } from '@/config/gas'
 
 // Mock wagmi hooks
 const mockAddress = '0x1234567890abcdef1234567890abcdef12345678'
-const mockChainId = 3890
+let mockChainId = 3890
 let mockIsConnected = false
+const mockSendTransactionAsync = vi.fn().mockResolvedValue('0xtxhash')
 
 vi.mock('wagmi', () => ({
   useAccount: () => ({
@@ -35,11 +37,12 @@ vi.mock('wagmi', () => ({
     switchChain: vi.fn(),
   }),
   useSendTransaction: () => ({
-    sendTransactionAsync: vi.fn().mockResolvedValue('0xtxhash'),
+    sendTransactionAsync: mockSendTransactionAsync,
   }),
 }))
 
 vi.mock('@/config/chains', () => ({
+  CHAIN_IDS: { KALYCHAIN: 3890 },
   kalychain: { id: 3890, name: 'KalyChain' },
   isSupportedChain: (id: number) => [3890, 56, 42161].includes(id),
 }))
@@ -57,6 +60,8 @@ describe('useWallet', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     mockIsConnected = false
+    mockChainId = 3890
+    mockSendTransactionAsync.mockResolvedValue('0xtxhash')
   })
 
   describe('disconnected state', () => {
@@ -192,6 +197,53 @@ describe('useWallet', () => {
       const { result } = renderHook(() => useWallet())
 
       await expect(result.current.signTransaction({ value: '100' })).rejects.toThrow('recipient')
+    })
+
+    // Hyperlane's populated transactions carry no fee fields. Handing them to the wallet
+    // as-is lets the wallet price them from the node, and on a quiet KalyChain that is a
+    // 0 tip / 14 wei transaction: unmineable, and since 2026-09-10 rejected outright by
+    // the RPC node ("Failed to sign transfer transaction" in the bridge UI, seen with the
+    // thirdweb in-app wallet). Every other write path pins the floor; this one must too.
+    it('pins the KalyChain fee floor on Hyperlane txs that carry no fees', async () => {
+      const { result } = renderHook(() => useWallet())
+
+      await result.current.signTransaction({
+        transaction: { to: '0xRouter', data: '0xabcdef', value: '0' },
+        category: 'transfer',
+      })
+
+      expect(mockSendTransactionAsync).toHaveBeenCalledTimes(1)
+      const sent = mockSendTransactionAsync.mock.calls[0][0]
+      expect(sent.maxFeePerGas).toBe(KALYCHAIN_MAX_FEE_WEI)
+      expect(sent.maxPriorityFeePerGas).toBe(KALYCHAIN_MIN_PRIORITY_FEE_WEI)
+      expect(sent.gasPrice).toBeUndefined()
+    })
+
+    it('keeps fee fields the SDK already set', async () => {
+      const { result } = renderHook(() => useWallet())
+
+      await result.current.signTransaction({
+        to: '0xRouter',
+        data: '0x',
+        maxFeePerGas: '40000000000',
+        maxPriorityFeePerGas: '30000000000',
+      })
+
+      const sent = mockSendTransactionAsync.mock.calls[0][0]
+      expect(sent.maxFeePerGas).toBe(40000000000n)
+      expect(sent.maxPriorityFeePerGas).toBe(30000000000n)
+    })
+
+    it('does not pin KalyChain fees when the wallet is on another chain', async () => {
+      mockChainId = 42161
+      const { result } = renderHook(() => useWallet())
+
+      await result.current.signTransaction({ to: '0xRouter', data: '0x' })
+
+      const sent = mockSendTransactionAsync.mock.calls[0][0]
+      expect(sent.maxFeePerGas).toBeUndefined()
+      expect(sent.maxPriorityFeePerGas).toBeUndefined()
+      expect(sent.gasPrice).toBeUndefined()
     })
   })
 })

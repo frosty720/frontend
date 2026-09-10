@@ -80,6 +80,14 @@ describe('no un-guarded transaction call sites', () => {
 		expect(offenders).toEqual([]);
 	});
 
+	it('the bridge signing path (useWallet.signTransaction) pins the fee floor', () => {
+		// The bridge does not use walletClient.writeContract: Hyperlane hands it populated
+		// transactions that go out through wagmi sendTransaction in useWallet. That path
+		// carried no fee fields until 2026-09-10 and the in-app wallet priced them at ~0.
+		const text = readFileSync(join(SRC, 'hooks', 'useWallet.ts'), 'utf8');
+		expect(text).toContain('kalyFeeOverrides(');
+	});
+
 	it('no source file awaits a raw waitForTransactionReceipt', () => {
 		// assertTxSucceeded (src/utils/transactions.ts) is the only sanctioned caller —
 		// viem resolves that promise for REVERTED transactions too.
