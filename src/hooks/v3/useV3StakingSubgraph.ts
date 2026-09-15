@@ -97,40 +97,105 @@ const GET_INCENTIVE_POOLS = gql`
     }
 `;
 
+// `StakerDeposit.stakes` is derived from `Stake.deposit`, and unstaked rows are deleted by the
+// subgraph, so this lists only live stakes. `rewardToken` is a bare address (see note above).
 const GET_USER_STAKES = gql`
     query GetUserStakes($owner: Bytes!) {
         stakerDeposits(where: { owner: $owner }) {
             id
             numberOfStakes
             stakes {
+                liquidity
                 incentive {
                     id
-                    rewardToken { symbol }
+                    rewardToken
                 }
-                liquidity
             }
         }
     }
 `;
 
+// `RewardClaim.to` is the claimant; `rewardToken` is the token paid (null if the subgraph could not
+// read it from the receipt) and `reward` is already scaled by that token's decimals.
 const GET_REWARD_CLAIMS = gql`
     query GetRewardClaims($owner: Bytes!) {
         rewardClaims(
-            where: { owner: $owner }
+            where: { to: $owner }
             orderBy: timestamp
             orderDirection: desc
             first: 50
         ) {
             id
-            rewardToken {
-                id
-                symbol
-            }
-            amount
+            rewardToken
+            reward
             timestamp
         }
     }
 `;
+
+const GET_TOKEN_SYMBOLS = gql`
+    query GetTokenSymbols($ids: [ID!]) {
+        tokens(where: { id_in: $ids }) {
+            id
+            symbol
+        }
+    }
+`;
+
+export interface RawStakerDeposit {
+    id: string;
+    numberOfStakes: string;
+    stakes: { liquidity: string; incentive: { id: string; rewardToken: string } }[];
+}
+
+export interface RawRewardClaim {
+    id: string;
+    rewardToken: string | null;
+    reward: string;
+    timestamp: string;
+}
+
+/** Reward-token addresses referenced by deposits and claims, lowercased and de-duplicated. */
+export function rewardTokenIds(deposits: RawStakerDeposit[], claims: RawRewardClaim[]): string[] {
+    const ids = [
+        ...deposits.flatMap((d) => d.stakes.map((s) => s.incentive.rewardToken)),
+        ...claims.map((c) => c.rewardToken).filter((id): id is string => !!id),
+    ];
+    return Array.from(new Set(ids.map((id) => id.toLowerCase())));
+}
+
+export function toSubgraphDeposits(raw: RawStakerDeposit[], symbols: Map<string, string>): SubgraphDeposit[] {
+    return raw.map((d) => ({
+        id: d.id,
+        numberOfStakes: d.numberOfStakes,
+        stakes: d.stakes.map((s) => ({
+            liquidity: s.liquidity,
+            incentive: {
+                id: s.incentive.id,
+                rewardToken: { symbol: symbols.get(s.incentive.rewardToken.toLowerCase()) ?? '?' },
+            },
+        })),
+    }));
+}
+
+export function toSubgraphRewardClaims(raw: RawRewardClaim[], symbols: Map<string, string>): SubgraphRewardClaim[] {
+    return raw.map((c) => {
+        const tokenId = c.rewardToken?.toLowerCase() ?? '';
+        return {
+            id: c.id,
+            rewardToken: { id: tokenId, symbol: symbols.get(tokenId) ?? '?' },
+            amount: c.reward,
+            timestamp: c.timestamp,
+        };
+    });
+}
+
+async function fetchTokenSymbols(subgraphUrl: string, ids: string[]): Promise<Map<string, string>> {
+    if (ids.length === 0) return new Map();
+    const data = await request<{ tokens: { id: string; symbol: string }[] }>(subgraphUrl, GET_TOKEN_SYMBOLS, { ids })
+        .catch(() => ({ tokens: [] as { id: string; symbol: string }[] }));
+    return new Map(data.tokens.map((t) => [t.id.toLowerCase(), t.symbol]));
+}
 
 // ========== Hook ==========
 
@@ -217,12 +282,13 @@ export function useV3StakingSubgraph(chainIdOverride?: number) {
         }
 
         try {
-            const data = await request<{ stakerDeposits: SubgraphDeposit[] }>(
+            const data = await request<{ stakerDeposits: RawStakerDeposit[] }>(
                 subgraphUrl,
                 GET_USER_STAKES,
                 { owner: address.toLowerCase() },
             );
-            setUserStakes(data.stakerDeposits);
+            const symbols = await fetchTokenSymbols(subgraphUrl, rewardTokenIds(data.stakerDeposits, []));
+            setUserStakes(toSubgraphDeposits(data.stakerDeposits, symbols));
         } catch (err) {
             logger.debug('V3 Staking subgraph: user stakes query failed:', err);
             setUserStakes([]);
@@ -237,12 +303,13 @@ export function useV3StakingSubgraph(chainIdOverride?: number) {
         }
 
         try {
-            const data = await request<{ rewardClaims: SubgraphRewardClaim[] }>(
+            const data = await request<{ rewardClaims: RawRewardClaim[] }>(
                 subgraphUrl,
                 GET_REWARD_CLAIMS,
                 { owner: address.toLowerCase() },
             );
-            setRewardClaims(data.rewardClaims);
+            const symbols = await fetchTokenSymbols(subgraphUrl, rewardTokenIds([], data.rewardClaims));
+            setRewardClaims(toSubgraphRewardClaims(data.rewardClaims, symbols));
         } catch (err) {
             logger.debug('V3 Staking subgraph: reward claims query failed:', err);
             setRewardClaims([]);

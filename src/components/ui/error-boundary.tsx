@@ -109,7 +109,7 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
               
               {/* Error details in development */}
               {process.env.NODE_ENV === 'development' && error && (
-                <details className="mt-4 p-3 bg-gray-100 dark:bg-gray-800 rounded-md text-xs">
+                <details className="mt-4 p-3 bg-surface-alt rounded-md text-xs">
                   <summary className="cursor-pointer font-medium flex items-center gap-2">
                     <Bug className="h-3 w-3" />
                     Error Details (Development Only)
@@ -118,7 +118,7 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
                     {error.message}
                   </pre>
                   {errorInfo && (
-                    <pre className="mt-2 overflow-auto whitespace-pre-wrap text-gray-600 dark:text-gray-400">
+                    <pre className="mt-2 overflow-auto whitespace-pre-wrap text-muted-foreground">
                       {errorInfo.componentStack}
                     </pre>
                   )}

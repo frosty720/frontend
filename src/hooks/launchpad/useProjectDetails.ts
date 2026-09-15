@@ -3,6 +3,9 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import { usePublicClient } from 'wagmi'
 import { useHydration } from '@/hooks/useHydration'
 import { PRESALE_ABI, FAIRLAUNCH_ABI, PRESALE_V3_ABI, FAIRLAUNCH_V3_ABI } from '@/config/abis'
+import { useDict } from '@/i18n/hooks'
+import { describeError } from '@/i18n/errorText'
+import { UserError } from '@/lib/userError'
 
 // Types for project data
 export interface ProjectData {
@@ -119,6 +122,7 @@ const FAIRLAUNCH_QUERY = `
 `
 
 export function useProjectDetails(contractAddress: string): UseProjectDetailsReturn {
+  const dict = useDict()
   const [projectData, setProjectData] = useState<ProjectData | null>(null)
   const [loading, setLoading] = useState(true)
   const [isInitialLoad, setIsInitialLoad] = useState(true)
@@ -466,14 +470,14 @@ export function useProjectDetails(contractAddress: string): UseProjectDetailsRet
 
         // Validate contract address format
         if (!currentAddress.match(/^0x[a-fA-F0-9]{40}$/)) {
-          throw new Error('Invalid contract address format')
+          throw new UserError('invalidAddress')
         }
 
         // Fetch database data (required)
         const dbData = await fetchDatabaseData(currentAddress)
 
         if (!dbData) {
-          throw new Error('Project not found')
+          throw new UserError('projectNotFound')
         }
 
         // Use project type from database if available, otherwise detect from contract
@@ -569,7 +573,7 @@ export function useProjectDetails(contractAddress: string): UseProjectDetailsRet
 
       } catch (err) {
         launchpadLogger.error('Error fetching project data:', err)
-        setError(err instanceof Error ? err.message : 'Failed to load project')
+        setError(describeError(err, dict))
       } finally {
         // Only set loading to false if we were showing loading (initial load or forced refresh)
         if (isInitial || force) {

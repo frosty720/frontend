@@ -13,6 +13,8 @@ import { fetchGraphQL, isNetworkError } from '@/utils/networkUtils';
 import { Token } from '@/config/dex/types';
 import { calculatePriceFromReservesRaw } from '@/utils/price';
 import { MAINNET_CONTRACTS, isStablecoinAddress } from '@/config/contracts';
+import { UserError } from '@/lib/userError';
+import { useErrorText } from '@/i18n/errorText';
 
 export interface PairMarketStats {
   price: number;
@@ -91,6 +93,7 @@ interface PairStatsData {
 export function usePairMarketStats(tokenA?: Token, tokenB?: Token): PairMarketStats {
   // Use shared price change from context
   const { priceChange24h } = usePriceDataContext();
+  const errorText = useErrorText();
 
   // Normalize token order
   const [normalizedTokenA, normalizedTokenB] = useMemo(
@@ -134,7 +137,7 @@ export function usePairMarketStats(tokenA?: Token, tokenB?: Token): PairMarketSt
     liquidity: data.liquidity,
     pairAddress: data.pairAddress,
     isLoading: statsQuery.isLoading,
-    error: statsQuery.error?.message ?? null,
+    error: statsQuery.error ? errorText(statsQuery.error) : null,
     refetch: () => { statsQuery.refetch(); },
   };
 }
@@ -204,7 +207,7 @@ async function fetchKalyChainV3Stats(
 
   const stats = await getV3PoolStats(pool.id, v3Config.subgraphUrl);
   if (!stats) {
-    throw new Error('Failed to fetch V3 pool stats');
+    throw new UserError('dataUnavailable');
   }
 
   // token1Price = token1 per token0; price shown is the base token in quote terms

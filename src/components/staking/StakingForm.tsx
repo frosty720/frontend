@@ -13,7 +13,9 @@ import { Coins, ArrowUpCircle, ArrowDownCircle, Loader2 } from 'lucide-react';
 import { useStakingBalances, useStakingActions } from '@/hooks/staking';
 import { useWallet } from '@/hooks/useWallet';
 import { useToast } from '@/components/ui/toast';
-import '@/app/launchpad/launchpad.css';
+import { useDict } from '@/i18n/hooks';
+import { interpolate } from '@/i18n/interpolate';
+import '@/app/[locale]/launchpad/launchpad.css';
 
 // Simple TokenIcon component for KMT
 function TokenIcon({ symbol, size = 24 }: { symbol: string; size?: number }) {
@@ -54,6 +56,8 @@ export default function StakingForm({ className }: StakingFormProps) {
   const [isStaking, setIsStaking] = useState(false);
   const [isWithdrawing, setIsWithdrawing] = useState(false);
   const toast = useToast();
+  const dict = useDict();
+  const s = dict.stake;
 
   useEffect(() => {
     setMounted(true);
@@ -82,13 +86,13 @@ export default function StakingForm({ className }: StakingFormProps) {
 
   const handleStake = async () => {
     if (!isConnected) {
-      toast.error('Wallet not connected', 'Please connect your wallet to stake KMT');
+      toast.error(dict.errors.walletNotConnected);
       return;
     }
 
     const validation = validateStake(stakeAmount);
     if (!validation.isValid) {
-      toast.error('Invalid amount', validation.error);
+      toast.error(s.toastInvalid, validation.error);
       return;
     }
 
@@ -96,12 +100,12 @@ export default function StakingForm({ className }: StakingFormProps) {
     try {
       await stakeKLC(stakeAmount);
 
-      toast.success('Stake successful!', `Successfully staked ${stakeAmount} KMT`);
+      toast.success(interpolate(s.toastStaked, { amount: stakeAmount }));
 
       setStakeAmount('');
     } catch (error) {
       stakingLogger.error('Staking error:', error);
-      toast.error('Staking failed', 'Please try again or check your wallet');
+      toast.error(s.toastFailed);
     } finally {
       setIsStaking(false);
     }
@@ -109,13 +113,13 @@ export default function StakingForm({ className }: StakingFormProps) {
 
   const handleWithdraw = async () => {
     if (!isConnected) {
-      toast.error('Wallet not connected', 'Please connect your wallet to withdraw KMT');
+      toast.error(dict.errors.walletNotConnected);
       return;
     }
 
     const validation = validateWithdraw(withdrawAmount);
     if (!validation.isValid) {
-      toast.error('Invalid amount', validation.error);
+      toast.error(s.toastInvalid, validation.error);
       return;
     }
 
@@ -123,12 +127,12 @@ export default function StakingForm({ className }: StakingFormProps) {
     try {
       await withdrawKLC(withdrawAmount);
 
-      toast.success('Withdrawal successful!', `Successfully withdrew ${withdrawAmount} KMT`);
+      toast.success(interpolate(s.toastWithdrawn, { amount: withdrawAmount }));
 
       setWithdrawAmount('');
     } catch (error) {
       stakingLogger.error('Withdrawal error:', error);
-      toast.error('Withdrawal failed', 'Please try again or check your wallet');
+      toast.error(s.toastFailed);
     } finally {
       setIsWithdrawing(false);
     }

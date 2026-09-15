@@ -7,6 +7,9 @@ import { parseUnits } from 'viem';
 import { useBridgeContext } from './useBridgeContext';
 import { useWallet } from '../useWallet';
 import { loggerHelpers } from '@/utils/bridge/logger';
+import { UserError } from '@/lib/userError';
+import { describeError } from '@/i18n/errorText';
+import { useDict } from '@/i18n/hooks';
 
 export interface FeeQuotesParams {
   originChain: string;
@@ -30,6 +33,7 @@ export function useFeeQuotes(params: FeeQuotesParams, enabled: boolean = true) {
 
   const { warpCore } = useBridgeContext();
   const { address: account } = useWallet();
+  const dict = useDict();
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
   const isCalculatingRef = useRef(false);
 
@@ -62,12 +66,12 @@ export function useFeeQuotes(params: FeeQuotesParams, enabled: boolean = true) {
 
         const tokens = warpCore.tokens;
         if (params.tokenIndex >= tokens.length) {
-          throw new Error('Invalid token index');
+          throw new UserError('tokenNotFound');
         }
 
         const token = tokens[params.tokenIndex];
         if (!token) {
-          throw new Error('Token not found');
+          throw new UserError('tokenNotFound');
         }
 
         // Parse amount with token decimals (for validation)
@@ -104,7 +108,7 @@ export function useFeeQuotes(params: FeeQuotesParams, enabled: boolean = true) {
         setLastUpdated(Date.now());
         loggerHelpers.feeCalculation('Fee quotes updated successfully');
       } catch (err) {
-        const errorMessage = err instanceof Error ? err.message : 'Failed to fetch fee quotes';
+        const errorMessage = describeError(err, dict);
         setError(errorMessage);
         loggerHelpers.feeError('Fee quote error', err as Error);
         setFees(null);

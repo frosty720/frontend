@@ -3,13 +3,12 @@
 import { launchpadLogger } from '@/lib/logger';
 
 import React, { useState } from 'react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
   Coins,
   Info,
@@ -41,6 +40,9 @@ import { parseEther, parseUnits, getContract } from 'viem';
 import { kalyFeeOverrides } from '@/config/gas';
 import { assertTxSucceeded } from '@/utils/transactions';
 import { useResolvedChainId } from '@/hooks/useResolvedChainId';
+import { useDict } from '@/i18n/hooks';
+import { interpolate } from '@/i18n/interpolate';
+import { describeError } from '@/i18n/errorText';
 
 interface TokenFormData {
   name: string;
@@ -111,6 +113,10 @@ interface LiquidityGeneratorTokenParams {
 }
 
 export default function TokenCreator() {
+  const dict = useDict();
+  const t = dict.launchpadForms.token;
+  const sh = dict.launchpadForms.shared;
+
   // Wagmi hooks for wallet interaction
   const { address, isConnected } = useAccount();
   const publicClient = usePublicClient();
@@ -119,7 +125,7 @@ export default function TokenCreator() {
   const chainId = useResolvedChainId();
   const nativeSymbol = getNativeToken(chainId)?.symbol ?? 'KMT';
   // Tokens holders can be paid rewards in — the chain's own list, stablecoins first.
-  const rewardTokenOptions = getTokenList(chainId).filter((t) => !t.isNative);
+  const rewardTokenOptions = getTokenList(chainId).filter((token) => !token.isNative);
   const availableTokenTypes = Object.keys(TOKEN_TYPES) as TokenType[];
 
   const [activeTokenType, setActiveTokenType] = useState<TokenType>('standard');
@@ -181,22 +187,22 @@ export default function TokenCreator() {
   };
 
   const validateForm = () => {
-    if (!formData.name.trim()) return 'Token name is required';
-    if (!formData.symbol.trim()) return 'Token symbol is required';
-    if (!formData.totalSupply.trim()) return 'Total supply is required';
+    if (!formData.name.trim()) return t.errorNameRequired;
+    if (!formData.symbol.trim()) return t.errorSymbolRequired;
+    if (!formData.totalSupply.trim()) return t.errorTotalSupplyRequired;
     if (isNaN(Number(formData.totalSupply)) || Number(formData.totalSupply) <= 0) {
-      return 'Total supply must be a positive number';
+      return t.errorTotalSupplyPositive;
     }
     if (isNaN(Number(formData.decimals)) || Number(formData.decimals) < 0 || Number(formData.decimals) > 18) {
-      return 'Decimals must be between 0 and 18';
+      return t.errorDecimalsRange;
     }
 
     if (activeTokenType === 'rewards') {
-      if (!formData.rewardToken?.trim()) return 'Reward token is required for Rewards tokens';
+      if (!formData.rewardToken?.trim()) return t.errorRewardTokenRequired;
       const min = Number(formData.minRewardBalance || 0);
-      if (isNaN(min) || min < 0) return 'Minimum balance to earn must be zero or greater';
+      if (isNaN(min) || min < 0) return t.errorMinBalanceNonNegative;
       if (min > Number(formData.totalSupply)) {
-        return 'Minimum balance to earn cannot exceed the total supply';
+        return t.errorMinBalanceExceedsSupply;
       }
     }
 
@@ -234,7 +240,7 @@ export default function TokenCreator() {
     }
 
     if (!isConnected || !address || !walletClient || !publicClient) {
-      setError('Please connect your wallet to create a token');
+      setError(t.walletRequiredBody);
       return;
     }
 
@@ -324,7 +330,7 @@ export default function TokenCreator() {
       launchpadLogger.debug(`📝 Transaction hash: ${hash}`);
       launchpadLogger.debug('⏳ Waiting for transaction confirmation...');
 
-      const receipt = await assertTxSucceeded(publicClient, hash, 'Token creation');
+      const receipt = await assertTxSucceeded(publicClient, hash, 'tokenCreation');
       launchpadLogger.debug(`✅ Transaction confirmed in block ${receipt.blockNumber}`);
 
       // Step 2: Parse token address from events
@@ -375,7 +381,7 @@ export default function TokenCreator() {
 
     } catch (err) {
       launchpadLogger.error('❌ Error creating token:', err);
-      setError(err instanceof Error ? err.message : 'Failed to create token');
+      setError(describeError(err, dict));
       setCurrentStep('idle');
     } finally {
       setIsCreating(false);
@@ -394,315 +400,277 @@ export default function TokenCreator() {
   const getContractABIForType = () => TOKEN_TYPES[activeTokenType].abi;
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-8">
       {/* Token Type Selection */}
-      <Card className="form-card">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-white">
-            <Coins className="h-5 w-5" />
-            Choose Token Type
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <Tabs
-            value={activeTokenType}
-            onValueChange={(value) => setActiveTokenType(value as TokenType)}
+      <section className="space-y-4">
+        <h2 className="flex items-center gap-2 font-display text-lg font-semibold text-cream">
+          <Coins className="size-5 text-gold" />
+          {t.chooseTypeHeading}
+        </h2>
+        <Tabs
+          value={activeTokenType}
+          onValueChange={(value) => setActiveTokenType(value as TokenType)}
+        >
+          <TabsList
+            className="grid w-full"
+            style={{ gridTemplateColumns: `repeat(${availableTokenTypes.length}, minmax(0, 1fr))` }}
           >
-            <TabsList
-              className="grid w-full launchpad-tabs"
-              style={{ gridTemplateColumns: `repeat(${availableTokenTypes.length}, minmax(0, 1fr))` }}
-            >
-              {availableTokenTypes.map((t) => (
-                <TabsTrigger key={t} value={t} className="launchpad-tab">
-                  {TOKEN_TYPES[t].label}
-                </TabsTrigger>
-              ))}
-            </TabsList>
+            {availableTokenTypes.map((tt) => (
+              <TabsTrigger key={tt} value={tt}>
+                {t.tabs[tt]}
+              </TabsTrigger>
+            ))}
+          </TabsList>
 
-            <TabsContent value="rewards" className="mt-6">
-              <div className="space-y-4">
-                <div className="flex items-start gap-3 p-4 bg-emerald-900/20 border border-emerald-500/20 rounded-lg">
-                  <Info className="h-5 w-5 text-emerald-400 mt-0.5 flex-shrink-0" />
-                  <div>
-                    <h4 className="font-medium text-white mb-1">Rewards Token</h4>
-                    <p className="text-sm text-gray-300">
-                      An untaxed ERC20 whose holders earn a reward token. Rewards are funded by
-                      explicit deposits from your treasury or revenue rather than a transfer fee,
-                      so the token trades normally on V3 — a fee-on-transfer token cannot.
-                    </p>
-                    <div className="mt-2">
-                      <Badge className="badge-upcoming text-xs">
-                        Fee: {getCreationFee()} {nativeSymbol}
-                      </Badge>
-                    </div>
-                  </div>
+          <TabsContent value="rewards" className="mt-6">
+            <div className="flex items-start gap-3 rounded-xl border border-success/25 bg-success/10 p-4">
+              <Info className="mt-0.5 size-5 shrink-0 text-success" />
+              <div>
+                <h4 className="mb-1 font-semibold text-cream">{t.rewardsInfoTitle}</h4>
+                <p className="text-sm text-muted-foreground">{t.rewardsInfoBody}</p>
+                <div className="mt-2">
+                  <Badge>{interpolate(t.feeBadge, { fee: getCreationFee(), symbol: nativeSymbol })}</Badge>
                 </div>
               </div>
-            </TabsContent>
+            </div>
+          </TabsContent>
 
-            <TabsContent value="standard" className="mt-6">
-              <div className="space-y-4">
-                <div className="flex items-start gap-3 p-4 bg-blue-900/20 border border-blue-500/20 rounded-lg">
-                  <Info className="h-5 w-5 text-blue-400 mt-0.5 flex-shrink-0" />
-                  <div>
-                    <h4 className="font-medium text-white mb-1">Standard ERC20 Token</h4>
-                    <p className="text-sm text-gray-300">
-                      Create a basic ERC20 token with standard functionality. Perfect for simple use cases and testing.
-                    </p>
-                    <div className="mt-2">
-                      <Badge className="badge-upcoming text-xs">
-                        Fee: {getCreationFee()} {nativeSymbol}
-                      </Badge>
-                    </div>
-                  </div>
+          <TabsContent value="standard" className="mt-6">
+            <div className="flex items-start gap-3 rounded-xl border border-info/25 bg-info/10 p-4">
+              <Info className="mt-0.5 size-5 shrink-0 text-info" />
+              <div>
+                <h4 className="mb-1 font-semibold text-cream">{t.standardInfoTitle}</h4>
+                <p className="text-sm text-muted-foreground">{t.standardInfoBody}</p>
+                <div className="mt-2">
+                  <Badge>{interpolate(t.feeBadge, { fee: getCreationFee(), symbol: nativeSymbol })}</Badge>
                 </div>
               </div>
-            </TabsContent>
+            </div>
+          </TabsContent>
 
-            <TabsContent value="liquidity-generator" className="mt-6">
-              <div className="space-y-4">
-                <div className="flex items-start gap-3 p-4 bg-purple-900/20 border border-purple-500/20 rounded-lg">
-                  <Info className="h-5 w-5 text-purple-400 mt-0.5 flex-shrink-0" />
-                  <div>
-                    <h4 className="font-medium text-white mb-1">Liquidity Generator Token</h4>
-                    <p className="text-sm text-gray-300">
-                      Advanced token with automatic liquidity generation, configurable fees, and charity donations.
-                      Features reflection mechanisms and automatic DEX integration.
-                    </p>
-                    <div className="mt-2">
-                      <Badge className="badge-presale text-xs">
-                        Fee: {getCreationFee()} {nativeSymbol}
-                      </Badge>
-                    </div>
-                  </div>
+          <TabsContent value="liquidity-generator" className="mt-6">
+            <div className="flex items-start gap-3 rounded-xl border border-violet/25 bg-violet/10 p-4">
+              <Info className="mt-0.5 size-5 shrink-0 text-violet" />
+              <div>
+                <h4 className="mb-1 font-semibold text-cream">{t.liquidityInfoTitle}</h4>
+                <p className="text-sm text-muted-foreground">{t.liquidityInfoBody}</p>
+                <div className="mt-2">
+                  <Badge>{interpolate(t.feeBadge, { fee: getCreationFee(), symbol: nativeSymbol })}</Badge>
                 </div>
               </div>
-            </TabsContent>
-          </Tabs>
-        </CardContent>
-      </Card>
+            </div>
+          </TabsContent>
+        </Tabs>
+      </section>
 
       {/* Token Creation Form */}
-      <Card className="form-card">
-        <CardHeader>
-          <CardTitle className="text-white">Token Details</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-6">
-          {/* Basic Token Information */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div className="space-y-2">
-              <Label htmlFor="name" className="text-gray-300">Token Name *</Label>
-              <Input
-                id="name"
-                placeholder="e.g., My Awesome Token"
-                value={formData.name}
-                onChange={(e) => handleInputChange('name', e.target.value)}
-                className="h-12 form-input"
-              />
-            </div>
+      <section className="space-y-6 border-t border-line pt-8">
+        <h2 className="font-display text-lg font-semibold text-cream">{t.detailsHeading}</h2>
 
-            <div className="space-y-2">
-              <Label htmlFor="symbol" className="text-gray-300">Token Symbol *</Label>
-              <Input
-                id="symbol"
-                placeholder="e.g., MAT"
-                value={formData.symbol}
-                onChange={(e) => handleInputChange('symbol', e.target.value.toUpperCase())}
-                className="h-12 form-input"
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="decimals" className="text-gray-300">Decimals</Label>
-              <Select value={formData.decimals} onValueChange={(value) => handleInputChange('decimals', value)}>
-                <SelectTrigger className="h-12 form-input">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent className="select-content">
-                  {[...Array(19)].map((_, i) => (
-                    <SelectItem key={i} value={i.toString()} className="select-item">
-                      {i} {i === 18 ? '(Recommended)' : ''}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="totalSupply" className="text-gray-300">Total Supply *</Label>
-              <Input
-                id="totalSupply"
-                placeholder="e.g., 1000000"
-                value={formData.totalSupply}
-                onChange={(e) => handleInputChange('totalSupply', e.target.value)}
-                className="h-12 form-input"
-              />
-            </div>
+        {/* Basic Token Information */}
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+          <div className="space-y-1.5">
+            <Label htmlFor="name" className="text-[13px] text-muted-foreground">{t.nameLabel}</Label>
+            <Input
+              id="name"
+              placeholder={t.namePlaceholder}
+              value={formData.name}
+              onChange={(e) => handleInputChange('name', e.target.value)}
+              className="h-12 rounded-xl border-line bg-surface-alt text-cream placeholder:text-muted-deep"
+            />
           </div>
 
-          {/* Reward settings (RewardsTokenFactory) */}
-          {activeTokenType === 'rewards' && (
-            <div className="space-y-6 pt-6 border-t border-emerald-500/20">
-              <h3 className="text-lg font-medium text-white">Reward Settings</h3>
+          <div className="space-y-1.5">
+            <Label htmlFor="symbol" className="text-[13px] text-muted-foreground">{t.symbolLabel}</Label>
+            <Input
+              id="symbol"
+              placeholder={t.symbolPlaceholder}
+              value={formData.symbol}
+              onChange={(e) => handleInputChange('symbol', e.target.value.toUpperCase())}
+              className="h-12 rounded-xl border-line bg-surface-alt text-cream placeholder:text-muted-deep"
+            />
+          </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div className="space-y-2">
-                  <Label htmlFor="rewardToken" className="text-gray-300">Reward Token</Label>
-                  <Select
-                    value={formData.rewardToken || ''}
-                    onValueChange={(value) => handleInputChange('rewardToken', value)}
-                  >
-                    <SelectTrigger id="rewardToken" className="h-12 form-input">
-                      <SelectValue placeholder="Choose the token holders earn" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {rewardTokenOptions.map((t) => (
-                        <SelectItem key={t.address} value={t.address}>
-                          {t.symbol} — {t.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <p className="text-xs text-gray-400">
-                    Holders are paid in this token. You fund the pool yourself by calling
-                    depositRewards() — there is no transfer fee.
-                  </p>
-                </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="decimals" className="text-[13px] text-muted-foreground">{t.decimalsLabel}</Label>
+            <Select value={formData.decimals} onValueChange={(value) => handleInputChange('decimals', value)}>
+              <SelectTrigger className="h-12 rounded-xl border-line bg-surface-alt text-cream">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {[...Array(19)].map((_, i) => (
+                  <SelectItem key={i} value={i.toString()}>
+                    {i} {i === 18 ? t.decimalsRecommended : ''}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
 
-                <div className="space-y-2">
-                  <Label htmlFor="minRewardBalance" className="text-gray-300">
-                    Minimum Balance to Earn
-                  </Label>
-                  <Input
-                    id="minRewardBalance"
-                    type="number"
-                    placeholder="10000"
-                    value={formData.minRewardBalance || ''}
-                    onChange={(e) => handleInputChange('minRewardBalance', e.target.value)}
-                    className="h-12 form-input"
-                  />
-                  <p className="text-xs text-gray-400">
-                    Wallets holding less than this earn nothing. Keeps dust wallets from
-                    making distribution expensive.
-                  </p>
-                </div>
-              </div>
-            </div>
-          )}
+          <div className="space-y-1.5">
+            <Label htmlFor="totalSupply" className="text-[13px] text-muted-foreground">{t.totalSupplyLabel}</Label>
+            <Input
+              id="totalSupply"
+              placeholder={t.totalSupplyPlaceholder}
+              value={formData.totalSupply}
+              onChange={(e) => handleInputChange('totalSupply', e.target.value)}
+              className="h-12 rounded-xl border-line bg-surface-alt text-cream placeholder:text-muted-deep"
+            />
+          </div>
+        </div>
 
-          {/* Error Display */}
-          {error && (
-            <div className="flex items-start gap-3 p-4 bg-red-900/20 border border-red-500/20 rounded-lg">
-              <AlertTriangle className="h-5 w-5 text-red-400 mt-0.5 flex-shrink-0" />
-              <div>
-                <h4 className="font-medium text-white mb-1">Error</h4>
-                <p className="text-sm text-gray-300">{error}</p>
-              </div>
-            </div>
-          )}
+        {/* Reward settings (RewardsTokenFactory) */}
+        {activeTokenType === 'rewards' && (
+          <div className="space-y-4 border-t border-line pt-6">
+            <h3 className="font-display text-base font-semibold text-cream">{t.rewardSettingsHeading}</h3>
 
-          {/* Success Display */}
-          {createdToken && (
-            <div className="flex items-start gap-3 p-4 bg-green-900/20 border border-green-500/20 rounded-lg">
-              <CheckCircle className="h-5 w-5 text-green-400 mt-0.5 flex-shrink-0" />
-              <div className="flex-1">
-                <h4 className="font-medium text-white mb-1">Token Created Successfully!</h4>
-                <p className="text-sm text-gray-300 mb-2">
-                  Your token has been deployed to: <code className="bg-green-900/30 px-1 rounded text-green-400">{createdToken}</code>
-                </p>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="text-green-400 border-green-500/20 hover:bg-green-500/20"
-                  onClick={() =>
-                    window.open(
-                      // Falls back to the KalyChain explorer when the chain has no metadata; was once hardcoded to
-                      // token was actually deployed to.
-                      `${CHAIN_METADATA[chainId]?.explorer ?? KALYCHAIN_EXPLORER_URL}/address/${createdToken}`,
-                      '_blank'
-                    )
-                  }
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+              <div className="space-y-1.5">
+                <Label htmlFor="rewardToken" className="text-[13px] text-muted-foreground">{t.rewardTokenLabel}</Label>
+                <Select
+                  value={formData.rewardToken || ''}
+                  onValueChange={(value) => handleInputChange('rewardToken', value)}
                 >
-                  <ExternalLink className="h-4 w-4 mr-2" />
-                  View on {CHAIN_METADATA[chainId]?.name ?? 'KalyScan'}
-                </Button>
+                  <SelectTrigger id="rewardToken" className="h-12 rounded-xl border-line bg-surface-alt text-cream">
+                    <SelectValue placeholder={t.rewardTokenPlaceholder} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {rewardTokenOptions.map((rt) => (
+                      <SelectItem key={rt.address} value={rt.address}>
+                        {interpolate(t.rewardTokenOption, { symbol: rt.symbol, name: rt.name })}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-deep">{t.rewardTokenHelp}</p>
+              </div>
+
+              <div className="space-y-1.5">
+                <Label htmlFor="minRewardBalance" className="text-[13px] text-muted-foreground">
+                  {t.minBalanceLabel}
+                </Label>
+                <Input
+                  id="minRewardBalance"
+                  type="number"
+                  placeholder={t.minBalancePlaceholder}
+                  value={formData.minRewardBalance || ''}
+                  onChange={(e) => handleInputChange('minRewardBalance', e.target.value)}
+                  className="h-12 rounded-xl border-line bg-surface-alt text-cream placeholder:text-muted-deep"
+                />
+                <p className="text-xs text-muted-deep">{t.minBalanceHelp}</p>
               </div>
             </div>
-          )}
+          </div>
+        )}
 
-          {/* A rewards token is inert until its pool is funded, so hand the owner the
-              funding form straight away rather than making them find it. */}
-          {createdToken && activeTokenType === 'rewards' && (
-            <div className="pt-6 border-t border-emerald-500/20">
-              <h3 className="text-lg font-medium text-white mb-1">Fund your reward pool</h3>
-              <p className="text-sm text-gray-300 mb-4">
-                Holders earn only what you deposit — there is no transfer fee taking a cut.
-              </p>
-              <RewardsTokenManager tokenAddress={createdToken} />
-            </div>
-          )}
-
-          {/* Creation Fee Info */}
-          <div className="flex items-start gap-3 p-4 bg-gray-900/20 border border-gray-500/20 rounded-lg">
-            <Wallet className="h-5 w-5 text-gray-400 mt-0.5 flex-shrink-0" />
+        {/* Error Display */}
+        {error && (
+          <div className="flex items-start gap-3 rounded-xl border border-danger/25 bg-danger/10 p-4">
+            <AlertTriangle className="mt-0.5 size-5 shrink-0 text-danger" />
             <div>
-              <h4 className="font-medium text-white mb-1">Creation Fee</h4>
-              <p className="text-sm text-gray-300">
-                A fee of <strong className="text-white">{getCreationFee()} KMT</strong> is required to create your token.
-                This fee covers deployment costs and platform maintenance.
-              </p>
+              <h4 className="mb-1 font-semibold text-cream">{sh.errorTitle}</h4>
+              <p className="text-sm text-muted-foreground">{error}</p>
             </div>
           </div>
+        )}
 
-          {/* Progress Display */}
-          {isCreating && (
-            <div className="flex items-start gap-3 p-4 bg-blue-900/20 border border-blue-500/20 rounded-lg">
-              <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-blue-400 mt-0.5 flex-shrink-0"></div>
-              <div className="flex-1">
-                <h4 className="font-medium text-white mb-2">Creating Token</h4>
-                <div className="space-y-2">
-                  <div className={`flex items-center gap-2 text-sm ${currentStep === 'creating' ? 'text-blue-400 font-medium' : currentStep === 'complete' ? 'text-green-400' : 'text-gray-400'}`}>
-                    {currentStep === 'complete' ? (
-                      <CheckCircle className="h-4 w-4" />
-                    ) : currentStep === 'creating' ? (
-                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-400"></div>
-                    ) : (
-                      <div className="h-4 w-4 rounded-full border-2 border-gray-500"></div>
-                    )}
-                    <span>1. Deploy token contract</span>
-                  </div>
+        {/* Success Display */}
+        {createdToken && (
+          <div className="flex items-start gap-3 rounded-xl border border-success/25 bg-success/10 p-4">
+            <CheckCircle className="mt-0.5 size-5 shrink-0 text-success" />
+            <div className="flex-1">
+              <h4 className="mb-1 font-semibold text-cream">{t.successTitle}</h4>
+              <p className="mb-2 text-sm text-muted-foreground">
+                {t.successBody} <code className="rounded bg-success/15 px-1 text-success">{createdToken}</code>
+              </p>
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() =>
+                  window.open(
+                    // Falls back to the KalyChain explorer when the chain has no metadata; was once hardcoded to
+                    // token was actually deployed to.
+                    `${CHAIN_METADATA[chainId]?.explorer ?? KALYCHAIN_EXPLORER_URL}/address/${createdToken}`,
+                    '_blank'
+                  )
+                }
+              >
+                <ExternalLink />
+                {interpolate(t.viewOnExplorer, { name: CHAIN_METADATA[chainId]?.name ?? 'KalyScan' })}
+              </Button>
+            </div>
+          </div>
+        )}
+
+        {/* A rewards token is inert until its pool is funded, so hand the owner the
+            funding form straight away rather than making them find it. */}
+        {createdToken && activeTokenType === 'rewards' && (
+          <div className="border-t border-line pt-6">
+            <h3 className="mb-1 font-display text-base font-semibold text-cream">{t.fundRewardsHeading}</h3>
+            <p className="mb-4 text-sm text-muted-foreground">{t.fundRewardsBody}</p>
+            <RewardsTokenManager tokenAddress={createdToken} />
+          </div>
+        )}
+
+        {/* Creation Fee Info */}
+        <div className="flex items-start gap-3 rounded-xl bg-surface-alt p-4">
+          <Wallet className="mt-0.5 size-5 shrink-0 text-muted-foreground" />
+          <div>
+            <h4 className="mb-1 font-semibold text-cream">{sh.creationFeeTitle}</h4>
+            <p className="text-sm text-muted-foreground">
+              {interpolate(t.creationFeeBody, { fee: getCreationFee() })}
+            </p>
+          </div>
+        </div>
+
+        {/* Progress Display */}
+        {isCreating && (
+          <div className="flex items-start gap-3 rounded-xl border border-info/25 bg-info/10 p-4">
+            <div className="mt-0.5 size-5 shrink-0 animate-spin rounded-full border-b-2 border-info"></div>
+            <div className="flex-1">
+              <h4 className="mb-2 font-semibold text-cream">{t.progressHeading}</h4>
+              <div className="space-y-2">
+                <div className={`flex items-center gap-2 text-sm ${currentStep === 'creating' ? 'font-semibold text-info' : currentStep === 'complete' ? 'text-success' : 'text-muted-foreground'}`}>
+                  {currentStep === 'complete' ? (
+                    <CheckCircle className="size-4" />
+                  ) : currentStep === 'creating' ? (
+                    <div className="size-4 animate-spin rounded-full border-b-2 border-info"></div>
+                  ) : (
+                    <div className="size-4 rounded-full border-2 border-line-strong"></div>
+                  )}
+                  <span>{t.progressStep}</span>
                 </div>
               </div>
             </div>
-          )}
+          </div>
+        )}
 
-          {/* Create Button */}
-          <Button
-            onClick={handleCreateToken}
-            disabled={isCreating || !isConnected}
-            className="w-full h-12 text-base font-medium"
-            size="lg"
-          >
-            {isCreating ? (
-              <>
-                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
-                {currentStep === 'creating' && 'Creating Token...'}
-                {currentStep === 'idle' && 'Preparing...'}
-              </>
-            ) : !isConnected ? (
-              <>
-                <Wallet className="h-4 w-4 mr-2" />
-                Connect Wallet to Create Token
-              </>
-            ) : (
-              <>
-                <Coins className="h-4 w-4 mr-2" />
-                Create Token ({getCreationFee()} KMT)
-              </>
-            )}
-          </Button>
-        </CardContent>
-      </Card>
+        {/* Create Button */}
+        <Button
+          onClick={handleCreateToken}
+          disabled={isCreating || !isConnected}
+          className="h-12 w-full text-base font-medium"
+          size="lg"
+        >
+          {isCreating ? (
+            <>
+              <div className="mr-2 size-4 animate-spin rounded-full border-b-2 border-on-gold"></div>
+              {currentStep === 'creating' && t.btnCreating}
+              {currentStep === 'idle' && sh.preparing}
+            </>
+          ) : !isConnected ? (
+            <>
+              <Wallet />
+              {t.btnConnect}
+            </>
+          ) : (
+            <>
+              <Coins />
+              {interpolate(t.btnCreate, { fee: getCreationFee() })}
+            </>
+          )}
+        </Button>
+      </section>
     </div>
   );
 }

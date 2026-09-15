@@ -14,6 +14,7 @@ import { parseUnits, formatUnits, encodeFunctionData, createPublicClient, http }
 import { getChainTransport, kalychain } from '@/config/chains';
 import { dexLogger as logger } from '@/lib/logger';
 import { kalyFeeOverrides } from '@/config/gas';
+import { UserError } from '@/lib/userError';
 
 /**
  * KalySwap V3 Service for KalyChain
@@ -23,7 +24,7 @@ export class KalySwapV3Service extends BaseV3Service {
 
     constructor(chainId: number = CHAIN_IDS.KALYCHAIN) {
         const config = getV3Config(chainId);
-        if (!config) throw new Error('V3 not available on this chain');
+        if (!config) throw new UserError('v3Unavailable');
         super(config);
         this.chainId = chainId;
     }
@@ -69,7 +70,7 @@ export class KalySwapV3Service extends BaseV3Service {
             );
 
             if (!bestRoute) {
-                throw new Error('No V3 route found for this token pair (tried direct and multi-hop)');
+                throw new UserError('noRoute');
             }
 
             const { route, quote } = bestRoute;
@@ -119,6 +120,9 @@ export class KalySwapV3Service extends BaseV3Service {
             );
         } catch (error) {
             logger.error('KalySwap V3: Swap failed', error);
+            // A UserError already carries a translated code (e.g. the noRoute throw above) — let it
+            // through as-is instead of losing that to SwapFailedError's plain-English wrapping.
+            if (error instanceof UserError) throw error;
             throw new SwapFailedError(
                 this.getName(),
                 error instanceof Error ? error.message : 'Unknown error'

@@ -4,6 +4,8 @@ import { getKalySwapV3Service } from '@/services/dex/KalySwapV3Service';
 import { V3AddLiquidityParams, V3IncreaseLiquidityParams } from '@/services/dex/IV3DexService';
 import { Token } from '@/config/dex/types';
 import { poolLogger } from '@/lib/logger';
+import { UserError } from '@/lib/userError';
+import { useErrorText } from '@/i18n/errorText';
 
 export interface UseV3AddLiquidityParams {
     token0: Token;
@@ -37,6 +39,7 @@ export const useV3AddLiquidity = ({
     const { address, chainId } = useAccount();
     const publicClient = usePublicClient();
     const { data: walletClient } = useWalletClient();
+    const describeError = useErrorText();
 
     const calculateMinAmount = (amount: string, slippage: number, decimals: number): string => {
         if (!amount || parseFloat(amount) === 0) return '0';
@@ -60,11 +63,11 @@ export const useV3AddLiquidity = ({
 
         try {
             if (!address || !walletClient || !publicClient) {
-                throw new Error('Wallet not connected');
+                throw new UserError('walletNotConnected');
             }
 
             const v3Service = getKalySwapV3Service(chainId);
-            if (!v3Service) throw new Error('V3 not available on this chain');
+            if (!v3Service) throw new UserError('v3Unavailable');
             const amount0Min = calculateMinAmount(amount0Desired, slippageTolerance, token0.decimals);
             const amount1Min = calculateMinAmount(amount1Desired, slippageTolerance, token1.decimals);
 
@@ -84,7 +87,7 @@ export const useV3AddLiquidity = ({
             } else {
                 // Mint New Position
                 if (tickLower === undefined || tickUpper === undefined) {
-                    throw new Error('Tick range required for minting');
+                    throw new UserError('tickRangeRequired');
                 }
 
                 const params: V3AddLiquidityParams = {
@@ -107,15 +110,14 @@ export const useV3AddLiquidity = ({
 
         } catch (err: any) {
             poolLogger.error('Add V3 Liquidity Error:', err);
-            const errorMessage = err instanceof Error ? err.message : 'Failed to add liquidity';
-            setError(errorMessage);
-            // Re-throw or return null? Returning null allows UI to handle it by checking return value, 
+            setError(describeError(err));
+            // Re-throw or return null? Returning null allows UI to handle it by checking return value,
             // but we also set error state.
             return null;
         } finally {
             setIsLoading(false);
         }
-    }, [address, chainId, publicClient, walletClient, token0, token1, fee, tokenId]);
+    }, [address, chainId, publicClient, walletClient, token0, token1, fee, tokenId, describeError]);
 
     return {
         addLiquidity,

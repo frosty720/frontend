@@ -4,6 +4,8 @@
  * These functions handle APR calculations, time formatting, and number formatting
  */
 
+import type { ErrorCode } from '@/lib/userError'
+
 const oneDay = 86400;
 
 /**
@@ -122,18 +124,20 @@ export const parseKLCAmount = (amount: string): bigint => {
 export const validateStakeAmount = (amount: string, balance: bigint): {
   isValid: boolean;
   error?: string;
+  /** Dictionary key (`errors.*`) for showing `error` in the reader's language. */
+  errorCode?: Extract<ErrorCode, 'amountRequired' | 'invalidAmount' | 'insufficientBalance'>;
 } => {
   if (!amount || amount === '0') {
-    return { isValid: false, error: 'Amount is required' };
+    return { isValid: false, error: 'Amount is required', errorCode: 'amountRequired' };
   }
-  
+
   const amountWei = parseKLCAmount(amount);
   if (amountWei === BigInt(0)) {
-    return { isValid: false, error: 'Invalid amount' };
+    return { isValid: false, error: 'Invalid amount', errorCode: 'invalidAmount' };
   }
-  
+
   if (amountWei > balance) {
-    return { isValid: false, error: 'Insufficient balance' };
+    return { isValid: false, error: 'Insufficient balance', errorCode: 'insufficientBalance' };
   }
   
   return { isValid: true };

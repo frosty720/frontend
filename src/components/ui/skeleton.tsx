@@ -27,7 +27,7 @@ export function Skeleton({
   style,
   ...props
 }: SkeletonProps) {
-  const baseClasses = 'bg-gray-200 dark:bg-gray-700';
+  const baseClasses = 'bg-surface-hi';
   
   const animationClasses = {
     pulse: 'animate-pulse',

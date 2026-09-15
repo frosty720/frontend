@@ -8,6 +8,7 @@ import { getContract, parseUnits, formatUnits, maxUint256 } from 'viem';
 import type { PublicClient, WalletClient } from 'viem';
 import { kalyFeeOverrides } from '@/config/gas';
 import { assertTxSucceeded } from '@/utils/transactions';
+import { UserError } from '@/lib/userError';
 
 // ERC20 ABI for token approvals
 const ERC20_ABI = [
@@ -154,7 +155,7 @@ export abstract class BaseDexService implements IDexService {
 
       // Get quote from router contract
       if (!publicClient) {
-        throw new DexError('Public client not available', 'NO_CLIENT', this.getName());
+        throw new UserError('rpcUnavailable');
       }
 
       const routerContract = getContract({
@@ -189,7 +190,9 @@ export abstract class BaseDexService implements IDexService {
       };
     } catch (error) {
       dexLogger.error('Quote error:', error);
-      if (error instanceof DexError) {
+      // UserError already carries a translated code — don't collapse it into DexError's plain
+      // English wrapping.
+      if (error instanceof DexError || error instanceof UserError) {
         throw error;
       }
       throw new DexError(`Failed to get quote: ${error}`, 'QUOTE_FAILED', this.getName());
@@ -206,7 +209,7 @@ export abstract class BaseDexService implements IDexService {
       }
 
       if (!publicClient) {
-        throw new DexError('Public client not available', 'NO_CLIENT', this.getName());
+        throw new UserError('rpcUnavailable');
       }
 
       const amountOutWei = parseUnits(amountOut, tokenOut.decimals);
@@ -237,7 +240,9 @@ export abstract class BaseDexService implements IDexService {
       };
     } catch (error) {
       dexLogger.error('Exact-output quote error:', error);
-      if (error instanceof DexError) {
+      // UserError already carries a translated code — don't collapse it into DexError's plain
+      // English wrapping.
+      if (error instanceof DexError || error instanceof UserError) {
         throw error;
       }
       throw new DexError(`Failed to get exact-output quote: ${error}`, 'QUOTE_FAILED', this.getName());
@@ -248,7 +253,7 @@ export abstract class BaseDexService implements IDexService {
   async getPairAddress(tokenA: Token, tokenB: Token, publicClient: PublicClient): Promise<string | null> {
     try {
       if (!publicClient) {
-        throw new DexError('Public client not available', 'NO_CLIENT', this.getName());
+        throw new UserError('rpcUnavailable');
       }
 
       const factoryContract = getContract({
@@ -287,7 +292,7 @@ export abstract class BaseDexService implements IDexService {
       }
 
       if (!publicClient) {
-        throw new DexError('Public client not available', 'NO_CLIENT', this.getName());
+        throw new UserError('rpcUnavailable');
       }
 
       // Get pair contract to read reserves
@@ -463,7 +468,7 @@ export abstract class BaseDexService implements IDexService {
 
       const account = walletClient.account;
       if (!account) {
-        throw new SwapFailedError(this.getName(), 'No account connected');
+        throw new UserError('walletNotConnected');
       }
 
       let hash: `0x${string}`;
@@ -517,6 +522,7 @@ export abstract class BaseDexService implements IDexService {
       return hash;
     } catch (error) {
       dexLogger.error('Add liquidity error:', error);
+      if (error instanceof UserError) throw error;
       throw new SwapFailedError(this.getName(), `Add liquidity failed: ${error}`);
     }
   }
@@ -543,7 +549,7 @@ export abstract class BaseDexService implements IDexService {
 
       const account = walletClient.account;
       if (!account) {
-        throw new SwapFailedError(this.getName(), 'No account connected');
+        throw new UserError('walletNotConnected');
       }
 
       // Determine if this is a native token pair
@@ -598,6 +604,7 @@ export abstract class BaseDexService implements IDexService {
       return hash;
     } catch (error) {
       dexLogger.error('Remove liquidity error:', error);
+      if (error instanceof UserError) throw error;
       throw new SwapFailedError(this.getName(), `Remove liquidity failed: ${error}`);
     }
   }
@@ -674,7 +681,7 @@ export abstract class BaseDexService implements IDexService {
 
       const account = walletClient.account;
       if (!account) {
-        throw new SwapFailedError(this.getName(), 'No account connected');
+        throw new UserError('walletNotConnected');
       }
 
       const routerAddress = this.getRouterAddress();
@@ -695,6 +702,7 @@ export abstract class BaseDexService implements IDexService {
       return hash;
     } catch (error) {
       dexLogger.error('Approve token error:', error);
+      if (error instanceof UserError) throw error;
       throw new SwapFailedError(this.getName(), `Approve failed: ${error}`);
     }
   }

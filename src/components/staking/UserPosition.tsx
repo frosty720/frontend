@@ -19,7 +19,9 @@ import {
 import { useStakingBalances, useStakingActions } from '@/hooks/staking';
 import { useWallet } from '@/hooks/useWallet';
 import { useToast } from '@/components/ui/toast';
-import '@/app/launchpad/launchpad.css';
+import { useDict } from '@/i18n/hooks';
+import { interpolate } from '@/i18n/interpolate';
+import '@/app/[locale]/launchpad/launchpad.css';
 
 interface UserPositionProps {
   className?: string;
@@ -31,6 +33,8 @@ export default function UserPosition({ className }: UserPositionProps) {
   const [isClaiming, setIsClaiming] = useState(false);
   const [isExiting, setIsExiting] = useState(false);
   const toast = useToast();
+  const dict = useDict();
+  const s = dict.stake;
 
   useEffect(() => {
     setMounted(true);
@@ -56,10 +60,10 @@ export default function UserPosition({ className }: UserPositionProps) {
     try {
       await claimRewards();
 
-      toast.success('Rewards claimed!', `Successfully claimed ${earnedRewardsFormatted} KMT rewards`);
+      toast.success(s.toastClaimed);
     } catch (error) {
       stakingLogger.error('Claim rewards error:', error);
-      toast.error('Claim failed', 'Please try again or check your wallet');
+      toast.error(s.toastFailed);
     } finally {
       setIsClaiming(false);
     }
@@ -70,7 +74,7 @@ export default function UserPosition({ className }: UserPositionProps) {
 
     // Confirmation for exit action
     const confirmed = window.confirm(
-      `Are you sure you want to exit staking? This will withdraw all your staked KMT (${stakedBalanceFormatted}) and claim all rewards (${earnedRewardsFormatted}).`
+      interpolate(s.exitConfirm, { staked: stakedBalanceFormatted, rewards: earnedRewardsFormatted })
     );
 
     if (!confirmed) return;
@@ -79,10 +83,10 @@ export default function UserPosition({ className }: UserPositionProps) {
     try {
       await exitStaking();
 
-      toast.success('Successfully exited staking!', `Withdrew ${stakedBalanceFormatted} KMT and claimed ${earnedRewardsFormatted} KMT rewards`);
+      toast.success(s.toastExited);
     } catch (error) {
       stakingLogger.error('Exit staking error:', error);
-      toast.error('Exit failed', 'Please try again or check your wallet');
+      toast.error(s.toastFailed);
     } finally {
       setIsExiting(false);
     }

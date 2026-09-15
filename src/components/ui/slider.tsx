@@ -30,7 +30,7 @@ export function Slider({
         step={step}
         value={value}
         onChange={handleChange}
-        className="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer slider"
+        className="w-full h-2 bg-surface-hi rounded-lg appearance-none cursor-pointer slider"
         style={{
           background: `linear-gradient(to right, #f59e0b 0%, #f59e0b ${value}%, #374151 ${value}%, #374151 100%)`
         }}

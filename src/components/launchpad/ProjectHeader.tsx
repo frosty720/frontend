@@ -1,114 +1,104 @@
 'use client'
 
 import React from 'react'
-import { useRouter } from 'next/navigation'
-import { Button } from '@/components/ui/button'
-import { Badge } from '@/components/ui/badge'
-import { ArrowLeft, RefreshCw } from 'lucide-react'
 import Link from 'next/link'
+import { ArrowLeft, Copy, ExternalLink, RefreshCw } from 'lucide-react'
+import { Pill, type PillTone } from '@/components/primitives/Pill'
+import { Button } from '@/components/ui/button'
+import { useToast } from '@/components/ui/toast'
+import { CHAIN_IDS, getExplorerAddressUrl } from '@/config/chains'
 import { ProjectData } from '@/hooks/launchpad/useProjectDetails'
+import { useDict, useLocaleHref } from '@/i18n/hooks'
 
 interface ProjectHeaderProps {
-  projectData: ProjectData
-  contractAddress: string
-  onRefresh: () => void
-  isRefreshing?: boolean
+	projectData: ProjectData
+	contractAddress: string
+	onRefresh: () => void
+	isRefreshing?: boolean
 }
 
-export default function ProjectHeader({ 
-  projectData, 
-  contractAddress, 
-  onRefresh, 
-  isRefreshing = false 
+const STATUS_TONE: Record<string, PillTone> = {
+	Active: 'success',
+	Successful: 'info',
+	Failed: 'danger',
+	Cancelled: 'muted',
+	Pending: 'gold',
+}
+
+export default function ProjectHeader({
+	projectData,
+	contractAddress,
+	onRefresh,
+	isRefreshing = false
 }: ProjectHeaderProps) {
-  const router = useRouter()
+	const dict = useDict()
+	const href = useLocaleHref()
+	const toast = useToast()
+	const p = dict.launchpadProject
+	const l = dict.launchpad
 
-  const getStatusBadgeClass = (status: string) => {
-    switch (status) {
-      case 'Active':
-        return 'bg-green-500/20 text-green-400 border-green-500/30'
-      case 'Successful':
-        return 'bg-blue-500/20 text-blue-400 border-blue-500/30'
-      case 'Failed':
-        return 'bg-red-500/20 text-red-400 border-red-500/30'
-      case 'Pending':
-        return 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30'
-      default:
-        return 'bg-gray-500/20 text-gray-400 border-gray-500/30'
-    }
-  }
+	const status = projectData.status ?? 'Pending'
+	const statusLabel = {
+		Active: p.statusActive,
+		Successful: p.statusSuccessful,
+		Failed: p.statusFailed,
+		Cancelled: p.statusCancelled,
+		Pending: p.statusPending,
+	}[status] ?? p.statusPending
+	const typeLabel = projectData.type === 'fairlaunch' ? l.typeFairlaunch : l.typePresale
 
-  return (
-    <div className="space-y-6">
-      {/* Navigation Header */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-4">
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => router.back()}
-            className="p-2 text-white hover:bg-gray-800/50"
-          >
-            <ArrowLeft className="h-4 w-4" />
-          </Button>
-          <div className="flex-1">
-            <div className="flex items-center gap-3">
-              <h1 className="text-2xl font-bold text-white">{projectData.name}</h1>
-              <Badge className={getStatusBadgeClass(projectData.status || 'Unknown')}>
-                {projectData.status}
-              </Badge>
-              <Badge className="bg-amber-500/20 text-amber-400 border-amber-500/30">
-                {projectData.type?.toUpperCase()}
-              </Badge>
-              {projectData.progress !== undefined && (
-                <Badge className="bg-purple-500/20 text-purple-400 border-purple-500/30">
-                  {projectData.progress.toFixed(1)}% Complete
-                </Badge>
-              )}
-            </div>
-          </div>
-        </div>
-        
-        {/* Refresh Button */}
-        <Button 
-          variant="outline" 
-          size="sm" 
-          onClick={onRefresh}
-          disabled={isRefreshing}
-          className="border-amber-500/30 text-amber-400 hover:bg-amber-500/20"
-        >
-          <RefreshCw className={`h-4 w-4 mr-2 ${isRefreshing ? 'animate-spin' : ''}`} />
-          Refresh
-        </Button>
-      </div>
+	const handleCopy = async () => {
+		try {
+			await navigator.clipboard.writeText(contractAddress)
+			toast.success(p.copiedTitle, p.copiedBody)
+		} catch {
+			toast.error(p.copyFailedTitle, p.copyFailedBody)
+		}
+	}
 
-      {/* Breadcrumb */}
-      <div className="text-sm text-gray-400">
-        <Link href="/" className="hover:text-white">Home</Link>
-        <span className="mx-2">/</span>
-        <Link href="/launchpad" className="hover:text-white">Launchpad</Link>
-        <span className="mx-2">/</span>
-        <span className="text-white">{projectData.name}</span>
-      </div>
+	return (
+		<div className="mb-5 space-y-4">
+			<Link href={href('/launchpad')} className="inline-flex items-center gap-1.5 text-[13px] font-medium text-muted-foreground transition-colors hover:text-cream">
+				<ArrowLeft className="size-4" />
+				{p.back}
+			</Link>
 
-      {/* Contract Address */}
-      <div className="flex items-center gap-2 text-xs text-gray-500">
-        <span>Contract:</span>
-        <code className="bg-gray-800/50 px-2 py-1 rounded font-mono text-gray-400">
-          {contractAddress}
-        </code>
-        <Button
-          variant="ghost"
-          size="sm"
-          className="h-6 px-2 text-xs text-gray-400 hover:text-white"
-          onClick={() => {
-            navigator.clipboard.writeText(contractAddress)
-            // You could add a toast notification here
-          }}
-        >
-          Copy
-        </Button>
-      </div>
-    </div>
-  )
+			<div className="flex flex-wrap items-end justify-between gap-3">
+				<div className="flex flex-wrap items-center gap-2.5">
+					<h1 className="font-display text-[26px] font-bold leading-tight sm:text-[28px]">{projectData.name}</h1>
+					<Pill tone={STATUS_TONE[status] ?? 'muted'}>{statusLabel}</Pill>
+					<Pill tone="violet">{typeLabel}</Pill>
+				</div>
+				<Button variant="outline" size="sm" onClick={onRefresh} disabled={isRefreshing}>
+					<RefreshCw className={isRefreshing ? 'animate-spin' : ''} />
+					{p.refresh}
+				</Button>
+			</div>
+
+			<div className="flex flex-wrap items-center gap-2 text-[12.5px] text-muted-foreground">
+				<span>{p.contract}</span>
+				<code className="rounded-lg bg-surface-hi px-2 py-1 font-mono text-[12px] text-muted-foreground">
+					{contractAddress}
+				</code>
+				<button
+					type="button"
+					onClick={handleCopy}
+					className="inline-flex items-center gap-1 text-[12px] font-medium text-muted-foreground transition-colors hover:text-cream"
+				>
+					<Copy className="size-3.5" />
+					{p.copy}
+				</button>
+				<a
+					href={getExplorerAddressUrl(CHAIN_IDS.KALYCHAIN, contractAddress)}
+					target="_blank"
+					rel="noopener noreferrer"
+					aria-label={dict.common.external}
+					title={dict.common.external}
+					className="inline-flex items-center text-muted-foreground transition-colors hover:text-cream"
+				>
+					<ExternalLink className="size-3.5" />
+				</a>
+			</div>
+		</div>
+	)
 }

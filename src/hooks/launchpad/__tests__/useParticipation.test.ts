@@ -10,7 +10,10 @@
  *     failed or cancelled sale.
  */
 import { renderHook, act } from '@testing-library/react';
+import React from 'react';
 import { vi, describe, it, expect, beforeEach } from 'vitest';
+import { DictionaryProvider } from '@/i18n/DictionaryProvider';
+import en from '@/i18n/dictionaries/en';
 
 const writeContract = vi.fn().mockResolvedValue('0xhash');
 const readContract = vi.fn();
@@ -31,6 +34,13 @@ vi.mock('@/lib/logger', () => ({
 }));
 
 import { useParticipation } from '../useParticipation';
+
+const wrapper = ({ children }: { children: React.ReactNode }) => (
+	React.createElement(DictionaryProvider, { dict: en, locale: 'en', children })
+);
+function renderParticipation() {
+	return renderHook(() => useParticipation(), { wrapper });
+}
 
 /** Every readContract answer the hook needs, driven by function name. */
 function stubReads({ allowance, status }: { allowance: bigint; status: number }) {
@@ -55,7 +65,7 @@ describe('participate — ERC20 base token', () => {
 
 	it('approves the presale before contributing', async () => {
 		stubReads({ allowance: 0n, status: 1 });
-		const { result } = renderHook(() => useParticipation());
+		const { result } = renderParticipation();
 
 		await act(async () => {
 			await result.current.participate({
@@ -74,7 +84,7 @@ describe('participate — ERC20 base token', () => {
 
 	it('uses the base token\'s OWN decimals, not 18', async () => {
 		stubReads({ allowance: 0n, status: 1 });
-		const { result } = renderHook(() => useParticipation());
+		const { result } = renderParticipation();
 
 		await act(async () => {
 			await result.current.participate({
@@ -91,7 +101,7 @@ describe('participate — ERC20 base token', () => {
 	it('sends no native value alongside an ERC20 contribution', async () => {
 		// participate() has `if (!isNative) require(msg.value == 0)`.
 		stubReads({ allowance: 0n, status: 1 });
-		const { result } = renderHook(() => useParticipation());
+		const { result } = renderParticipation();
 
 		await act(async () => {
 			await result.current.participate({
@@ -106,7 +116,7 @@ describe('participate — ERC20 base token', () => {
 
 	it('skips the approval when the allowance already covers it', async () => {
 		stubReads({ allowance: 100_000_000n, status: 1 });
-		const { result } = renderHook(() => useParticipation());
+		const { result } = renderParticipation();
 
 		await act(async () => {
 			await result.current.participate({
@@ -123,7 +133,7 @@ describe('participate — ERC20 base token', () => {
 	it('does not contribute if the approval reverted', async () => {
 		stubReads({ allowance: 0n, status: 1 });
 		waitForTransactionReceipt.mockResolvedValue({ status: 'reverted' });
-		const { result } = renderHook(() => useParticipation());
+		const { result } = renderParticipation();
 
 		await act(async () => {
 			await result.current.participate({
@@ -142,7 +152,7 @@ describe('participate — native base token', () => {
 
 	it('sends msg.value and never asks for an allowance', async () => {
 		stubReads({ allowance: 0n, status: 1 });
-		const { result } = renderHook(() => useParticipation());
+		const { result } = renderParticipation();
 
 		await act(async () => {
 			await result.current.participate({
@@ -170,7 +180,7 @@ describe('refund eligibility', () => {
 		['FINALIZED', 5, false],
 	])('is %s -> canRefund %s', async (_label, status, expected) => {
 		stubReads({ allowance: 0n, status: status as number });
-		const { result } = renderHook(() => useParticipation());
+		const { result } = renderParticipation();
 
 		await act(async () => {
 			await result.current.fetchUserContribution(PRESALE, 'presale', false);
@@ -185,7 +195,7 @@ describe('refund eligibility', () => {
 			if (functionName === 'getStatus') return 3; // FAILED
 			throw new Error(`unexpected read: ${functionName}`);
 		});
-		const { result } = renderHook(() => useParticipation());
+		const { result } = renderParticipation();
 
 		await act(async () => {
 			await result.current.fetchUserContribution(PRESALE, 'presale', false);
@@ -200,7 +210,7 @@ describe('refund eligibility', () => {
 			if (functionName === 'getStatus') return 3; // FAILED
 			throw new Error(`unexpected read: ${functionName}`);
 		});
-		const { result } = renderHook(() => useParticipation());
+		const { result } = renderParticipation();
 
 		await act(async () => {
 			await result.current.fetchUserContribution(PRESALE, 'presale', false);

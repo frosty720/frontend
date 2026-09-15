@@ -9,6 +9,8 @@
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import React from 'react';
 import { vi, describe, it, expect, beforeEach } from 'vitest';
+import { DictionaryProvider } from '@/i18n/DictionaryProvider';
+import en from '@/i18n/dictionaries/en';
 
 const writeContract = vi.fn().mockResolvedValue('0xhash');
 const readContract = vi.fn();
@@ -34,6 +36,14 @@ vi.mock('@/lib/logger', () => ({
 }));
 
 import RewardsTokenManager from '../RewardsTokenManager';
+
+function renderManager(props: { tokenAddress?: string } = { tokenAddress: TOKEN }) {
+	render(
+		<DictionaryProvider dict={en} locale="en">
+			<RewardsTokenManager {...props} />
+		</DictionaryProvider>,
+	);
+}
 
 function stubChain({ eligibleSupply, allowance, withdrawable = 0n }: {
 	eligibleSupply: bigint; allowance: bigint; withdrawable?: bigint;
@@ -65,10 +75,10 @@ describe('RewardsTokenManager', () => {
 
 	it('approves the RewardsToken contract as spender, then deposits', async () => {
 		stubChain({ eligibleSupply: 1000n, allowance: 0n });
-		render(<RewardsTokenManager tokenAddress={TOKEN} />);
+		renderManager();
 
-		await waitFor(() => expect(screen.getByLabelText(/Amount to deposit/i)).toBeTruthy());
-		fireEvent.change(screen.getByLabelText(/Amount to deposit/i), { target: { value: '25' } });
+		await waitFor(() => expect(screen.getByLabelText(en.launchpadForms.rewards.amountLabel)).toBeTruthy());
+		fireEvent.change(screen.getByLabelText(en.launchpadForms.rewards.amountLabel), { target: { value: '25' } });
 		fireEvent.click(screen.getByRole('button', { name: /Deposit USDT/i }));
 
 		await waitFor(() => expect(writeContract).toHaveBeenCalledTimes(2));
@@ -82,10 +92,10 @@ describe('RewardsTokenManager', () => {
 
 	it('deposits in the REWARD token\'s decimals', async () => {
 		stubChain({ eligibleSupply: 1000n, allowance: 0n });
-		render(<RewardsTokenManager tokenAddress={TOKEN} />);
+		renderManager();
 
-		await waitFor(() => expect(screen.getByLabelText(/Amount to deposit/i)).toBeTruthy());
-		fireEvent.change(screen.getByLabelText(/Amount to deposit/i), { target: { value: '25' } });
+		await waitFor(() => expect(screen.getByLabelText(en.launchpadForms.rewards.amountLabel)).toBeTruthy());
+		fireEvent.change(screen.getByLabelText(en.launchpadForms.rewards.amountLabel), { target: { value: '25' } });
 		fireEvent.click(screen.getByRole('button', { name: /Deposit USDT/i }));
 
 		await waitFor(() => expect(writeContract).toHaveBeenCalledTimes(2));
@@ -95,10 +105,10 @@ describe('RewardsTokenManager', () => {
 
 	it('skips the approval when the allowance already covers it', async () => {
 		stubChain({ eligibleSupply: 1000n, allowance: 100_000_000n });
-		render(<RewardsTokenManager tokenAddress={TOKEN} />);
+		renderManager();
 
-		await waitFor(() => expect(screen.getByLabelText(/Amount to deposit/i)).toBeTruthy());
-		fireEvent.change(screen.getByLabelText(/Amount to deposit/i), { target: { value: '25' } });
+		await waitFor(() => expect(screen.getByLabelText(en.launchpadForms.rewards.amountLabel)).toBeTruthy());
+		fireEvent.change(screen.getByLabelText(en.launchpadForms.rewards.amountLabel), { target: { value: '25' } });
 		fireEvent.click(screen.getByRole('button', { name: /Deposit USDT/i }));
 
 		await waitFor(() => expect(writeContract).toHaveBeenCalledTimes(1));
@@ -107,7 +117,7 @@ describe('RewardsTokenManager', () => {
 
 	it('explains and blocks the deposit while nobody is eligible', async () => {
 		stubChain({ eligibleSupply: 0n, allowance: 0n });
-		render(<RewardsTokenManager tokenAddress={TOKEN} />);
+		renderManager();
 
 		await waitFor(() => expect(screen.getByText(/No eligible holders yet/i)).toBeTruthy());
 		expect(screen.getByRole('button', { name: /Deposit USDT/i })).toHaveProperty('disabled', true);
@@ -116,10 +126,10 @@ describe('RewardsTokenManager', () => {
 	it('does not deposit if the approval reverted', async () => {
 		stubChain({ eligibleSupply: 1000n, allowance: 0n });
 		waitForTransactionReceipt.mockResolvedValue({ status: 'reverted' });
-		render(<RewardsTokenManager tokenAddress={TOKEN} />);
+		renderManager();
 
-		await waitFor(() => expect(screen.getByLabelText(/Amount to deposit/i)).toBeTruthy());
-		fireEvent.change(screen.getByLabelText(/Amount to deposit/i), { target: { value: '25' } });
+		await waitFor(() => expect(screen.getByLabelText(en.launchpadForms.rewards.amountLabel)).toBeTruthy());
+		fireEvent.change(screen.getByLabelText(en.launchpadForms.rewards.amountLabel), { target: { value: '25' } });
 		fireEvent.click(screen.getByRole('button', { name: /Deposit USDT/i }));
 
 		await waitFor(() => expect(screen.getByText(/Approval failed/i)).toBeTruthy());
@@ -128,10 +138,10 @@ describe('RewardsTokenManager', () => {
 
 	it('refuses an amount larger than the depositor\'s balance', async () => {
 		stubChain({ eligibleSupply: 1000n, allowance: 0n });
-		render(<RewardsTokenManager tokenAddress={TOKEN} />);
+		renderManager();
 
-		await waitFor(() => expect(screen.getByLabelText(/Amount to deposit/i)).toBeTruthy());
-		fireEvent.change(screen.getByLabelText(/Amount to deposit/i), { target: { value: '9999' } });
+		await waitFor(() => expect(screen.getByLabelText(en.launchpadForms.rewards.amountLabel)).toBeTruthy());
+		fireEvent.change(screen.getByLabelText(en.launchpadForms.rewards.amountLabel), { target: { value: '9999' } });
 		fireEvent.click(screen.getByRole('button', { name: /Deposit USDT/i }));
 
 		await waitFor(() => expect(screen.getByText(/Not enough USDT/i)).toBeTruthy());
@@ -140,24 +150,28 @@ describe('RewardsTokenManager', () => {
 
 	it('only enables Claim when something is actually claimable', async () => {
 		stubChain({ eligibleSupply: 1000n, allowance: 0n, withdrawable: 0n });
-		const { unmount } = render(<RewardsTokenManager tokenAddress={TOKEN} />);
-		await waitFor(() => expect(screen.getByRole('button', { name: /Claim Rewards/i })).toBeTruthy());
-		expect(screen.getByRole('button', { name: /Claim Rewards/i })).toHaveProperty('disabled', true);
+		const { unmount } = render(
+			<DictionaryProvider dict={en} locale="en">
+				<RewardsTokenManager tokenAddress={TOKEN} />
+			</DictionaryProvider>,
+		);
+		await waitFor(() => expect(screen.getByRole('button', { name: en.launchpadForms.rewards.btnClaim })).toBeTruthy());
+		expect(screen.getByRole('button', { name: en.launchpadForms.rewards.btnClaim })).toHaveProperty('disabled', true);
 		unmount();
 
 		stubChain({ eligibleSupply: 1000n, allowance: 0n, withdrawable: 5_000_000n });
-		render(<RewardsTokenManager tokenAddress={TOKEN} />);
+		renderManager();
 		await waitFor(() =>
-			expect(screen.getByRole('button', { name: /Claim Rewards/i })).toHaveProperty('disabled', false)
+			expect(screen.getByRole('button', { name: en.launchpadForms.rewards.btnClaim })).toHaveProperty('disabled', false)
 		);
 	});
 
 	it('carries the KalyChain gas floor on the deposit', async () => {
 		stubChain({ eligibleSupply: 1000n, allowance: 100_000_000n });
-		render(<RewardsTokenManager tokenAddress={TOKEN} />);
+		renderManager();
 
-		await waitFor(() => expect(screen.getByLabelText(/Amount to deposit/i)).toBeTruthy());
-		fireEvent.change(screen.getByLabelText(/Amount to deposit/i), { target: { value: '1' } });
+		await waitFor(() => expect(screen.getByLabelText(en.launchpadForms.rewards.amountLabel)).toBeTruthy());
+		fireEvent.change(screen.getByLabelText(en.launchpadForms.rewards.amountLabel), { target: { value: '1' } });
 		fireEvent.click(screen.getByRole('button', { name: /Deposit USDT/i }));
 
 		await waitFor(() => expect(writeContract).toHaveBeenCalled());

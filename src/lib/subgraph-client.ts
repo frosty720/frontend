@@ -88,7 +88,7 @@ export interface V3PoolForPair {
 }
 
 export const V3_POOL_STATS_QUERY = `
-  query GetV3PoolStats($poolId: ID!, $poolAddress: String!) {
+  query GetV3PoolStats($poolId: ID!, $poolAddress: String!, $since: Int!) {
     pool(id: $poolId) {
       id
       token0 {
@@ -104,8 +104,8 @@ export const V3_POOL_STATS_QUERY = `
       totalValueLockedUSD
     }
     poolHourDatas(
-      where: { pool: $poolAddress }
-      first: 24
+      where: { pool: $poolAddress, periodStartUnix_gte: $since }
+      first: 25
       orderBy: periodStartUnix
       orderDirection: desc
     ) {
@@ -127,13 +127,26 @@ export interface V3PoolStats {
 }
 
 /**
- * Pool-level stats plus rolling-24h volume (sum of the last 24 hourly candles).
+ * Start (unix seconds) of the rolling 24h volume window — the same window the Dashboard and Pools
+ * volume use. The subgraph only writes an hourly candle for hours with swaps, so "the last 24
+ * candles" would reach back days on a quiet pool; the window must be time-bounded.
+ */
+export function poolVolumeWindowStart(nowMs: number): number {
+  return Math.floor(nowMs / 1000) - 86_400;
+}
+
+/**
+ * Pool-level stats plus rolling-24h volume (sum of the hourly candles that started in the last 24h).
  * pool.token0Price is token0-per-token1; token1Price is token1-per-token0.
  */
 export async function getV3PoolStats(poolAddress: string, subgraphUrl: string): Promise<V3PoolStats | null> {
   const id = poolAddress.toLowerCase();
   const client = new GraphQLClient(subgraphUrl);
-  const result = await client.request(V3_POOL_STATS_QUERY, { poolId: id, poolAddress: id }) as any;
+  const result = await client.request(V3_POOL_STATS_QUERY, {
+    poolId: id,
+    poolAddress: id,
+    since: poolVolumeWindowStart(Date.now()),
+  }) as any;
 
   if (!result.pool) return null;
 

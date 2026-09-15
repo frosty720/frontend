@@ -7,6 +7,8 @@
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import React from 'react';
 import { vi, describe, it, expect, beforeEach } from 'vitest';
+import { DictionaryProvider } from '@/i18n/DictionaryProvider';
+import en from '@/i18n/dictionaries/en';
 
 const writeContract = vi.fn().mockResolvedValue('0xhash');
 const waitForTransactionReceipt = vi.fn().mockResolvedValue({ status: 'success' });
@@ -27,6 +29,8 @@ vi.mock('@/lib/logger', () => ({
 
 import ProjectOwnerControls from '../ProjectOwnerControls';
 
+const o = en.launchpadProject.owner;
+
 function renderControls(type: 'presale' | 'fairlaunch') {
 	const projectData: any = {
 		contractAddress: CONTRACT,
@@ -37,7 +41,11 @@ function renderControls(type: 'presale' | 'fairlaunch') {
 		isActive: true,
 		finalized: false,
 	};
-	return render(<ProjectOwnerControls projectData={projectData} onRefresh={vi.fn()} />);
+	return render(
+		<DictionaryProvider dict={en} locale="en">
+			<ProjectOwnerControls projectData={projectData} onRefresh={vi.fn()} />
+		</DictionaryProvider>,
+	);
 }
 
 describe('owner Cancel', () => {
@@ -49,7 +57,7 @@ describe('owner Cancel', () => {
 
 	it('actually sends cancelPresale for a presale', async () => {
 		renderControls('presale');
-		fireEvent.click(screen.getByRole('button', { name: /cancel/i }));
+		fireEvent.click(screen.getByRole('button', { name: new RegExp(o.cancel, 'i') }));
 
 		await waitFor(() => expect(writeContract).toHaveBeenCalled());
 		const call = writeContract.mock.calls[0][0];
@@ -59,7 +67,7 @@ describe('owner Cancel', () => {
 
 	it('sends cancelFairlaunch for a fairlaunch', async () => {
 		renderControls('fairlaunch');
-		fireEvent.click(screen.getByRole('button', { name: /cancel/i }));
+		fireEvent.click(screen.getByRole('button', { name: new RegExp(o.cancel, 'i') }));
 
 		await waitFor(() => expect(writeContract).toHaveBeenCalled());
 		expect(writeContract.mock.calls[0][0].functionName).toBe('cancelFairlaunch');
@@ -67,7 +75,7 @@ describe('owner Cancel', () => {
 
 	it('carries the KalyChain gas floor', async () => {
 		renderControls('presale');
-		fireEvent.click(screen.getByRole('button', { name: /cancel/i }));
+		fireEvent.click(screen.getByRole('button', { name: new RegExp(o.cancel, 'i') }));
 
 		await waitFor(() => expect(writeContract).toHaveBeenCalled());
 		expect(writeContract.mock.calls[0][0].maxPriorityFeePerGas).toBe(21_000_000_000n);
@@ -77,9 +85,10 @@ describe('owner Cancel', () => {
 		waitForTransactionReceipt.mockResolvedValue({ status: 'reverted' });
 		const alertSpy = vi.spyOn(window, 'alert').mockImplementation(() => {});
 		renderControls('presale');
-		fireEvent.click(screen.getByRole('button', { name: /cancel/i }));
+		fireEvent.click(screen.getByRole('button', { name: new RegExp(o.cancel, 'i') }));
 
 		await waitFor(() => expect(alertSpy).toHaveBeenCalled());
-		expect(alertSpy.mock.calls[0][0]).toMatch(/Cancel failed/);
+		const cancelFailedLabel = o.cancelFailedAlert.split('{error}')[0].trim();
+		expect(alertSpy.mock.calls[0][0]).toContain(cancelFailedLabel);
 	});
 });

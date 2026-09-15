@@ -5,7 +5,7 @@
 
 import { bridgeLogger } from '@/lib/logger';
 
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
@@ -32,6 +32,8 @@ import { useBridgeValidation } from '@/hooks/bridge/useBridgeValidation';
 import { useFeeQuotes } from '@/hooks/bridge/useFeeQuotes';
 import { useWallet } from '@/hooks/useWallet';
 import { bridgeHelpers } from '@/utils/bridge/bridgeHelpers';
+import { useDict } from '@/i18n/hooks';
+import { interpolate } from '@/i18n/interpolate';
 
 import { ChainSelector } from './ChainSelector';
 import { TokenSelector } from './TokenSelector';
@@ -39,18 +41,18 @@ import { TransactionReview } from './TransactionReview';
 import { TransferStatus } from './TransferStatus';
 import { useTransferStore } from '@/hooks/bridge/useTransferStore';
 
-// Form validation schema
-const bridgeFormSchema = z.object({
-  originChain: z.string().min(1, 'Origin chain is required'),
-  destinationChain: z.string().min(1, 'Destination chain is required'),
-  tokenIndex: z.number().nullable(),
-  amount: z.string().min(1, 'Amount is required'),
-  recipient: z.string().min(1, 'Recipient address is required'),
-});
-
-export type BridgeFormValues = z.infer<typeof bridgeFormSchema>;
+// Shape of the bridge form. The zod schema below is rebuilt per-render so its error
+// messages come from the active dictionary; the field shapes themselves never change.
+export interface BridgeFormValues {
+  originChain: string;
+  destinationChain: string;
+  tokenIndex: number | null;
+  amount: string;
+  recipient: string;
+}
 
 export function BridgeForm() {
+  const dict = useDict();
   const [isReview, setIsReview] = useState(false);
   const { address: account } = useWallet();
   const thirdwebAccount = useActiveAccount();
@@ -72,6 +74,19 @@ export function BridgeForm() {
     resetForm,
     warpCore,
   } = useBridgeContext();
+
+  // Form validation schema — messages come from the dictionary
+  const bridgeFormSchema = useMemo(
+    () =>
+      z.object({
+        originChain: z.string().min(1, dict.bridge.form.errorOriginRequired),
+        destinationChain: z.string().min(1, dict.bridge.form.errorDestinationRequired),
+        tokenIndex: z.number().nullable(),
+        amount: z.string().min(1, dict.bridge.form.errorAmountRequired),
+        recipient: z.string().min(1, dict.bridge.form.errorRecipientRequired),
+      }),
+    [dict],
+  );
 
   // Initialize form with context values
   const form = useForm<BridgeFormValues>({
@@ -175,7 +190,7 @@ export function BridgeForm() {
 
   return (
     <div className="space-y-4">
-      <Card className="w-100 sm:w-[31rem]">
+      <Card className="w-full max-w-[31rem]">
         <CardContent className="pt-6">
           <Form {...form}>
             <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
@@ -186,7 +201,7 @@ export function BridgeForm() {
                 name="originChain"
                 render={({ field }) => (
                   <FormItem className="flex-1">
-                    <FormLabel>From</FormLabel>
+                    <FormLabel>{dict.bridge.form.from}</FormLabel>
                     <FormControl>
                       <ChainSelector
                         value={field.value}
@@ -220,7 +235,7 @@ export function BridgeForm() {
                 name="destinationChain"
                 render={({ field }) => (
                   <FormItem className="flex-1">
-                    <FormLabel>To</FormLabel>
+                    <FormLabel>{dict.bridge.form.to}</FormLabel>
                     <FormControl>
                       <ChainSelector
                         value={field.value}
@@ -240,11 +255,10 @@ export function BridgeForm() {
             {/* Polygon finality notice — validators wait out Polygon's reorg
                 window before signing, so outbound transfers are slow */}
             {formValues.originChain === 'polygon' && (
-              <div className="flex items-center gap-2 p-3 bg-amber-50 border border-amber-200 rounded-lg">
-                <Clock className="h-5 w-5 text-amber-600 flex-shrink-0" />
-                <p className="text-sm text-amber-700">
-                  Transfers from Polygon take up to 10 minutes to arrive while
-                  the bridge waits for Polygon finality.
+              <div className="flex items-center gap-2 p-3 bg-gold-soft border border-gold/25 rounded-lg">
+                <Clock className="h-5 w-5 text-gold-light flex-shrink-0" />
+                <p className="text-sm text-gold-light">
+                  {dict.bridge.form.polygonNotice}
                 </p>
               </div>
             )}
@@ -256,7 +270,7 @@ export function BridgeForm() {
                 name="tokenIndex"
                 render={({ field }) => (
                   <FormItem className="flex-1">
-                    <FormLabel>Token</FormLabel>
+                    <FormLabel>{dict.bridge.form.token}</FormLabel>
                     <FormControl>
                       <TokenSelector
                         value={field.value}
@@ -280,10 +294,10 @@ export function BridgeForm() {
                 render={({ field }) => (
                   <FormItem className="flex-1">
                     <div className="flex justify-between items-center">
-                      <FormLabel>Amount</FormLabel>
+                      <FormLabel>{dict.bridge.form.amount}</FormLabel>
                       {originBalance && (
                         <span className="text-xs text-muted-foreground">
-                          Balance: {bridgeHelpers.formatTokenAmount(originBalance)}
+                          {interpolate(dict.bridge.form.balance, { amount: bridgeHelpers.formatTokenAmount(originBalance) })}
                         </span>
                       )}
                     </div>
@@ -291,7 +305,7 @@ export function BridgeForm() {
                       <div className="relative">
                         <Input
                           type="text"
-                          placeholder="0.00"
+                          placeholder={dict.bridge.form.amountPlaceholder}
                           disabled={isReview}
                           className="[appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                           {...field}
@@ -312,7 +326,7 @@ export function BridgeForm() {
                           disabled={isReview || !originBalance}
                           className="absolute right-1 top-1 h-7 px-2 text-xs"
                         >
-                          Max
+                          {dict.bridge.form.max}
                         </Button>
                       </div>
                     </FormControl>
@@ -329,17 +343,17 @@ export function BridgeForm() {
               render={({ field }) => (
                 <FormItem>
                   <div className="flex justify-between items-center">
-                    <FormLabel>Recipient Address</FormLabel>
+                    <FormLabel>{dict.bridge.form.recipient}</FormLabel>
                     {destinationBalance && (
                       <span className="text-xs text-muted-foreground">
-                        Remote balance: {bridgeHelpers.formatTokenAmount(destinationBalance)}
+                        {interpolate(dict.bridge.form.remoteBalance, { amount: bridgeHelpers.formatTokenAmount(destinationBalance) })}
                       </span>
                     )}
                   </div>
                   <FormControl>
                     <div className="relative">
                       <Input
-                        placeholder="0x123456..."
+                        placeholder={dict.bridge.form.recipientPlaceholder}
                         disabled={isReview}
                         {...field}
                         onChange={(e) => {
@@ -355,7 +369,7 @@ export function BridgeForm() {
                         disabled={isReview || !account}
                         className="absolute right-1 top-1 h-7 px-2 text-xs"
                       >
-                        Self
+                        {dict.bridge.form.self}
                       </Button>
                     </div>
                   </FormControl>
@@ -366,17 +380,17 @@ export function BridgeForm() {
 
             {/* Success Message */}
             {successMessage && (
-              <div className="flex items-center gap-2 p-3 bg-green-50 border border-green-200 rounded-lg">
-                <CheckCircle className="h-5 w-5 text-green-600 flex-shrink-0" />
-                <p className="text-sm text-green-700">{successMessage}</p>
+              <div className="flex items-center gap-2 p-3 bg-success/10 border border-success/25 rounded-lg">
+                <CheckCircle className="h-5 w-5 text-success flex-shrink-0" />
+                <p className="text-sm text-success">{successMessage}</p>
               </div>
             )}
 
             {/* Error Message */}
             {transferError && (
-              <div className="flex items-center gap-2 p-3 bg-red-50 border border-red-200 rounded-lg">
-                <AlertCircle className="h-5 w-5 text-red-600 flex-shrink-0" />
-                <p className="text-sm text-red-700">{transferError}</p>
+              <div className="flex items-center gap-2 p-3 bg-danger/10 border border-danger/25 rounded-lg">
+                <AlertCircle className="h-5 w-5 text-danger flex-shrink-0" />
+                <p className="text-sm text-danger">{transferError}</p>
               </div>
             )}
 
@@ -399,7 +413,7 @@ export function BridgeForm() {
                   className="w-full"
                   disabled={isValidating || !account}
                 >
-                  {isValidating ? 'Validating...' : 'Continue'}
+                  {isValidating ? dict.bridge.form.validating : dict.bridge.form.continueBtn}
                 </Button>
               ) : (
                 <div className="flex gap-2">
@@ -410,16 +424,16 @@ export function BridgeForm() {
                     className="flex-1"
                   >
                     <ChevronLeft className="h-4 w-4 mr-2" />
-                    Edit
+                    {dict.bridge.form.edit}
                   </Button>
                   <Button
                     type="submit"
                     className="flex-1"
                     disabled={isTransferring}
                   >
-                    {isTransferring ? 'Sending...' : (
+                    {isTransferring ? dict.bridge.form.sending : (
                       <>
-                        Send to {bridgeHelpers.getChainDisplayName(formValues.destinationChain)}
+                        {interpolate(dict.bridge.form.sendTo, { chain: bridgeHelpers.getChainDisplayName(formValues.destinationChain) })}
                         <ArrowRight className="h-4 w-4 ml-2" />
                       </>
                     )}
@@ -434,7 +448,7 @@ export function BridgeForm() {
 
     {/* Transfer Status Display */}
     {latestTransfer && (
-      <TransferStatus className="w-100 sm:w-[31rem]" />
+      <TransferStatus className="w-full max-w-[31rem]" />
     )}
   </div>
   );

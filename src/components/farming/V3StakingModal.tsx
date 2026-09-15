@@ -5,15 +5,19 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Card, CardContent } from '@/components/ui/card'
-import { Badge } from '@/components/ui/badge'
-import { AlertCircle, CheckCircle, Clock, Zap, Loader2, ChevronDown } from 'lucide-react'
+import { Pill } from '@/components/primitives/Pill'
+import { AlertCircle, CheckCircle, Clock, Loader2, Sprout } from 'lucide-react'
 import { useV3Staking } from '@/hooks/v3/useV3Staking'
 import { useAccount, usePublicClient } from 'wagmi'
 import { V3NonfungiblePositionManagerABI } from '@/config/abis'
 import { getV3Config } from '@/config/dex/v3-config'
 import type { V3Incentive } from '@/services/dex/v3-staking-types'
 import { useResolvedChainId } from '@/hooks/useResolvedChainId';
+import { describeError } from '@/i18n/errorText'
+import { useDict, useFormat } from '@/i18n/hooks'
+import { interpolate } from '@/i18n/interpolate'
+import { cn } from '@/lib/utils'
+import { formatDuration } from '@/utils/farm'
 
 interface V3Position {
     tokenId: bigint;
@@ -33,17 +37,6 @@ interface V3StakingModalProps {
 }
 
 /**
- * Format time remaining for display
- */
-function formatTimeRemaining(seconds: number): string {
-    if (seconds <= 0) return 'Ended'
-    const days = Math.floor(seconds / 86400)
-    const hours = Math.floor((seconds % 86400) / 3600)
-    if (days > 0) return `${days}d ${hours}h left`
-    return `${hours}h left`
-}
-
-/**
  * Truncate an address for display
  */
 function truncateAddress(addr: string): string {
@@ -56,6 +49,11 @@ export default function V3StakingModal({
     incentive,
     onStakeComplete,
 }: V3StakingModalProps) {
+    const dict = useDict()
+    const fmt = useFormat()
+    const d = dict.farmManage.dialog
+    const s = dict.farmManage.stake
+
     const [selectedPosition, setSelectedPosition] = useState<V3Position | null>(null)
     const [tokenIdInput, setTokenIdInput] = useState('')
     const [showManualInput, setShowManualInput] = useState(false)
@@ -64,7 +62,7 @@ export default function V3StakingModal({
     const [txHashes, setTxHashes] = useState<{ depositHash?: string; stakeHash?: string }>({})
     const [error, setError] = useState<string | null>(null)
 
-    // Position fetching state
+    // Position fetching state ('' = failed without a message of its own)
     const [positions, setPositions] = useState<V3Position[]>([])
     const [isLoadingPositions, setIsLoadingPositions] = useState(false)
     const [positionError, setPositionError] = useState<string | null>(null)
@@ -74,10 +72,15 @@ export default function V3StakingModal({
     const { address } = useAccount()
     const publicClient = usePublicClient({ chainId })
 
-    const token0Symbol = incentive.poolToken0Symbol || 'Token0'
-    const token1Symbol = incentive.poolToken1Symbol || 'Token1'
-    const rewardSymbol = incentive.rewardTokenSymbol || 'KSWAP'
+    const token0Symbol = incentive.poolToken0Symbol || '?'
+    const token1Symbol = incentive.poolToken1Symbol || '?'
+    const rewardSymbol = incentive.rewardTokenSymbol || '?'
     const pairName = `${token0Symbol}/${token1Symbol}`
+    const timeLeft = formatDuration(incentive.timeRemaining, {
+        day: dict.farm.dayUnit,
+        hour: dict.farm.hourUnit,
+        minute: dict.farm.minuteUnit,
+    })
 
     // Fetch user's V3 NFT positions when modal opens
     useEffect(() => {
@@ -167,7 +170,7 @@ export default function V3StakingModal({
                 setPositions(fetchedPositions)
             } catch (err) {
                 if (!cancelled) {
-                    setPositionError(err instanceof Error ? err.message : 'Failed to fetch positions')
+                    setPositionError(describeError(err, dict))
                 }
             } finally {
                 if (!cancelled) {
@@ -219,7 +222,7 @@ export default function V3StakingModal({
     const handleStake = useCallback(async () => {
         const tokenId = getEffectiveTokenId()
         if (!tokenId) {
-            setError('Please select or enter a valid NFT Token ID')
+            setError(s.invalidTokenId)
             return
         }
 
@@ -235,11 +238,11 @@ export default function V3StakingModal({
             onStakeComplete()
         } catch (err) {
             setTxStatus('error')
-            setError(err instanceof Error ? err.message : 'Failed to stake position')
+            setError(describeError(err, dict))
         } finally {
             setIsProcessing(false)
         }
-    }, [getEffectiveTokenId, incentive.key, depositAndStake, onStakeComplete])
+    }, [getEffectiveTokenId, incentive.key, depositAndStake, onStakeComplete, s, dict])
 
     const handleClose = useCallback(() => {
         if (!isProcessing) {
@@ -260,113 +263,97 @@ export default function V3StakingModal({
 
     return (
         <Dialog open={isOpen} onOpenChange={handleClose}>
-            <DialogContent
-                className="!bg-stone-900 !border-amber-500/30 text-white max-w-md"
-                style={{ backgroundColor: '#1c1917', borderColor: 'rgba(245, 158, 11, 0.3)' }}
-            >
+            <DialogContent className="border-line bg-surface sm:max-w-md">
                 <DialogHeader>
-                    <DialogTitle className="text-xl font-bold text-white">Stake V3 Position</DialogTitle>
-                    <DialogDescription className="text-gray-400">
-                        Deposit your V3 NFT position into the staking contract to earn rewards.
-                    </DialogDescription>
+                    <DialogTitle className="font-display text-xl text-cream">{s.title}</DialogTitle>
+                    <DialogDescription>{s.description}</DialogDescription>
                 </DialogHeader>
 
                 {txStatus === 'success' ? (
                     /* Success State */
-                    <div className="space-y-4 py-4">
+                    <div className="space-y-4 py-2">
                         <div className="text-center">
-                            <CheckCircle className="w-12 h-12 text-green-400 mx-auto mb-4" />
-                            <h3 className="text-lg font-semibold text-white mb-2">Position Staked!</h3>
-                            <p className="text-gray-400 text-sm mb-4">
-                                Your V3 position has been deposited and staked successfully.
-                            </p>
+                            <CheckCircle className="mx-auto mb-4 size-12 text-success" />
+                            <h3 className="mb-2 font-display text-lg font-semibold text-cream">{s.successTitle}</h3>
+                            <p className="mb-4 text-sm text-muted-foreground">{s.successBody}</p>
                             {txHashes.depositHash && (
-                                <div className="bg-stone-800/50 rounded-lg p-3 mb-2">
-                                    <p className="text-xs text-gray-400 mb-1">Deposit Tx:</p>
-                                    <p className="text-xs font-mono text-amber-400 break-all">{txHashes.depositHash}</p>
+                                <div className="mb-2 rounded-xl bg-surface-alt p-3 text-left">
+                                    <p className="mb-1 text-xs text-muted-deep">{s.depositTx}</p>
+                                    <p className="break-all font-mono text-xs text-gold">{txHashes.depositHash}</p>
                                 </div>
                             )}
                             {txHashes.stakeHash && (
-                                <div className="bg-stone-800/50 rounded-lg p-3">
-                                    <p className="text-xs text-gray-400 mb-1">Stake Tx:</p>
-                                    <p className="text-xs font-mono text-amber-400 break-all">{txHashes.stakeHash}</p>
+                                <div className="rounded-xl bg-surface-alt p-3 text-left">
+                                    <p className="mb-1 text-xs text-muted-deep">{s.stakeTx}</p>
+                                    <p className="break-all font-mono text-xs text-gold">{txHashes.stakeHash}</p>
                                 </div>
                             )}
                         </div>
-                        <Button
-                            onClick={handleClose}
-                            className="w-full continue-button"
-                        >
-                            Close
+                        <Button onClick={handleClose} className="w-full">
+                            {d.close}
                         </Button>
                     </div>
                 ) : (
                     /* Form State */
                     <div className="space-y-4">
                         {/* Incentive Info Summary */}
-                        <Card className="bg-stone-800/80 border-amber-500/30">
-                            <CardContent className="p-4">
-                                <div className="flex items-center gap-3 mb-3">
-                                    <Zap className="w-5 h-5 text-purple-400" />
-                                    <span className="font-semibold text-white">{pairName} Farm</span>
-                                    {incentive.poolFee && (
-                                        <Badge className="bg-purple-500/20 text-purple-300 border-purple-500/30 text-xs">
-                                            {(incentive.poolFee / 10000).toFixed(2)}%
-                                        </Badge>
-                                    )}
+                        <div className="rounded-xl border border-line bg-surface-alt p-4">
+                            <div className="mb-3 flex flex-wrap items-center gap-2">
+                                <Sprout className="size-4 text-gold" aria-hidden />
+                                <span className="font-semibold text-cream">{interpolate(d.farmTitle, { pair: pairName })}</span>
+                                {incentive.poolFee ? (
+                                    <Pill tone="gold">{fmt.pct(incentive.poolFee / 10000, 2)}</Pill>
+                                ) : null}
+                            </div>
+                            <div className="space-y-1 text-sm">
+                                <div className="flex justify-between gap-3">
+                                    <span className="text-muted-foreground">{d.rewardToken}</span>
+                                    <span className="text-cream">{rewardSymbol}</span>
                                 </div>
-                                <div className="space-y-1 text-sm">
-                                    <div className="flex justify-between">
-                                        <span className="text-gray-400">Reward Token:</span>
-                                        <span className="text-white">{rewardSymbol}</span>
-                                    </div>
-                                    <div className="flex justify-between">
-                                        <span className="text-gray-400 flex items-center gap-1">
-                                            <Clock className="w-3 h-3" /> Time Left:
-                                        </span>
-                                        <span className="text-amber-400">
-                                            {formatTimeRemaining(incentive.timeRemaining)}
-                                        </span>
-                                    </div>
+                                <div className="flex justify-between gap-3">
+                                    <span className="flex items-center gap-1 text-muted-foreground">
+                                        <Clock className="size-3" /> {d.timeLeft}
+                                    </span>
+                                    <span className="text-gold-light">{timeLeft ?? dict.farm.ended}</span>
                                 </div>
-                            </CardContent>
-                        </Card>
+                            </div>
+                        </div>
 
                         {/* Position Selection */}
                         {!showManualInput ? (
                             <div className="space-y-2">
                                 <div className="flex items-center justify-between">
-                                    <Label className="text-gray-300">Select Position</Label>
+                                    <Label className="text-muted-foreground">{s.selectPosition}</Label>
                                     <button
                                         onClick={() => setShowManualInput(true)}
-                                        className="text-xs text-amber-400 hover:text-amber-300 underline"
+                                        className="text-xs text-gold underline hover:text-gold-light"
                                         type="button"
                                     >
-                                        Enter ID manually
+                                        {s.enterManually}
                                     </button>
                                 </div>
 
                                 {isLoadingPositions ? (
-                                    <div className="flex items-center justify-center gap-2 py-6 bg-stone-800/50 rounded-lg">
-                                        <Loader2 className="w-5 h-5 text-amber-400 animate-spin" />
-                                        <span className="text-gray-400 text-sm">Loading your V3 positions...</span>
+                                    <div className="flex items-center justify-center gap-2 rounded-xl bg-surface-alt py-6">
+                                        <Loader2 className="size-5 animate-spin text-gold" />
+                                        <span className="text-sm text-muted-foreground">{s.loadingPositions}</span>
                                     </div>
-                                ) : positionError ? (
-                                    <div className="flex items-center gap-2 p-3 bg-red-500/10 border border-red-500/20 rounded-lg">
-                                        <AlertCircle className="w-4 h-4 text-red-400 flex-shrink-0" />
-                                        <p className="text-red-400 text-sm">{positionError}</p>
+                                ) : positionError !== null ? (
+                                    <div className="flex items-center gap-2 rounded-xl border border-danger/25 bg-danger/10 p-3">
+                                        <AlertCircle className="size-4 shrink-0 text-danger" />
+                                        <p className="text-sm text-danger">{positionError || s.positionsFailed}</p>
                                     </div>
                                 ) : !address ? (
-                                    <div className="text-center py-6 bg-stone-800/50 rounded-lg">
-                                        <p className="text-gray-400 text-sm">Connect your wallet to see positions.</p>
+                                    <div className="rounded-xl bg-surface-alt py-6 text-center">
+                                        <p className="text-sm text-muted-foreground">{s.connectToSee}</p>
                                     </div>
                                 ) : sortedPositions.length === 0 ? (
-                                    <div className="text-center py-6 bg-stone-800/50 rounded-lg">
-                                        <p className="text-gray-400 text-sm mb-1">No V3 positions found.</p>
-                                        <p className="text-gray-500 text-xs">Add liquidity to a V3 pool first.</p>
+                                    <div className="rounded-xl bg-surface-alt py-6 text-center">
+                                        <p className="mb-1 text-sm text-muted-foreground">{s.noPositions}</p>
+                                        <p className="text-xs text-muted-deep">{s.noPositionsHint}</p>
                                     </div>
                                 ) : (
-                                    <div className="max-h-48 overflow-y-auto space-y-2 pr-1">
+                                    <div className="max-h-48 space-y-2 overflow-y-auto pr-1">
                                         {sortedPositions.map((pos) => {
                                             const matching = isPoolMatch(pos)
                                             const isSelected = selectedPosition?.tokenId === pos.tokenId
@@ -376,37 +363,31 @@ export default function V3StakingModal({
                                                     onClick={() => handleSelectPosition(pos)}
                                                     disabled={isProcessing}
                                                     type="button"
-                                                    className={`
-                                                        w-full text-left p-3 rounded-lg border transition-all
-                                                        ${isSelected
-                                                            ? 'bg-purple-500/20 border-purple-500/50'
-                                                            : 'bg-stone-800/50 border-stone-700/50 hover:border-amber-500/30'
-                                                        }
-                                                        ${!matching ? 'opacity-60' : ''}
-                                                    `}
+                                                    className={cn(
+                                                        'w-full rounded-xl border p-3 text-left transition-colors',
+                                                        isSelected
+                                                            ? 'border-gold/35 bg-gold-soft'
+                                                            : 'border-line bg-surface-alt hover:border-line-strong',
+                                                        !matching && 'opacity-60',
+                                                    )}
                                                 >
                                                     <div className="flex items-center justify-between">
                                                         <div className="flex items-center gap-2">
-                                                            <span className="text-white font-mono text-sm font-semibold">
+                                                            <span className="font-mono text-sm font-semibold text-cream">
                                                                 #{pos.tokenId.toString()}
                                                             </span>
-                                                            <Badge className={`text-xs ${matching
-                                                                ? 'bg-green-500/20 text-green-300 border-green-500/30'
-                                                                : 'bg-stone-700/50 text-gray-400 border-stone-600/30'
-                                                            }`}>
-                                                                {(pos.fee / 10000).toFixed(2)}%
-                                                            </Badge>
+                                                            <Pill tone={matching ? 'success' : 'muted'}>
+                                                                {fmt.pct(pos.fee / 10000, 2)}
+                                                            </Pill>
                                                             {pos.liquidity === 0n && (
-                                                                <Badge className="bg-orange-500/20 text-orange-300 border-orange-500/30 text-xs">
-                                                                    Empty
-                                                                </Badge>
+                                                                <Pill tone="gold">{s.emptyPosition}</Pill>
                                                             )}
                                                         </div>
                                                         {isSelected && (
-                                                            <CheckCircle className="w-4 h-4 text-purple-400" />
+                                                            <CheckCircle className="size-4 text-gold" />
                                                         )}
                                                     </div>
-                                                    <div className="mt-1 text-xs text-gray-400">
+                                                    <div className="mt-1 text-xs text-muted-deep">
                                                         {truncateAddress(pos.token0)} / {truncateAddress(pos.token1)}
                                                     </div>
                                                 </button>
@@ -419,18 +400,18 @@ export default function V3StakingModal({
                             /* Manual Token ID Input */
                             <div className="space-y-2">
                                 <div className="flex items-center justify-between">
-                                    <Label htmlFor="token-id" className="text-gray-300">
-                                        NFT Position Token ID
+                                    <Label htmlFor="token-id" className="text-muted-foreground">
+                                        {s.tokenIdLabel}
                                     </Label>
                                     <button
                                         onClick={() => {
                                             setShowManualInput(false)
                                             setTokenIdInput('')
                                         }}
-                                        className="text-xs text-amber-400 hover:text-amber-300 underline"
+                                        className="text-xs text-gold underline hover:text-gold-light"
                                         type="button"
                                     >
-                                        Select from list
+                                        {s.selectFromList}
                                     </button>
                                 </div>
                                 <Input
@@ -438,35 +419,33 @@ export default function V3StakingModal({
                                     type="text"
                                     value={tokenIdInput}
                                     onChange={(e) => handleTokenIdChange(e.target.value)}
-                                    placeholder="Enter your V3 position token ID"
-                                    className="bg-stone-800 border-amber-500/30 text-white"
+                                    placeholder={s.tokenIdPlaceholder}
+                                    className="h-10 rounded-xl border-line bg-surface-alt text-cream"
                                     disabled={isProcessing}
                                 />
-                                <p className="text-xs text-gray-500">
-                                    Find your position token ID on the Pools page or in your wallet.
-                                </p>
+                                <p className="text-xs text-muted-deep">{s.tokenIdHint}</p>
                             </div>
                         )}
 
                         {/* Error Display */}
                         {error && (
-                            <div className="flex items-center gap-2 p-3 bg-red-500/10 border border-red-500/20 rounded-lg">
-                                <AlertCircle className="w-4 h-4 text-red-400 flex-shrink-0" />
-                                <p className="text-red-400 text-sm">{error}</p>
+                            <div className="flex items-center gap-2 rounded-xl border border-danger/25 bg-danger/10 p-3">
+                                <AlertCircle className="size-4 shrink-0 text-danger" />
+                                <p className="text-sm text-danger">{error}</p>
                             </div>
                         )}
 
                         {/* Transaction Status */}
                         {txStatus === 'depositing' && (
-                            <div className="flex items-center gap-2 p-3 bg-amber-500/10 border border-amber-500/20 rounded-lg">
-                                <div className="w-4 h-4 border-2 border-amber-400 border-t-transparent rounded-full animate-spin" />
-                                <p className="text-amber-400 text-sm">Depositing NFT into staker contract...</p>
+                            <div className="flex items-center gap-2 rounded-xl border border-gold/25 bg-gold-soft p-3">
+                                <Loader2 className="size-4 animate-spin text-gold-light" />
+                                <p className="text-sm text-gold-light">{s.depositing}</p>
                             </div>
                         )}
                         {txStatus === 'staking' && (
-                            <div className="flex items-center gap-2 p-3 bg-amber-500/10 border border-amber-500/20 rounded-lg">
-                                <div className="w-4 h-4 border-2 border-amber-400 border-t-transparent rounded-full animate-spin" />
-                                <p className="text-amber-400 text-sm">Staking position in incentive...</p>
+                            <div className="flex items-center gap-2 rounded-xl border border-gold/25 bg-gold-soft p-3">
+                                <Loader2 className="size-4 animate-spin text-gold-light" />
+                                <p className="text-sm text-gold-light">{s.staking}</p>
                             </div>
                         )}
 
@@ -475,22 +454,23 @@ export default function V3StakingModal({
                             <Button
                                 onClick={handleClose}
                                 disabled={isProcessing}
-                                className="flex-1 bg-stone-700 hover:bg-stone-600 text-white border-amber-500/30"
+                                variant="secondary"
+                                className="flex-1"
                             >
-                                Cancel
+                                {d.cancel}
                             </Button>
                             <Button
                                 onClick={handleStake}
                                 disabled={isProcessing || !canStake}
-                                className="flex-1 bg-gradient-to-r from-purple-500 to-amber-500 hover:from-purple-600 hover:to-amber-600 text-white"
+                                className="flex-1"
                             >
                                 {isProcessing ? (
-                                    <div className="flex items-center gap-2">
-                                        <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                                        Processing...
-                                    </div>
+                                    <>
+                                        <Loader2 className="animate-spin" />
+                                        {d.processing}
+                                    </>
                                 ) : (
-                                    'Deposit & Stake'
+                                    s.submit
                                 )}
                             </Button>
                         </div>

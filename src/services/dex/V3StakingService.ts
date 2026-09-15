@@ -16,6 +16,7 @@ import type {
 } from './v3-staking-types';
 import { kalyFeeOverrides } from '@/config/gas';
 import { assertTxSucceeded } from '@/utils/transactions';
+import { UserError } from '@/lib/userError';
 
 /**
  * V3 Staking Service for managing liquidity mining incentives
@@ -30,7 +31,7 @@ export class V3StakingService {
 
     constructor(chainId: number = CHAIN_IDS.KALYCHAIN) {
         const config = getV3Config(chainId);
-        if (!config) throw new Error('V3 not available on this chain');
+        if (!config) throw new UserError('v3Unavailable');
         this.config = config;
         this.stakerAddress = this.config.staker;
         this.positionManagerAddress = this.config.positionManager;
@@ -144,7 +145,7 @@ export class V3StakingService {
         walletClient: WalletClient
     ): Promise<string> {
         const account = walletClient.account;
-        if (!account) throw new Error('Wallet not connected');
+        if (!account) throw new UserError('walletNotConnected');
 
         const rewardAmount = parseUnits(params.rewardAmount, params.rewardTokenDecimals);
 
@@ -165,7 +166,7 @@ export class V3StakingService {
         } as any);
 
         // Wait for approval to be mined
-        await assertTxSucceeded(this.publicClient, approveHash);
+        await assertTxSucceeded(this.publicClient, approveHash, 'approval');
 
         logger.debug('V3StakingService: Creating incentive', {
             pool: params.pool,
@@ -223,7 +224,7 @@ export class V3StakingService {
      */
     async depositToken(tokenId: bigint, walletClient: WalletClient): Promise<string> {
         const account = walletClient.account;
-        if (!account) throw new Error('Wallet not connected');
+        if (!account) throw new UserError('walletNotConnected');
 
         logger.debug('V3StakingService: Depositing NFT position', { tokenId: tokenId.toString() });
 

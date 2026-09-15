@@ -13,6 +13,8 @@ import {
 } from '@/components/ui/select';
 import { useBridgeContext } from '@/hooks/bridge/useBridgeContext';
 import { bridgeHelpers } from '@/utils/bridge/bridgeHelpers';
+import { useDict } from '@/i18n/hooks';
+import { interpolate } from '@/i18n/interpolate';
 
 // TokenIcon component for bridge tokens
 function TokenIcon({ symbol, size = 20 }: { symbol: string; size?: number }) {
@@ -21,7 +23,7 @@ function TokenIcon({ symbol, size = 20 }: { symbol: string; size?: number }) {
   if (imageError) {
     return (
       <div
-        className="rounded-full bg-gradient-to-r from-green-500 to-blue-500 flex items-center justify-center text-white font-bold text-xs"
+        className="rounded-full bg-gradient-to-r from-success to-info flex items-center justify-center text-white font-bold text-xs"
         style={{ width: size, height: size, fontSize: size * 0.4 }}
       >
         {symbol.charAt(0)}
@@ -56,8 +58,10 @@ export function TokenSelector({
   originChain,
   destinationChain,
   disabled = false,
-  placeholder = "Select token"
+  placeholder
 }: TokenSelectorProps) {
+  const dict = useDict();
+  const effectivePlaceholder = placeholder ?? dict.bridge.tokenSelector.placeholder;
   const { warpCore } = useBridgeContext();
 
   // Get tokens that have routes between origin and destination chains
@@ -75,7 +79,7 @@ export function TokenSelector({
       disabled={disabled || !originChain || !destinationChain}
     >
       <SelectTrigger className="w-full">
-        <SelectValue placeholder={placeholder}>
+        <SelectValue placeholder={effectivePlaceholder}>
           {selectedToken ? (
             <div className="flex items-center gap-2">
               <TokenIcon symbol={selectedToken.symbol} size={20} />
@@ -85,16 +89,16 @@ export function TokenSelector({
               </span>
             </div>
           ) : (
-            placeholder
+            effectivePlaceholder
           )}
         </SelectValue>
       </SelectTrigger>
-      <SelectContent className="select-content">
+      <SelectContent>
         {filteredTokens.length === 0 ? (
           <div className="p-4 text-center text-sm text-muted-foreground">
             {!originChain || !destinationChain
-              ? 'Select origin and destination chains first'
-              : 'No tokens available for this route'
+              ? dict.bridge.tokenSelector.selectChainsFirst
+              : dict.bridge.tokenSelector.noTokens
             }
           </div>
         ) : (
@@ -106,7 +110,7 @@ export function TokenSelector({
             );
 
             return (
-              <SelectItem key={originalIndex} value={originalIndex.toString()} className="select-item">
+              <SelectItem key={originalIndex} value={originalIndex.toString()}>
                 <div className="flex items-center gap-2">
                   <TokenIcon symbol={token.symbol} size={16} />
                   <div className="flex flex-col">
@@ -117,7 +121,7 @@ export function TokenSelector({
                       </span>
                     </div>
                     <span className="text-xs text-muted-foreground">
-                      {token.standard} • {token.decimals} decimals
+                      {interpolate(dict.bridge.tokenSelector.standardDecimals, { standard: token.standard, decimals: token.decimals })}
                     </span>
                   </div>
                 </div>

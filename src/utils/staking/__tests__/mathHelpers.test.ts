@@ -115,6 +115,7 @@ describe('validateStakeAmount', () => {
     expect(validateStakeAmount('', balance)).toEqual({
       isValid: false,
       error: 'Amount is required',
+      errorCode: 'amountRequired',
     })
   })
 
@@ -122,6 +123,7 @@ describe('validateStakeAmount', () => {
     expect(validateStakeAmount('0', balance)).toEqual({
       isValid: false,
       error: 'Amount is required',
+      errorCode: 'amountRequired',
     })
   })
 
@@ -129,6 +131,7 @@ describe('validateStakeAmount', () => {
     expect(validateStakeAmount('abc', balance)).toEqual({
       isValid: false,
       error: 'Invalid amount',
+      errorCode: 'invalidAmount',
     })
   })
 
@@ -136,6 +139,7 @@ describe('validateStakeAmount', () => {
     expect(validateStakeAmount('100', balance)).toEqual({
       isValid: false,
       error: 'Insufficient balance',
+      errorCode: 'insufficientBalance',
     })
   })
 

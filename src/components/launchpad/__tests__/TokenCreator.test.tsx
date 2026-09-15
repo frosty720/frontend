@@ -9,6 +9,9 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import React from 'react';
 import { vi, describe, it, expect, beforeEach } from 'vitest';
 import { MAINNET_CONTRACTS } from '@/config/contracts';
+import { DictionaryProvider } from '@/i18n/DictionaryProvider';
+import en from '@/i18n/dictionaries/en';
+import fr from '@/i18n/dictionaries/fr';
 
 const writeContract = vi.fn().mockResolvedValue('0xhash');
 const readContract = vi.fn();
@@ -42,6 +45,14 @@ vi.mock('viem', async (orig) => {
 
 import TokenCreator from '../TokenCreator';
 
+function renderTokenCreator() {
+	render(
+		<DictionaryProvider dict={en} locale="en">
+			<TokenCreator />
+		</DictionaryProvider>,
+	);
+}
+
 describe('TokenCreator token types', () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
@@ -49,23 +60,43 @@ describe('TokenCreator token types', () => {
 	});
 
 	it('offers Standard and Rewards, and no V2-dependent type', async () => {
-		render(<TokenCreator />);
-		expect(screen.getByRole('tab', { name: 'Standard Token' })).toBeTruthy();
-		expect(screen.getByRole('tab', { name: 'Rewards Token' })).toBeTruthy();
+		renderTokenCreator();
+		expect(screen.getByRole('tab', { name: en.launchpadForms.token.tabs.standard })).toBeTruthy();
+		expect(screen.getByRole('tab', { name: en.launchpadForms.token.tabs.rewards })).toBeTruthy();
 		// Liquidity Generator skimmed a transfer fee to feed a V2 router; KalyChain has
 		// neither, so the type was removed rather than offered and left to revert.
 		expect(screen.queryByRole('tab', { name: 'Liquidity Generator' })).toBeNull();
 	});
 
 	it('reads the fee from the factory contract, not a hardcoded constant', async () => {
-		render(<TokenCreator />);
+		renderTokenCreator();
 		// 3 KMT comes back from the stubbed factory read
 		await waitFor(() => expect(screen.getAllByText(/Fee: 3/).length).toBeGreaterThan(0));
 	});
 
 	it('labels fees in the connected chain\'s native symbol', async () => {
-		render(<TokenCreator />);
+		renderTokenCreator();
 		await waitFor(() => expect(screen.getAllByText(/KMT/).length).toBeGreaterThan(0));
+	});
+});
+
+describe('TokenCreator validation in French', () => {
+	beforeEach(() => {
+		vi.clearAllMocks();
+		CHAIN = 3890;
+	});
+
+	it('shows the FR "name required" message when submitted empty', async () => {
+		render(
+			<DictionaryProvider dict={fr} locale="fr">
+				<TokenCreator />
+			</DictionaryProvider>,
+		);
+
+		await waitFor(() => expect(screen.getAllByText(/KMT/).length).toBeGreaterThan(0));
+		fireEvent.click(screen.getByRole('button', { name: new RegExp(fr.launchpadForms.token.btnCreate.split('(')[0].trim()) }));
+
+		await waitFor(() => expect(screen.getByText(fr.launchpadForms.token.errorNameRequired)).toBeTruthy());
 	});
 });
 

@@ -1,12 +1,11 @@
 'use client';
 
-import { CHAIN_IDS } from '@/config/chains';
-
 import { poolLogger } from '@/lib/logger';
 
 import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { LoadingSpinner } from '@/components/ui/loading-spinner';
 import {
   Dialog,
   DialogContent,
@@ -14,12 +13,13 @@ import {
   DialogTitle,
   DialogTrigger,
 } from '@/components/ui/dialog';
-import { ChevronDown, Search, Plus } from 'lucide-react';
+import { ChevronDown, Search } from 'lucide-react';
 import { useTokenLists } from '@/hooks/useTokenLists';
 import { getContract, isAddress } from 'viem';
 import { usePublicClient } from 'wagmi';
 import { ERC20_ABI } from '@/config/abis';
 import { useResolvedChainId } from '@/hooks/useResolvedChainId';
+import { useDict } from '@/i18n/hooks';
 
 interface Token {
   chainId: number;
@@ -43,8 +43,12 @@ function TokenSelectorContent({
   selectedToken,
   onTokenSelect,
   excludeToken,
-  placeholder = "Select token"
+  placeholder,
 }: TokenSelectorProps) {
+  const dict = useDict();
+  const t = dict.liquidity.tokenSelector;
+  const effectivePlaceholder = placeholder || t.defaultPlaceholder;
+
   const [isOpen, setIsOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [customTokens, setCustomTokens] = useState<Token[]>([]);
@@ -58,10 +62,6 @@ function TokenSelectorContent({
 
   // Get public client for the current chain
   const publicClient = usePublicClient({ chainId });
-
-
-
-
 
   // Reset search when modal opens/closes
   useEffect(() => {
@@ -118,7 +118,7 @@ function TokenSelectorContent({
         setCustomTokens([customToken]);
       } catch (error) {
         poolLogger.error('Error fetching custom token:', error);
-        setCustomTokenError('Invalid token address or network error');
+        setCustomTokenError(t.customTokenError);
         setCustomTokens([]);
       } finally {
         setIsLoadingCustomToken(false);
@@ -127,7 +127,7 @@ function TokenSelectorContent({
 
     const timeoutId = setTimeout(fetchCustomToken, 500);
     return () => clearTimeout(timeoutId);
-  }, [searchQuery, tokens, publicClient]);
+  }, [searchQuery, tokens, publicClient, chainId, t.customTokenError]);
 
   const filteredTokens = tokens.filter(token => {
     // Exclude the other selected token
@@ -173,7 +173,7 @@ function TokenSelectorContent({
 
     if (imageError) {
       return (
-        <div className="w-6 h-6 rounded-full bg-gray-600 flex items-center justify-center text-xs font-bold text-white">
+        <div className="w-6 h-6 rounded-full bg-surface-hi flex items-center justify-center text-xs font-bold text-cream">
           {token.symbol.charAt(0)}
         </div>
       );
@@ -194,43 +194,45 @@ function TokenSelectorContent({
       <DialogTrigger asChild>
         <Button
           variant="outline"
-          className="w-full justify-between h-12 px-4 bg-slate-800 border-slate-600 text-white hover:bg-amber-500/20 hover:border-amber-500/40 transition-all duration-200"
+          className="w-full justify-between h-12 px-4 bg-surface-alt border-line text-cream hover:bg-gold-soft hover:border-gold/40 transition-all duration-200"
         >
           {selectedToken ? (
             <div className="flex items-center space-x-3">
               <div className="flex items-center">
                 <TokenIcon token={selectedToken} />
               </div>
-              <span className="font-medium text-white">{selectedToken.symbol}</span>
+              <span className="font-medium text-cream">{selectedToken.symbol}</span>
             </div>
           ) : (
-            <span className="text-slate-400">{placeholder}</span>
+            <span className="text-muted-foreground">{effectivePlaceholder}</span>
           )}
-          <ChevronDown className="h-4 w-4 text-slate-400" />
+          <ChevronDown className="h-4 w-4 text-muted-foreground" />
         </Button>
       </DialogTrigger>
 
-      <DialogContent className="max-w-md" style={{ background: '#1c1917', border: '1px solid rgba(245, 158, 11, 0.3)' }}>
+      <DialogContent className="max-w-md border-line bg-surface">
         <DialogHeader>
-          <DialogTitle className="text-white">Select a token</DialogTitle>
+          <DialogTitle>{t.dialogTitle}</DialogTitle>
         </DialogHeader>
 
         <div className="space-y-4">
           {/* Search Input */}
           <div className="relative">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-slate-400" />
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <Input
-              placeholder="Search name or paste address"
+              placeholder={t.searchPlaceholder}
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="pl-10 h-12 bg-slate-800 text-white border-slate-600 placeholder:text-slate-400 rounded-xl"
+              className="pl-10 h-12 bg-surface-alt text-cream border-line placeholder:text-muted-foreground rounded-xl"
             />
           </div>
+
+          {customTokenError && <p className="text-xs text-danger">{customTokenError}</p>}
 
           {/* Popular Tokens */}
           {!searchQuery && (
             <div>
-              <h4 className="text-sm font-medium text-white mb-2">Popular tokens</h4>
+              <h4 className="text-sm font-medium text-cream mb-2">{t.popular}</h4>
               <div className="flex flex-wrap gap-2">
                 {tokens.slice(0, 4).map((token) => (
                   <Button
@@ -238,7 +240,7 @@ function TokenSelectorContent({
                     variant="outline"
                     size="sm"
                     onClick={() => handleTokenSelect(token)}
-                    className="h-8 px-3 text-xs flex items-center gap-1 bg-slate-800 text-white border-slate-600 hover:bg-amber-500/20 hover:border-amber-500/40 transition-all duration-200"
+                    className="h-8 px-3 text-xs flex items-center gap-1 bg-surface-alt text-cream border-line hover:bg-gold-soft hover:border-gold/40 transition-all duration-200"
                     disabled={excludeToken?.address.toLowerCase() === token.address.toLowerCase()}
                   >
                     <div className="flex items-center">
@@ -251,13 +253,11 @@ function TokenSelectorContent({
             </div>
           )}
 
-
-
           {/* Token List */}
           <div className="max-h-80 overflow-y-auto">
             {loading ? (
               <div className="flex items-center justify-center py-8">
-                <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-amber-500"></div>
+                <LoadingSpinner size="md" />
               </div>
             ) : allTokens.length > 0 ? (
               <div className="space-y-1">
@@ -265,25 +265,23 @@ function TokenSelectorContent({
                   <button
                     key={token.address}
                     onClick={() => handleTokenSelect(token)}
-                    className="w-full flex items-center space-x-3 p-3 rounded-lg transition-all duration-200 text-left hover:bg-amber-500/10 hover:border-amber-500/20 border border-transparent"
+                    className="w-full flex items-center space-x-3 p-3 rounded-lg transition-all duration-200 text-left hover:bg-gold-soft border border-transparent hover:border-gold/25"
                     disabled={excludeToken?.address.toLowerCase() === token.address.toLowerCase()}
                   >
                     <div className="flex items-center">
                       <TokenIcon token={token} />
                     </div>
                     <div className="flex-1 min-w-0">
-                      <div className="font-medium text-white">{token.symbol}</div>
-                      <div className="text-sm truncate" style={{ color: '#fef3c7' }}>{token.name}</div>
+                      <div className="font-medium text-cream">{token.symbol}</div>
+                      <div className="text-sm truncate text-gold-light">{token.name}</div>
                     </div>
                   </button>
                 ))}
               </div>
             ) : !searchQuery || !isAddress(searchQuery) ? (
-              <div className="text-center py-8 text-slate-400">
-                <p>No tokens found</p>
-                {searchQuery && (
-                  <p className="text-sm mt-1">Try a different search term or paste a token address</p>
-                )}
+              <div className="text-center py-8 text-muted-foreground">
+                <p>{t.empty}</p>
+                {searchQuery && <p className="text-sm mt-1">{t.emptyHint}</p>}
               </div>
             ) : null}
           </div>
@@ -295,6 +293,7 @@ function TokenSelectorContent({
 
 // Hydration-safe wrapper component
 export default function TokenSelector(props: TokenSelectorProps) {
+  const dict = useDict();
   const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
@@ -307,10 +306,10 @@ export default function TokenSelector(props: TokenSelectorProps) {
       <Button
         variant="outline"
         disabled
-        className="w-full justify-between h-12 px-4 bg-slate-800 border-slate-600 text-white"
+        className="w-full justify-between h-12 px-4 bg-surface-alt border-line text-cream"
       >
-        <span className="text-slate-400">{props.placeholder || "Select token"}</span>
-        <ChevronDown className="h-4 w-4 text-slate-400" />
+        <span className="text-muted-foreground">{props.placeholder || dict.liquidity.tokenSelector.defaultPlaceholder}</span>
+        <ChevronDown className="h-4 w-4 text-muted-foreground" />
       </Button>
     );
   }

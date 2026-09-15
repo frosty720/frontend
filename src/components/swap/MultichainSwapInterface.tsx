@@ -3,13 +3,10 @@
 import { CHAIN_IDS, KALYCHAIN_EXPLORER_URL } from '@/config/chains';
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { ArrowUpDown, Settings, Info, Wallet, AlertTriangle, CheckCircle, ChevronDown, X, ExternalLink } from 'lucide-react';
+import { ArrowDown, ArrowLeftRight, Settings, AlertTriangle, CheckCircle, ChevronDown, X, ExternalLink } from 'lucide-react';
 import TokenSelectorModal from './TokenSelectorModal';
-import SwapConfirmationModal from './SwapConfirmationModal';
 import ErrorDisplay from './ErrorDisplay';
 import { useSwapErrorHandler } from '@/hooks/useSwapErrorHandler';
 import { useSwapTransactions } from '@/hooks/useSwapTransactions';
@@ -21,27 +18,30 @@ import { useActiveWalletChain, useActiveWallet } from 'thirdweb/react';
 
 // New multichain DEX service imports
 import { Token, QuoteResult, SwapParams } from '@/services/dex';
-import { getDefaultTokenPair, isChainSupported } from '@/config/dex';
+import { isChainSupported } from '@/config/dex';
+import { KALYCHAIN_MIN_PRIORITY_FEE_WEI, isKalyChainFamily } from '@/config/gas';
 
 // Custom hooks
 import { useMultichainTokenBalance } from '@/hooks/useMultichainTokenBalance';
 import { useTokenLists } from '@/hooks/useTokenLists';
 import { useV3Swap } from '@/hooks/useV3Swap';
+import { useTokenUsdPrices, usdPriceOf } from '@/hooks/useTokenUsdPrices';
+import { useDict, useFormat } from '@/i18n/hooks';
+import { interpolate } from '@/i18n/interpolate';
+import { describeError } from '@/i18n/errorText';
 
 // Price impact utilities
 import { formatPriceImpact, getPriceImpactColor } from '@/utils/multichainPriceImpact';
 
-// V2/V3 Protocol Toggle
-
-// TokenIcon component with gradient fallback
+// Token logo with a monogram fallback when the image fails to load
 function TokenIcon({ token }: { token: Token }) {
   const [imageError, setImageError] = React.useState(false);
 
-  if (imageError) {
+  if (imageError || !token.logoURI) {
     return (
-      <div className="w-6 h-6 rounded-full bg-gradient-to-r from-blue-500 to-purple-500 flex items-center justify-center text-white font-bold text-xs">
+      <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-gold text-[11px] font-bold text-on-gold">
         {token.symbol.charAt(0)}
-      </div>
+      </span>
     );
   }
 
@@ -49,17 +49,18 @@ function TokenIcon({ token }: { token: Token }) {
     <img
       src={token.logoURI}
       alt={token.symbol}
-      className="w-6 h-6 rounded-full"
+      className="size-6 shrink-0 rounded-full"
       onError={() => setImageError(true)}
     />
   );
 }
 
-// Props interface for MultichainSwapInterface
-interface MultichainSwapInterfaceProps {
+export interface MultichainSwapInterfaceProps {
   fromToken?: Token | null;
   toToken?: Token | null;
   onTokenChange?: (fromToken: Token | null, toToken: Token | null) => void;
+  /** Reports the current quote's token path (addresses), or null when there is no quote. */
+  onQuoteChange?: (route: string[] | null) => void;
 }
 
 // Swap state interface
@@ -75,8 +76,12 @@ interface SwapState {
 export default function MultichainSwapInterface({
   fromToken: propFromToken,
   toToken: propToToken,
-  onTokenChange
+  onTokenChange,
+  onQuoteChange
 }: MultichainSwapInterfaceProps = {}) {
+  const dict = useDict();
+  const fmt = useFormat();
+
   // Wagmi hooks for wallet interaction
   const { address, isConnected } = useAccount();
   const chainId = useChainId();
@@ -300,17 +305,6 @@ export default function MultichainSwapInterface({
   // Check if current chain is supported
   const isChainSupportedForSwap = chainId && isChainSupported(chainId);
 
-  // Get DEX name for current chain
-  const dexName = useMemo(() => {
-    if (!chainId || !isChainSupported(chainId)) return '';
-    switch (chainId) {
-      case CHAIN_IDS.KALYCHAIN: return 'KalySwap';
-      case 56: return 'PancakeSwap';
-      case 42161: return 'Camelot';
-      default: return '';
-    }
-  }, [chainId]);
-
   // Get block explorer URL for current chain
   const getExplorerUrl = (txHash: string) => {
     if (!chainId) return '';
@@ -383,21 +377,19 @@ export default function MultichainSwapInterface({
       } catch (error) {
         swapLogger.error('Quote error:', error);
         setQuote(null);
-        const message = error instanceof Error ? error.message : 'Failed to get quote';
+        const message = error instanceof Error ? error.message : '';
         if (message.includes('Insufficient liquidity')) {
           setQuoteError(
             lastEdited === 'to'
-              ? `Not enough liquidity to receive ${drivingAmount} ${swapState.toToken.symbol}. Try a smaller amount.`
-              : `Not enough liquidity for this trade size. Try a smaller amount.`
+              ? interpolate(dict.swap.noLiquidityOut, { amount: drivingAmount, symbol: swapState.toToken.symbol })
+              : dict.swap.noLiquidity
           );
         } else if (message.includes('Pair not found') || message.includes('No V3 route')) {
-          setQuoteError(
-            `No liquidity found for ${swapState.fromToken.symbol}/${swapState.toToken.symbol}.` +
-            // Only suggest the other protocol version on chains that actually have both.
-              ''
-          );
+          setQuoteError(interpolate(dict.swap.noPool, { from: swapState.fromToken.symbol, to: swapState.toToken.symbol }));
         } else {
-          setQuoteError(message);
+          // Any other quote failure (RPC down, UserError, wallet/viem error, …) — always the
+          // reader's language, never the raw (often English) underlying message.
+          setQuoteError(describeError(error, dict));
         }
         setSwapState(prev => lastEdited === 'to'
           ? { ...prev, fromAmount: '' }
@@ -617,388 +609,373 @@ export default function MultichainSwapInterface({
     networkMismatch
   ]);
 
+  // The page's "Optimal route" panel mirrors whatever the current quote routes through.
+  useEffect(() => {
+    onQuoteChange?.(quote?.route ?? null);
+  }, [quote, onQuoteChange]);
+
+  // USD estimates and the network fee, priced from the V3 subgraph (derivedETH × ethPriceUSD).
+  const nativeToken = useMemo(() => supportedTokens.find(t => t.isNative) ?? null, [supportedTokens]);
+  const usdPrices = useTokenUsdPrices([swapState.fromToken, swapState.toToken, nativeToken], chainId || CHAIN_IDS.KALYCHAIN);
+  const fromAmountNum = parseFloat(swapState.fromAmount) || 0;
+  const toAmountNum = parseFloat(swapState.toAmount) || 0;
+  const fromPrice = usdPriceOf(usdPrices, swapState.fromToken);
+  const toPrice = usdPriceOf(usdPrices, swapState.toToken);
+  const fromUsd = fromPrice !== null && fromAmountNum > 0 ? fromAmountNum * fromPrice : null;
+  const toUsd = toPrice !== null && toAmountNum > 0 ? toAmountNum * toPrice : null;
+  const rate = quote && fromAmountNum > 0 && toAmountNum > 0 ? toAmountNum / fromAmountNum : null;
+
+  // Network fee ≈ (quoter gas + 21,000 intrinsic gas) × the 21 gwei tip every KalyChain write carries.
+  const networkFee = useMemo(() => {
+    if (!quote?.gasEstimate || !isKalyChainFamily(chainId)) return null;
+    const gas = BigInt(quote.gasEstimate) + 21_000n;
+    const native = Number(gas * KALYCHAIN_MIN_PRIORITY_FEE_WEI) / 1e18;
+    const nativePrice = usdPriceOf(usdPrices, nativeToken);
+    return { native, usd: nativePrice !== null ? native * nativePrice : null };
+  }, [quote?.gasEstimate, chainId, usdPrices, nativeToken]);
+
+  const usdText = (value: number) => (value < 0.01 ? `< ${fmt.usd(0.01)}` : fmt.usd(value));
+  const feeText = (): string => {
+    if (!networkFee) return '—';
+    if (networkFee.usd === null) return `≈ ${fmt.number(networkFee.native, { maximumFractionDigits: 6 })} ${nativeToken?.symbol ?? ''}`;
+    return networkFee.usd < 0.001 ? `< ${fmt.usd(0.001, { decimals: 3 })}` : `≈ ${fmt.usd(networkFee.usd, { decimals: 3 })}`;
+  };
+
   // Get swap button text
   const getSwapButtonText = (): string => {
-    if (!isConnected) return 'Connect Wallet';
-    if (networkMismatch) return `Switch wallet to ${networkName(chainId)}`;
-    if (!isChainSupportedForSwap) return 'Unsupported Chain';
-    if (!swapState.fromToken || !swapState.toToken) return 'Select Tokens';
-    if (!swapState.fromAmount || parseFloat(swapState.fromAmount) <= 0) return 'Enter Amount';
-    if (isLoadingQuote) return 'Getting Quote...';
-    if (!quote) return 'No Quote Available';
-    if (isSwapping) return 'Swapping...';
-    return `Swap on ${dexName}`;
+    if (!isConnected) return dict.swap.btnConnect;
+    if (networkMismatch) return interpolate(dict.swap.btnSwitch, { network: networkName(chainId) });
+    if (!isChainSupportedForSwap) return dict.swap.btnUnsupported;
+    if (!swapState.fromToken || !swapState.toToken) return dict.swap.btnSelect;
+    if (!swapState.fromAmount || parseFloat(swapState.fromAmount) <= 0) return dict.swap.btnEnter;
+    if (isLoadingQuote) return dict.swap.btnQuoting;
+    if (!quote) return dict.swap.btnNoQuote;
+    if (isSwapping) return dict.swap.btnSwapping;
+    return interpolate(dict.swap.btnSwap, { from: swapState.fromToken.symbol, to: swapState.toToken.symbol });
+  };
+
+  const disabledInputs = !isChainSupportedForSwap;
+  const setPercentage = (percentage: number) => {
+    const numBalance = parseFloat(getTokenBalance(swapState.fromToken));
+    if (!isNaN(numBalance)) {
+      handleFromAmountChange(percentage === 100 ? getTokenBalance(swapState.fromToken) : (numBalance * percentage / 100).toString());
+    }
   };
 
   return (
     <>
-      <Card className="w-full max-w-md mx-auto bg-stone-900/95 border-amber-500/30">
-        <CardHeader className="pb-4">
-          <div className="flex items-center justify-between">
-            <CardTitle className="text-white">
-              Swap {dexName && `on ${dexName}`}
-            </CardTitle>
-            <div className="flex items-center gap-2">
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => setShowSettings(!showSettings)}
-                className="text-gray-400 hover:text-white"
-              >
-                <Settings className="h-4 w-4" />
-              </Button>
-            </div>
+      <section className="space-y-3 rounded-2xl border border-line bg-surface p-4 sm:p-5">
+        {/* Token Loading State */}
+        {tokensLoading && (
+          <div className="flex items-center gap-2 rounded-xl border border-info/25 bg-info/10 p-3 text-sm text-info">
+            <span className="size-4 animate-spin rounded-full border-2 border-info/30 border-t-info" />
+            <span>{dict.swap.loadingTokens}</span>
           </div>
+        )}
 
-          {/* Chain indicator */}
-          {chainId && (
-            <div className="text-xs text-gray-400">
-              Chain: {chainId} {!isChainSupportedForSwap && '(Unsupported)'}
-              <span className="ml-2 text-purple-400">Concentrated Liquidity</span>
-            </div>
-          )}
-        </CardHeader>
-
-        <CardContent className="space-y-4">
-          {/* Token Loading State */}
-          {tokensLoading && (
-            <div className="p-3 bg-blue-900/30 border border-blue-500/30 rounded-lg">
-              <div className="flex items-center gap-2 text-blue-400 text-sm">
-                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-400"></div>
-                <span>Loading tokens...</span>
-              </div>
-            </div>
-          )}
-
-          {/* Token Loading Error */}
-          {tokensError && (
-            <div className="p-3 bg-red-900/30 border border-red-500/30 rounded-lg">
-              <div className="flex items-center gap-2 text-red-400 text-sm">
-                <AlertTriangle className="h-4 w-4" />
-                <span>Failed to load tokens: {tokensError}</span>
-              </div>
-            </div>
-          )}
-
-          {/* Error Display */}
-          {hasError && error && (
-            <ErrorDisplay
-              error={error}
-              onRetry={retry}
-              onReset={clearError}
-              isRetrying={isRetrying}
-            />
-          )}
-
-          {/* Quote error — otherwise a failed quote silently shows 0.0 out */}
-          {quoteError && !isLoadingQuote && (
-            <div className="p-3 bg-amber-900/30 border border-amber-500/30 rounded-lg">
-              <div className="flex items-center gap-2 text-amber-400 text-sm">
-                <AlertTriangle className="h-4 w-4 flex-shrink-0" />
-                <span className="break-words min-w-0">{quoteError}</span>
-              </div>
-            </div>
-          )}
-
-          {/* Chain not supported warning */}
-          {!isChainSupportedForSwap && (
-            <div className="p-3 bg-yellow-900/30 border border-yellow-500/30 rounded-lg">
-              <div className="flex items-center gap-2 text-yellow-400 text-sm">
-                <AlertTriangle className="h-4 w-4" />
-                <span>Chain not supported for swapping</span>
-              </div>
-              <div className="text-xs text-yellow-300 mt-1">
-                Please switch to KalyChain, BSC, or Arbitrum
-              </div>
-            </div>
-          )}
-
-          {/* Wallet on the wrong network warning (mirrors the bridge page) */}
-          {networkMismatch && (
-            <div className="p-3 bg-yellow-900/30 border border-yellow-500/30 rounded-lg">
-              <div className="flex items-center gap-2 text-yellow-400 text-sm">
-                <AlertTriangle className="h-4 w-4" />
-                <span>Wrong network in your wallet</span>
-              </div>
-              <div className="text-xs text-yellow-300 mt-1">
-                Your wallet is on {networkName(walletRealChainId)}. Switch it to {networkName(chainId)} to complete this swap.
-              </div>
-              <Button
-                size="sm"
-                onClick={() => handleChainSwitch(chainId)}
-                className="mt-2 h-8 bg-yellow-600 hover:bg-yellow-700 text-white text-xs"
-              >
-                Switch to {networkName(chainId)}
-              </Button>
-            </div>
-          )}
-
-          {/* From Token */}
-          <div className="space-y-2">
-            <Label className="text-sm font-medium text-gray-300">From</Label>
-            <div className="relative">
-              <div className="flex items-center justify-between p-3 bg-stone-800 border border-stone-700 rounded-lg gap-2">
-                <div className="flex items-center gap-3 flex-shrink-0">
-                  <Button
-                    variant="ghost"
-                    className="flex items-center gap-2 p-2 h-auto text-white hover:bg-stone-700"
-                    onClick={() => setShowFromTokenSelector(true)}
-                    disabled={!isChainSupportedForSwap}
-                  >
-                    {swapState.fromToken ? (
-                      <>
-                        <TokenIcon token={swapState.fromToken} />
-                        <span className="font-medium">{swapState.fromToken.symbol}</span>
-                      </>
-                    ) : (
-                      <span className="text-gray-400">Select token</span>
-                    )}
-                    <ChevronDown className="h-4 w-4" />
-                  </Button>
-                </div>
-                <div className="flex flex-col items-end flex-1 min-w-0">
-                  <Input
-                    type="text"
-                    inputMode="decimal"
-                    placeholder="0.0"
-                    value={swapState.fromAmount}
-                    onChange={(e) => {
-                      // Only allow numbers and decimal point
-                      const value = e.target.value.replace(/[^0-9.]/g, '');
-                      handleFromAmountChange(value);
-                    }}
-                    className="text-right bg-transparent border-none text-lg font-medium text-white placeholder-gray-500 p-0 h-auto w-full min-w-0"
-                    disabled={!isChainSupportedForSwap}
-                  />
-                  {swapState.fromToken && (
-                    <div className="text-xs text-gray-400 mt-1 flex items-center gap-1 max-w-full truncate">
-                      <span className="truncate">Balance: {getTokenBalance(swapState.fromToken)}</span>
-                    </div>
-                  )}
-                </div>
-              </div>
-              {/* Percentage buttons */}
-              {swapState.fromToken && (
-                <div className="flex gap-1 mt-2">
-                  {[25, 50, 75].map((percentage) => (
-                    <Button
-                      key={percentage}
-                      variant="outline"
-                      size="sm"
-                      onClick={() => {
-                        const balance = getTokenBalance(swapState.fromToken!);
-                        const numBalance = parseFloat(balance);
-                        if (!isNaN(numBalance)) {
-                          const amount = (numBalance * percentage / 100).toString();
-                          handleFromAmountChange(amount);
-                        }
-                      }}
-                      className="flex-1 text-xs h-7 bg-stone-800 border-stone-600 hover:bg-stone-700 text-gray-300"
-                      disabled={!isChainSupportedForSwap}
-                    >
-                      {percentage}%
-                    </Button>
-                  ))}
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => {
-                      const balance = getTokenBalance(swapState.fromToken!);
-                      handleFromAmountChange(balance);
-                    }}
-                    className="flex-1 text-xs h-7 bg-stone-800 border-stone-600 hover:bg-stone-700 text-gray-300 font-semibold"
-                    disabled={!isChainSupportedForSwap}
-                  >
-                    MAX
-                  </Button>
-                </div>
-              )}
-            </div>
+        {/* Token Loading Error */}
+        {tokensError && (
+          <div className="flex items-center gap-2 rounded-xl border border-danger/25 bg-danger/10 p-3 text-sm text-danger">
+            <AlertTriangle className="size-4 shrink-0" />
+            <span className="min-w-0 break-words">{interpolate(dict.swap.tokensFailed, { error: describeError(tokensError, dict) })}</span>
           </div>
+        )}
 
-          {/* Swap Direction Button */}
-          <div className="flex justify-center">
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={handleSwapTokens}
-              className="rounded-full p-2 bg-stone-800 hover:bg-stone-700 border border-stone-600"
-              disabled={!isChainSupportedForSwap}
-            >
-              <ArrowUpDown className="h-4 w-4 text-white" />
+        {/* Error Display */}
+        {hasError && error && (
+          <ErrorDisplay
+            error={error}
+            onRetry={retry}
+            onReset={clearError}
+            isRetrying={isRetrying}
+          />
+        )}
+
+        {/* Quote error — otherwise a failed quote silently shows 0.0 out */}
+        {quoteError && !isLoadingQuote && (
+          <div className="flex items-center gap-2 rounded-xl border border-gold/25 bg-gold-soft p-3 text-sm text-gold-light">
+            <AlertTriangle className="size-4 shrink-0" />
+            <span className="min-w-0 break-words">{quoteError}</span>
+          </div>
+        )}
+
+        {/* Chain not supported warning */}
+        {!isChainSupportedForSwap && (
+          <div className="rounded-xl border border-gold/25 bg-gold-soft p-3 text-sm">
+            <div className="flex items-center gap-2 font-semibold text-gold-light">
+              <AlertTriangle className="size-4 shrink-0" />
+              <span>{dict.swap.unsupportedTitle}</span>
+            </div>
+            <div className="mt-1 text-xs text-muted-foreground">{dict.swap.unsupportedBody}</div>
+          </div>
+        )}
+
+        {/* Wallet on the wrong network warning (mirrors the bridge page) */}
+        {networkMismatch && (
+          <div className="rounded-xl border border-gold/25 bg-gold-soft p-3 text-sm">
+            <div className="flex items-center gap-2 font-semibold text-gold-light">
+              <AlertTriangle className="size-4 shrink-0" />
+              <span>{dict.swap.wrongNetworkTitle}</span>
+            </div>
+            <div className="mt-1 text-xs text-muted-foreground">
+              {interpolate(dict.swap.wrongNetworkBody, { wallet: networkName(walletRealChainId), network: networkName(chainId) })}
+            </div>
+            <Button size="sm" className="mt-2" onClick={() => handleChainSwitch(chainId)}>
+              {interpolate(dict.swap.switchTo, { network: networkName(chainId) })}
             </Button>
           </div>
+        )}
 
-          {/* To Token */}
-          <div className="space-y-2">
-            <Label className="text-sm font-medium text-gray-300">To</Label>
-            <div className="relative">
-              <div className="flex items-center justify-between p-3 bg-stone-800 border border-stone-700 rounded-lg gap-2">
-                <div className="flex items-center gap-3 flex-shrink-0">
-                  <Button
-                    variant="ghost"
-                    className="flex items-center gap-2 p-2 h-auto text-white hover:bg-stone-700"
-                    onClick={() => setShowToTokenSelector(true)}
-                    disabled={!isChainSupportedForSwap}
+        {/* You pay */}
+        <div className="rounded-xl bg-surface-alt p-4">
+          <div className="flex items-center justify-between gap-3 text-[13px] text-muted-foreground">
+            <span className="shrink-0">{dict.swap.youPay}</span>
+            {swapState.fromToken && (
+              <span className="min-w-0 truncate">
+                {interpolate(dict.swap.balance, { amount: `${getTokenBalance(swapState.fromToken)} ${swapState.fromToken.symbol}` })}
+              </span>
+            )}
+          </div>
+          <div className="mt-2 flex items-center gap-3">
+            <input
+              type="text"
+              inputMode="decimal"
+              placeholder="0.0"
+              aria-label={dict.swap.youPay}
+              value={swapState.fromAmount}
+              onChange={(e) => {
+                // Only allow numbers and decimal point
+                handleFromAmountChange(e.target.value.replace(/[^0-9.]/g, ''));
+              }}
+              disabled={disabledInputs}
+              className="h-10 w-full min-w-0 flex-1 bg-transparent font-display text-[28px] font-semibold leading-none text-cream outline-none placeholder:text-muted-deep disabled:opacity-50"
+            />
+            <button
+              type="button"
+              onClick={() => setShowFromTokenSelector(true)}
+              disabled={disabledInputs}
+              className="flex shrink-0 items-center gap-2 rounded-lg border border-line bg-surface-hi px-3 py-1.5 text-sm font-semibold text-cream transition-colors hover:bg-surface disabled:opacity-50"
+            >
+              {swapState.fromToken ? (
+                <>
+                  <TokenIcon token={swapState.fromToken} />
+                  <span>{swapState.fromToken.symbol}</span>
+                </>
+              ) : (
+                <span className="text-muted-foreground">{dict.swap.selectToken}</span>
+              )}
+              <ChevronDown className="size-4 text-muted-foreground" />
+            </button>
+          </div>
+          <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
+            <span className="text-[13px] text-muted-deep">{fromUsd !== null ? `≈ ${usdText(fromUsd)}` : '\u00a0'}</span>
+            {swapState.fromToken && (
+              <div className="flex gap-1">
+                {[25, 50, 75, 100].map((percentage) => (
+                  <button
+                    key={percentage}
+                    type="button"
+                    onClick={() => setPercentage(percentage)}
+                    disabled={disabledInputs}
+                    className="rounded-md border border-line bg-surface-hi px-2 py-0.5 text-[11px] font-semibold text-muted-foreground transition-colors hover:text-cream disabled:opacity-50"
                   >
-                    {swapState.toToken ? (
-                      <>
-                        <TokenIcon token={swapState.toToken} />
-                        <span className="font-medium">{swapState.toToken.symbol}</span>
-                      </>
-                    ) : (
-                      <span className="text-gray-400">Select token</span>
-                    )}
-                    <ChevronDown className="h-4 w-4" />
+                    {percentage === 100 ? 'MAX' : `${percentage}%`}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Swap Direction Button */}
+        <div className="flex justify-center">
+          <button
+            type="button"
+            onClick={handleSwapTokens}
+            disabled={disabledInputs}
+            aria-label={dict.swap.flip}
+            className="flex size-10 items-center justify-center rounded-xl border border-line bg-surface-alt text-gold transition-colors hover:bg-surface-hi disabled:opacity-50"
+          >
+            <ArrowDown className="size-4" />
+          </button>
+        </div>
+
+        {/* You receive */}
+        <div className="rounded-xl bg-surface-alt p-4">
+          <div className="flex items-center justify-between gap-3 text-[13px] text-muted-foreground">
+            <span className="shrink-0">{dict.swap.youReceive}</span>
+            {swapState.toToken && (
+              <span className="min-w-0 truncate">
+                {interpolate(dict.swap.balance, { amount: `${getTokenBalance(swapState.toToken)} ${swapState.toToken.symbol}` })}
+              </span>
+            )}
+          </div>
+          <div className="mt-2 flex items-center gap-3">
+            {isLoadingQuote && lastEdited === 'from' ? (
+              <div className="h-10 min-w-0 flex-1 animate-pulse font-display text-[28px] font-semibold leading-10 text-gold-light">…</div>
+            ) : (
+              <input
+                type="text"
+                inputMode="decimal"
+                placeholder="0.0"
+                aria-label={dict.swap.youReceive}
+                value={swapState.toAmount}
+                onChange={(e) => {
+                  // Only allow numbers and decimal point
+                  handleToAmountChange(e.target.value.replace(/[^0-9.]/g, ''));
+                }}
+                disabled={disabledInputs}
+                className="h-10 w-full min-w-0 flex-1 bg-transparent font-display text-[28px] font-semibold leading-none text-gold-light outline-none placeholder:text-muted-deep disabled:opacity-50"
+              />
+            )}
+            <button
+              type="button"
+              onClick={() => setShowToTokenSelector(true)}
+              disabled={disabledInputs}
+              className="flex shrink-0 items-center gap-2 rounded-lg border border-line bg-surface-hi px-3 py-1.5 text-sm font-semibold text-cream transition-colors hover:bg-surface disabled:opacity-50"
+            >
+              {swapState.toToken ? (
+                <>
+                  <TokenIcon token={swapState.toToken} />
+                  <span>{swapState.toToken.symbol}</span>
+                </>
+              ) : (
+                <span className="text-muted-foreground">{dict.swap.selectToken}</span>
+              )}
+              <ChevronDown className="size-4 text-muted-foreground" />
+            </button>
+          </div>
+          <div className="mt-2 text-[13px] text-muted-deep">{toUsd !== null ? `≈ ${usdText(toUsd)}` : '\u00a0'}</div>
+        </div>
+
+        {/* Quote details */}
+        <dl className="divide-y divide-line text-sm">
+          <div className="flex items-center justify-between gap-3 py-3">
+            <dt className="text-muted-foreground">{dict.swap.rate}</dt>
+            <dd className="min-w-0 break-words text-right font-semibold tabular-nums text-cream">
+              {rate !== null && swapState.fromToken && swapState.toToken
+                ? `1 ${swapState.fromToken.symbol} = ${fmt.number(rate, { maximumFractionDigits: rate < 1 ? 6 : 4 })} ${swapState.toToken.symbol}`
+                : '—'}
+            </dd>
+          </div>
+          <div className="flex items-center justify-between gap-3 py-3">
+            <dt className="text-muted-foreground">{dict.swap.priceImpact}</dt>
+            <dd className={quote ? `font-semibold ${getPriceImpactColor(quote.priceImpact || 0)}` : 'font-semibold text-cream'}>
+              {quote ? formatPriceImpact(quote.priceImpact || 0) : '—'}
+            </dd>
+          </div>
+          <div className="flex items-center justify-between gap-3 py-3">
+            <dt className="text-muted-foreground">{dict.swap.maxSlippage}</dt>
+            <dd>
+              <button
+                type="button"
+                onClick={() => setShowSettings(!showSettings)}
+                aria-expanded={showSettings}
+                aria-label={dict.swap.editSettings}
+                className="inline-flex items-center gap-1.5 font-semibold text-cream transition-colors hover:text-gold"
+              >
+                <span>{swapState.slippage}%</span>
+                <Settings className="size-3.5 text-muted-foreground" />
+              </button>
+            </dd>
+          </div>
+          <div className="flex items-center justify-between gap-3 py-3">
+            <dt className="text-muted-foreground">{dict.swap.networkFee}</dt>
+            <dd className="font-semibold tabular-nums text-cream">{feeText()}</dd>
+          </div>
+        </dl>
+
+        {/* Settings Panel */}
+        {showSettings && (
+          <div className="space-y-3 rounded-xl border border-line bg-surface-alt p-3">
+            <div className="space-y-2">
+              <div className="text-xs font-semibold text-muted-foreground">{dict.swap.slippageTolerance}</div>
+              <div className="flex flex-wrap gap-2">
+                {['0.1', '0.5', '1.0'].map((value) => (
+                  <Button
+                    key={value}
+                    type="button"
+                    size="sm"
+                    variant={swapState.slippage === value ? 'default' : 'secondary'}
+                    onClick={() => setSwapState(prev => ({ ...prev, slippage: value }))}
+                  >
+                    {value}%
                   </Button>
-                </div>
-                <div className="flex flex-col items-end flex-1 min-w-0">
-                  {isLoadingQuote && lastEdited === 'from' ? (
-                    <div className="text-lg font-medium text-white truncate w-full text-right">
-                      <div className="animate-pulse">...</div>
-                    </div>
-                  ) : (
-                    <Input
-                      type="text"
-                      inputMode="decimal"
-                      placeholder="0.0"
-                      value={swapState.toAmount}
-                      onChange={(e) => {
-                        // Only allow numbers and decimal point
-                        const value = e.target.value.replace(/[^0-9.]/g, '');
-                        handleToAmountChange(value);
-                      }}
-                      className="text-right bg-transparent border-none text-lg font-medium text-white placeholder-gray-500 p-0 h-auto w-full min-w-0"
-                      disabled={!isChainSupportedForSwap}
-                    />
-                  )}
-                  {swapState.toToken && (
-                    <div className="text-xs text-gray-400 mt-1">
-                      Balance: {getTokenBalance(swapState.toToken)}
-                    </div>
-                  )}
-                </div>
+                ))}
+                <Input
+                  type="number"
+                  placeholder={dict.swap.custom}
+                  value={swapState.slippage}
+                  onChange={(e) => setSwapState(prev => ({ ...prev, slippage: e.target.value }))}
+                  className="h-8 w-24 text-xs"
+                  step="0.1"
+                  min="0.1"
+                  max="50"
+                />
+              </div>
+            </div>
+            <div className="space-y-2">
+              <div className="text-xs font-semibold text-muted-foreground">{dict.swap.deadline}</div>
+              <div className="flex items-center gap-2">
+                <Input
+                  type="number"
+                  value={swapState.deadline}
+                  onChange={(e) => setSwapState(prev => ({ ...prev, deadline: e.target.value }))}
+                  className="h-8 w-24 text-xs"
+                  min="1"
+                  max="180"
+                />
+                <span className="text-xs text-muted-foreground">{dict.swap.minutes}</span>
               </div>
             </div>
           </div>
+        )}
 
-          {/* Quote Information */}
-          {quote && swapState.fromToken && swapState.toToken && (
-            <div className="p-3 bg-stone-800/50 border border-stone-700 rounded-lg space-y-2">
-              <div className="flex justify-between text-sm">
-                <span className="text-gray-400">Price Impact</span>
-                <span className={`font-medium ${getPriceImpactColor(quote.priceImpact || 0)}`}>
-                  {formatPriceImpact(quote.priceImpact || 0)}
-                </span>
-              </div>
-              <div className="flex justify-between text-sm">
-                <span className="text-gray-400">Route</span>
-                <span className="text-white text-xs">
-                  {quote.route.length > 2 ? 'Multi-hop' : 'Direct'}
-                </span>
-              </div>
-              <div className="flex justify-between text-sm">
-                <span className="text-gray-400">Slippage</span>
-                <span className="text-white">{swapState.slippage}%</span>
-              </div>
-            </div>
+        {/* Swap Button */}
+        <Button onClick={handleSwap} disabled={!canSwap} size="lg" className="h-12 w-full text-[15px]">
+          {isSwapping ? (
+            <span className="size-4 animate-spin rounded-full border-2 border-on-gold/40 border-t-on-gold" />
+          ) : (
+            <ArrowLeftRight />
           )}
+          {getSwapButtonText()}
+        </Button>
 
-          {/* Settings Panel */}
-          {showSettings && (
-            <div className="p-3 bg-stone-800/50 border border-stone-700 rounded-lg space-y-3">
-              <div className="space-y-2">
-                <Label className="text-sm font-medium text-gray-300">Slippage Tolerance</Label>
-                <div className="flex gap-2">
-                  {['0.1', '0.5', '1.0'].map((value) => (
-                    <Button
-                      key={value}
-                      variant={swapState.slippage === value ? 'default' : 'outline'}
-                      size="sm"
-                      onClick={() => setSwapState(prev => ({ ...prev, slippage: value }))}
-                      className="text-xs"
-                    >
-                      {value}%
-                    </Button>
-                  ))}
-                  <Input
-                    type="number"
-                    placeholder="Custom"
-                    value={swapState.slippage}
-                    onChange={(e) => setSwapState(prev => ({ ...prev, slippage: e.target.value }))}
-                    className="w-20 text-xs"
-                    step="0.1"
-                    min="0.1"
-                    max="50"
-                  />
-                </div>
+        {/* Transaction Status */}
+        {currentTransactionHash && (
+          <div className="relative rounded-xl border border-success/25 bg-success/10 p-3 animate-in fade-in slide-in-from-top-2 duration-300">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2 text-sm font-semibold text-success">
+                <CheckCircle className="size-4" />
+                <span>{dict.swap.submitted}</span>
               </div>
-              <div className="space-y-2">
-                <Label className="text-sm font-medium text-gray-300">Transaction Deadline</Label>
-                <div className="flex items-center gap-2">
-                  <Input
-                    type="number"
-                    value={swapState.deadline}
-                    onChange={(e) => setSwapState(prev => ({ ...prev, deadline: e.target.value }))}
-                    className="w-20 text-xs"
-                    min="1"
-                    max="180"
-                  />
-                  <span className="text-xs text-gray-400">minutes</span>
-                </div>
-              </div>
+              <button
+                type="button"
+                onClick={() => setCurrentTransactionHash(null)}
+                className="text-success transition-colors hover:text-cream"
+                aria-label={dict.swap.close}
+              >
+                <X className="size-4" />
+              </button>
             </div>
-          )}
-
-          {/* Swap Button */}
-          <Button
-            onClick={handleSwap}
-            disabled={!canSwap}
-            className="w-full h-14 text-lg font-bold rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-white border-2 border-amber-400/50 hover:border-amber-300 disabled:from-stone-800 disabled:to-stone-800 disabled:text-gray-400 disabled:border-stone-600 disabled:cursor-not-allowed transition-all duration-200 shadow-xl hover:shadow-2xl hover:shadow-amber-500/50 disabled:shadow-none active:scale-[0.98]"
-          >
-            {isSwapping && (
-              <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin mr-2" />
-            )}
-            {getSwapButtonText()}
-          </Button>
-
-          {/* Transaction Status */}
-          {currentTransactionHash && (
-            <div className="relative p-3 bg-green-900/30 border border-green-500/30 rounded-lg animate-in fade-in slide-in-from-top-2 duration-300">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2 text-green-400 text-sm">
-                  <CheckCircle className="h-4 w-4" />
-                  <span>Transaction Submitted</span>
-                </div>
-                <button
-                  onClick={() => setCurrentTransactionHash(null)}
-                  className="text-green-400 hover:text-green-300 transition-colors"
-                  aria-label="Close"
-                >
-                  <X className="h-4 w-4" />
-                </button>
+            <div className="mt-2 flex items-center gap-2">
+              <div className="flex-1 break-all text-xs text-cream/80">
+                {currentTransactionHash.slice(0, 10)}...{currentTransactionHash.slice(-8)}
               </div>
-              <div className="flex items-center gap-2 mt-2">
-                <div className="text-xs text-green-300 break-all flex-1">
-                  {currentTransactionHash.slice(0, 10)}...{currentTransactionHash.slice(-8)}
-                </div>
-                <a
-                  href={getExplorerUrl(currentTransactionHash)}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="flex items-center gap-1 text-xs text-green-400 hover:text-green-300 transition-colors whitespace-nowrap"
-                >
-                  <span>View</span>
-                  <ExternalLink className="h-3 w-3" />
-                </a>
-              </div>
-              <div className="text-xs text-green-400/60 mt-1">
-                Auto-dismissing in 8s
-              </div>
+              <a
+                href={getExplorerUrl(currentTransactionHash)}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center gap-1 whitespace-nowrap text-xs font-semibold text-success transition-colors hover:text-cream"
+              >
+                <span>{dict.swap.view}</span>
+                <ExternalLink className="size-3" />
+              </a>
             </div>
-          )}
-        </CardContent>
-      </Card>
+            <div className="mt-1 text-xs text-muted-deep">{dict.swap.autoDismiss}</div>
+          </div>
+        )}
+      </section>
 
       {/* Token Selector Modals */}
       <TokenSelectorModal
@@ -1007,7 +984,7 @@ export default function MultichainSwapInterface({
         onTokenSelect={handleFromTokenSelect}
         selectedToken={swapState.fromToken}
         tokens={supportedTokens}
-        title="Select From Token"
+        title={dict.swap.selectFrom}
         getFormattedBalance={getFormattedBalance}
       />
 
@@ -1017,7 +994,7 @@ export default function MultichainSwapInterface({
         onTokenSelect={handleToTokenSelect}
         selectedToken={swapState.toToken}
         tokens={supportedTokens}
-        title="Select To Token"
+        title={dict.swap.selectTo}
         getFormattedBalance={getFormattedBalance}
       />
     </>

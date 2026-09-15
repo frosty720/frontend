@@ -21,8 +21,12 @@ import { CHAIN_IDS } from '@/config/chains';
 import { Token } from '@/config/dex/types';
 import { Loader2 } from 'lucide-react';
 import { useToast } from '@/components/ui/toast';
+import { useDict, useFormat } from '@/i18n/hooks';
+import { interpolate } from '@/i18n/interpolate';
+import { useErrorText } from '@/i18n/errorText';
 import { getPairedAmount } from '@/utils/v3-math';
 import { assertTxSucceeded } from '@/utils/transactions';
+import { UserError } from '@/lib/userError';
 
 /** Format a raw bigint amount into a trimmed input-friendly decimal string. */
 function formatAmountInput(amount: bigint, decimals: number): string {
@@ -50,6 +54,11 @@ const ADD_SLIPPAGE_PCT = 0.5;
 const REMOVE_SLIPPAGE_PCT = 0.5;
 
 export default function V3ManageModal({ isOpen, onClose, position, onUpdate, initialTab = 'remove' }: V3ManageModalProps) {
+    const dict = useDict();
+    const fmt = useFormat();
+    const m = dict.liquidity.manage;
+    const l = dict.liquidity;
+
     const [activeTab, setActiveTab] = useState<'add' | 'remove' | 'collect'>(initialTab);
     const [percentToRemove, setPercentToRemove] = useState(0);
     const [isSubmitting, setIsSubmitting] = useState(false);
@@ -74,6 +83,7 @@ export default function V3ManageModal({ isOpen, onClose, position, onUpdate, ini
     const { chainId } = useAccount();
     const { success, error: toastError } = useToast();
     const { tokens } = useTokenLists({ chainId: chainId || CHAIN_IDS.KALYCHAIN });
+    const describeError = useErrorText();
 
     // Resolve tokens
     const token0 = tokens.find(t => t.address.toLowerCase() === position.token0.toLowerCase());
@@ -244,21 +254,21 @@ export default function V3ManageModal({ isOpen, onClose, position, onUpdate, ini
         setIsApproving(true);
         try {
             const service = getKalySwapV3Service(chainId || CHAIN_IDS.KALYCHAIN);
-            if (!service) throw new Error('V3 not available on this chain');
+            if (!service) throw new UserError('v3Unavailable');
             const token = which === 0
                 ? buildToken(position.token0, symbol0, dec0)
                 : buildToken(position.token1, symbol1, dec1);
             const amount = which === 0 ? addAmount0 : addAmount1;
             const txHash = await service.approveToken(token, amount, walletClient);
             if (txHash) {
-                await assertTxSucceeded(publicClient, txHash, 'Approval');
+                await assertTxSucceeded(publicClient, txHash, 'approval');
             }
             if (which === 0) setNeedsApproval0(false);
             else setNeedsApproval1(false);
-            success('Approved', `${which === 0 ? symbol0 : symbol1} approved.`);
+            success(m.toastApprovedTitle, interpolate(m.toastApprovedBody, { symbol: which === 0 ? symbol0 : symbol1 }));
         } catch (error: any) {
             console.error(error);
-            toastError('Error', error?.message || 'Approval failed');
+            toastError(m.errorTitle, describeError(error));
         } finally {
             setIsApproving(false);
         }
@@ -273,7 +283,7 @@ export default function V3ManageModal({ isOpen, onClose, position, onUpdate, ini
         setIsAdding(true);
         try {
             const service = getKalySwapV3Service(chainId || CHAIN_IDS.KALYCHAIN);
-            if (!service) throw new Error('V3 not available on this chain');
+            if (!service) throw new UserError('v3Unavailable');
 
             const txHash = await service.increaseLiquidity({
                 tokenId: position.tokenId,
@@ -284,14 +294,14 @@ export default function V3ManageModal({ isOpen, onClose, position, onUpdate, ini
                 deadline: 20,
             }, publicClient, walletClient);
 
-            await assertTxSucceeded(publicClient, txHash, 'Add liquidity');
+            await assertTxSucceeded(publicClient, txHash, 'addLiquidity');
 
             onUpdate();
-            success('Liquidity Added', 'Your liquidity was added to the position.');
+            success(m.toastAddedTitle, m.toastAddedBody);
             setTimeout(() => onClose(), 2000);
         } catch (error: any) {
             console.error(error);
-            toastError('Error', error?.message || 'Failed to add liquidity');
+            toastError(m.errorTitle, describeError(error));
         } finally {
             setIsAdding(false);
         }
@@ -304,7 +314,7 @@ export default function V3ManageModal({ isOpen, onClose, position, onUpdate, ini
 
         try {
             const v3Service = getKalySwapV3Service(chainId || CHAIN_IDS.KALYCHAIN);
-            if (!v3Service) throw new Error('V3 not available on this chain');
+            if (!v3Service) throw new UserError('v3Unavailable');
 
             // Calculate liquidity to remove
             const liquidityAmount = BigInt(position.liquidity.toString());
@@ -322,7 +332,7 @@ export default function V3ManageModal({ isOpen, onClose, position, onUpdate, ini
                     deadline: 20
                 }, publicClient, walletClient);
 
-                await assertTxSucceeded(publicClient, hash, 'Remove liquidity');
+                await assertTxSucceeded(publicClient, hash, 'removeLiquidity');
             }
 
             // 2. Collect Fees (includes the burned principal which is now "owed")
@@ -338,15 +348,12 @@ export default function V3ManageModal({ isOpen, onClose, position, onUpdate, ini
                 amount1Max: maxUint128
             }, publicClient, walletClient);
 
-            await assertTxSucceeded(publicClient, collectHash, 'Collect');
+            await assertTxSucceeded(publicClient, collectHash, 'collect');
 
             setStep('complete');
             onUpdate();
 
-            success(
-                "Success",
-                "Liquidity removed and fees collected successfully."
-            );
+            success(m.toastRemovedTitle, m.toastRemovedBody);
 
             // Close after delay
             setTimeout(() => {
@@ -355,10 +362,7 @@ export default function V3ManageModal({ isOpen, onClose, position, onUpdate, ini
 
         } catch (error: any) {
             console.error(error);
-            toastError(
-                "Error",
-                error.message || "Failed to remove liquidity"
-            );
+            toastError(m.errorTitle, describeError(error));
             setStep('idle');
         } finally {
             setIsSubmitting(false);
@@ -372,7 +376,7 @@ export default function V3ManageModal({ isOpen, onClose, position, onUpdate, ini
 
         try {
             const v3Service = getKalySwapV3Service(chainId || CHAIN_IDS.KALYCHAIN);
-            if (!v3Service) throw new Error('V3 not available on this chain');
+            if (!v3Service) throw new UserError('v3Unavailable');
             const maxUint128 = 340282366920938463463374607431768211455n;
 
             const hash = await v3Service.collectFees({
@@ -382,15 +386,12 @@ export default function V3ManageModal({ isOpen, onClose, position, onUpdate, ini
                 amount1Max: maxUint128
             }, publicClient, walletClient);
 
-            await assertTxSucceeded(publicClient, hash, 'Collect fees');
+            await assertTxSucceeded(publicClient, hash, 'collectFees');
 
             setStep('complete');
             onUpdate();
 
-            success(
-                "Fees Collected",
-                "Your uncollected fees and tokens have been sent to your wallet."
-            );
+            success(m.toastCollectedTitle, m.toastCollectedBody);
 
             setTimeout(() => {
                 onClose();
@@ -398,10 +399,7 @@ export default function V3ManageModal({ isOpen, onClose, position, onUpdate, ini
 
         } catch (error: any) {
             console.error(error);
-            toastError(
-                "Error",
-                "Failed to collect fees"
-            );
+            toastError(m.errorTitle, m.toastCollectFailed);
             setStep('idle');
         } finally {
             setIsSubmitting(false);
@@ -410,179 +408,169 @@ export default function V3ManageModal({ isOpen, onClose, position, onUpdate, ini
 
     return (
         <Dialog open={isOpen} onOpenChange={onClose}>
-            {/* FORCE solid background color and override any transparency */}
-            <DialogContent className="sm:max-w-md !bg-transparent border-none shadow-none p-0 max-h-[85vh] overflow-y-auto">
-                {/* Solid opaque background matching the visual 'Amber on Black' look (#181106) */}
-                <div className="w-full p-6 text-white rounded-xl border border-amber-500/40 shadow-2xl" style={{ backgroundColor: '#181106' }}>
-                    <DialogHeader>
-                        <DialogTitle>Manage Position</DialogTitle>
-                        <DialogDescription className="text-gray-300">
-                            {symbol0}/{symbol1} • ID: {position.tokenId.toString()}
-                        </DialogDescription>
-                    </DialogHeader>
+            <DialogContent className="border-line bg-surface sm:max-w-md max-h-[85vh] overflow-y-auto">
+                <DialogHeader>
+                    <DialogTitle>{m.title}</DialogTitle>
+                    <DialogDescription>
+                        {interpolate(m.subtitle, { pair: `${symbol0}/${symbol1}`, tokenId: position.tokenId.toString() })}
+                    </DialogDescription>
+                </DialogHeader>
 
-                    <Tabs defaultValue="remove" value={activeTab} onValueChange={(v) => setActiveTab(v as any)} className="w-full mt-4">
-                        <TabsList className="grid w-full grid-cols-3 bg-black/40">
-                            <TabsTrigger value="add" className="data-[state=active]:bg-amber-500/20 data-[state=active]:text-amber-400">Add</TabsTrigger>
-                            <TabsTrigger value="remove" className="data-[state=active]:bg-amber-500/20 data-[state=active]:text-amber-400">Remove</TabsTrigger>
-                            <TabsTrigger value="collect" className="data-[state=active]:bg-amber-500/20 data-[state=active]:text-amber-400">Collect</TabsTrigger>
-                        </TabsList>
+                <Tabs defaultValue="remove" value={activeTab} onValueChange={(v) => setActiveTab(v as any)} className="w-full mt-4">
+                    <TabsList className="grid w-full grid-cols-3">
+                        <TabsTrigger value="add">{m.tabAdd}</TabsTrigger>
+                        <TabsTrigger value="remove">{m.tabRemove}</TabsTrigger>
+                        <TabsTrigger value="collect">{m.tabCollect}</TabsTrigger>
+                    </TabsList>
 
-                        <TabsContent value="add" className="space-y-4 pt-4">
-                            <div className="space-y-3">
-                                <div className="space-y-1">
-                                    <label className="text-sm font-medium text-gray-300">{symbol0} Amount</label>
-                                    <Input
-                                        placeholder="0.0"
-                                        inputMode="decimal"
-                                        value={addAmount0}
-                                        onChange={(e) => handleAmountChange('token0', e.target.value)}
-                                        disabled={isToken1Only}
-                                        className="v3-modal-input"
-                                    />
-                                </div>
-                                <div className="space-y-1">
-                                    <label className="text-sm font-medium text-gray-300">{symbol1} Amount</label>
-                                    <Input
-                                        placeholder="0.0"
-                                        inputMode="decimal"
-                                        value={addAmount1}
-                                        onChange={(e) => handleAmountChange('token1', e.target.value)}
-                                        disabled={isToken0Only}
-                                        className="v3-modal-input"
-                                    />
-                                </div>
-                            </div>
-
-                            {rangeStatus === 'below' && (
-                                <p className="text-xs text-amber-400/80">
-                                    Position is out of range (below): only {symbol0} is deposited at the current price.
-                                </p>
-                            )}
-                            {rangeStatus === 'above' && (
-                                <p className="text-xs text-amber-400/80">
-                                    Position is out of range (above): only {symbol1} is deposited at the current price.
-                                </p>
-                            )}
-                            <p className="text-xs text-gray-500">
-                                Liquidity is added to your existing range. Enter one side and the
-                                other is calculated from the current price; any excess is refunded.
-                            </p>
-
-                            {/* Approval buttons */}
-                            {needsApproval0 && (
-                                <Button
-                                    className="w-full bg-blue-500/20 hover:bg-blue-500/30 text-blue-100 border border-blue-500/50"
-                                    disabled={isApproving}
-                                    onClick={() => handleApprove(0)}
-                                >
-                                    {isApproving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-                                    Approve {symbol0}
-                                </Button>
-                            )}
-                            {needsApproval1 && (
-                                <Button
-                                    className="w-full bg-blue-500/20 hover:bg-blue-500/30 text-blue-100 border border-blue-500/50"
-                                    disabled={isApproving}
-                                    onClick={() => handleApprove(1)}
-                                >
-                                    {isApproving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-                                    Approve {symbol1}
-                                </Button>
-                            )}
-
-                            <Button
-                                className="w-full continue-button"
-                                disabled={
-                                    isAdding ||
-                                    needsApproval0 ||
-                                    needsApproval1 ||
-                                    (!(addAmount0 && parseFloat(addAmount0) > 0) && !(addAmount1 && parseFloat(addAmount1) > 0))
-                                }
-                                onClick={handleAddLiquidity}
-                            >
-                                {isAdding ? (
-                                    <>
-                                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                                        Adding...
-                                    </>
-                                ) : (
-                                    'Add Liquidity'
-                                )}
-                            </Button>
-                        </TabsContent>
-
-                        <TabsContent value="remove" className="space-y-4 pt-4">
-                            <div className="space-y-4">
-                                <div className="flex justify-between">
-                                    <span className="text-sm font-medium">Remove Amount</span>
-                                    <span className="text-sm font-medium text-amber-400">{percentToRemove}%</span>
-                                </div>
-                                <Slider
-                                    min={0}
-                                    max={100}
-                                    step={1}
-                                    value={percentToRemove}
-                                    onChange={(val) => setPercentToRemove(val)}
-                                    className="py-4"
+                    <TabsContent value="add" className="space-y-4 pt-4">
+                        <div className="space-y-3">
+                            <div className="space-y-1">
+                                <label className="text-sm font-medium text-muted-foreground">{interpolate(l.amountLabel, { symbol: symbol0 })}</label>
+                                <Input
+                                    placeholder="0.0"
+                                    inputMode="decimal"
+                                    value={addAmount0}
+                                    onChange={(e) => handleAmountChange('token0', e.target.value)}
+                                    disabled={isToken1Only}
                                 />
-                                <div className="flex gap-2 justify-between">
-                                    {[25, 50, 75, 100].map((pct) => (
-                                        <Button
-                                            key={pct}
-                                            variant="outline"
-                                            size="sm"
-                                            onClick={() => setPercentToRemove(pct)}
-                                            className="flex-1 text-xs bg-white/5 border-white/10 hover:bg-amber-500/20 hover:text-amber-300 transition-all"
-                                        >
-                                            {pct}%
-                                        </Button>
-                                    ))}
-                                </div>
                             </div>
-
-                            <Button
-                                className="w-full mt-4 bg-red-500/20 hover:bg-red-500/30 text-red-100 border border-red-500/50 backdrop-blur-sm transition-all shadow-lg hover:shadow-red-500/20"
-                                disabled={percentToRemove === 0 || isSubmitting}
-                                onClick={handleRemoveLiquidity}
-                            >
-                                {isSubmitting ? (
-                                    <>
-                                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                                        {step === 'decreasing' ? 'Removing...' : 'Collecting...'}
-                                    </>
-                                ) : (
-                                    'Remove Liquidity'
-                                )}
-                            </Button>
-                        </TabsContent>
-
-                        <TabsContent value="collect" className="space-y-4 pt-4">
-                            <div className="bg-black/20 border border-white/5 p-4 rounded-lg space-y-2">
-                                <div className="flex justify-between text-sm">
-                                    <span className="text-gray-400">{symbol0} Owed</span>
-                                    <span className="text-green-400 font-mono">
-                                        {formatUnits(position.tokensOwed0, token0?.decimals || 18)}
-                                    </span>
-                                </div>
-                                <div className="flex justify-between text-sm">
-                                    <span className="text-gray-400">{symbol1} Owed</span>
-                                    <span className="text-green-400 font-mono">
-                                        {formatUnits(position.tokensOwed1, token1?.decimals || 18)}
-                                    </span>
-                                </div>
+                            <div className="space-y-1">
+                                <label className="text-sm font-medium text-muted-foreground">{interpolate(l.amountLabel, { symbol: symbol1 })}</label>
+                                <Input
+                                    placeholder="0.0"
+                                    inputMode="decimal"
+                                    value={addAmount1}
+                                    onChange={(e) => handleAmountChange('token1', e.target.value)}
+                                    disabled={isToken0Only}
+                                />
                             </div>
+                        </div>
 
+                        {rangeStatus === 'below' && (
+                            <p className="text-xs text-gold-light">{interpolate(m.belowRangeNotice, { symbol: symbol0 })}</p>
+                        )}
+                        {rangeStatus === 'above' && (
+                            <p className="text-xs text-gold-light">{interpolate(m.aboveRangeNotice, { symbol: symbol1 })}</p>
+                        )}
+                        <p className="text-xs text-muted-deep">{m.addHint}</p>
+
+                        {/* Approval buttons */}
+                        {needsApproval0 && (
                             <Button
-                                className="w-full continue-button"
-                                disabled={isSubmitting}
-                                onClick={handleCollectFees}
+                                variant="secondary"
+                                className="w-full"
+                                disabled={isApproving}
+                                onClick={() => handleApprove(0)}
                             >
-                                {isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : 'Collect Fees'}
+                                {isApproving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                                {interpolate(m.approve, { symbol: symbol0 })}
                             </Button>
-                        </TabsContent>
-                    </Tabs>
-                </div>
+                        )}
+                        {needsApproval1 && (
+                            <Button
+                                variant="secondary"
+                                className="w-full"
+                                disabled={isApproving}
+                                onClick={() => handleApprove(1)}
+                            >
+                                {isApproving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                                {interpolate(m.approve, { symbol: symbol1 })}
+                            </Button>
+                        )}
+
+                        <Button
+                            className="w-full"
+                            disabled={
+                                isAdding ||
+                                needsApproval0 ||
+                                needsApproval1 ||
+                                (!(addAmount0 && parseFloat(addAmount0) > 0) && !(addAmount1 && parseFloat(addAmount1) > 0))
+                            }
+                            onClick={handleAddLiquidity}
+                        >
+                            {isAdding ? (
+                                <>
+                                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                    {m.addSubmitBusy}
+                                </>
+                            ) : (
+                                m.addSubmit
+                            )}
+                        </Button>
+                    </TabsContent>
+
+                    <TabsContent value="remove" className="space-y-4 pt-4">
+                        <div className="space-y-4">
+                            <div className="flex justify-between">
+                                <span className="text-sm font-medium text-cream">{m.removeAmount}</span>
+                                <span className="text-sm font-medium text-gold">{fmt.pct(percentToRemove / 100, 0)}</span>
+                            </div>
+                            <Slider
+                                min={0}
+                                max={100}
+                                step={1}
+                                value={percentToRemove}
+                                onChange={(val) => setPercentToRemove(val)}
+                                className="py-4"
+                            />
+                            <div className="flex gap-2 justify-between">
+                                {[25, 50, 75, 100].map((pct) => (
+                                    <Button
+                                        key={pct}
+                                        variant="outline"
+                                        size="sm"
+                                        onClick={() => setPercentToRemove(pct)}
+                                        className="flex-1 text-xs"
+                                    >
+                                        {fmt.pct(pct / 100, 0)}
+                                    </Button>
+                                ))}
+                            </div>
+                        </div>
+
+                        <Button
+                            variant="destructive"
+                            className="w-full mt-4"
+                            disabled={percentToRemove === 0 || isSubmitting}
+                            onClick={handleRemoveLiquidity}
+                        >
+                            {isSubmitting ? (
+                                <>
+                                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                    {step === 'decreasing' ? m.removing : m.collecting}
+                                </>
+                            ) : (
+                                m.removeSubmit
+                            )}
+                        </Button>
+                    </TabsContent>
+
+                    <TabsContent value="collect" className="space-y-4 pt-4">
+                        <div className="rounded-lg border border-line bg-surface-alt p-4 space-y-2">
+                            <div className="flex justify-between text-sm">
+                                <span className="text-muted-foreground">{interpolate(m.owed, { symbol: symbol0 })}</span>
+                                <span className="font-mono text-success">
+                                    {formatUnits(position.tokensOwed0, token0?.decimals || 18)}
+                                </span>
+                            </div>
+                            <div className="flex justify-between text-sm">
+                                <span className="text-muted-foreground">{interpolate(m.owed, { symbol: symbol1 })}</span>
+                                <span className="font-mono text-success">
+                                    {formatUnits(position.tokensOwed1, token1?.decimals || 18)}
+                                </span>
+                            </div>
+                        </div>
+
+                        <Button
+                            className="w-full"
+                            disabled={isSubmitting}
+                            onClick={handleCollectFees}
+                        >
+                            {isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : m.collectSubmit}
+                        </Button>
+                    </TabsContent>
+                </Tabs>
             </DialogContent>
         </Dialog>
     );

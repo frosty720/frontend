@@ -14,6 +14,7 @@ import { swapLogger as logger } from '@/lib/logger';
 import { CHAIN_IDS } from '@/config/chains';
 import { kalyFeeOverrides } from '@/config/gas';
 import { assertTxSucceeded } from '@/utils/transactions';
+import { UserError } from '@/lib/userError';
 
 // Helper to check if tokens are Native <-> Wrapped Native (same as useDexSwap)
 const isWrapOperation = (tokenIn: Token, tokenOut: Token, wethAddress: string) => {
@@ -64,8 +65,8 @@ export function useV3Swap(chainId: number = CHAIN_IDS.KALYCHAIN): UseV3SwapRetur
         tokenOut: Token
     ): Promise<number> => {
         try {
-            if (!service) throw new Error('V3 not available on this chain');
-            if (!publicClient) throw new Error('Public client not available');
+            if (!service) throw new UserError('v3Unavailable');
+            if (!publicClient) throw new UserError('rpcUnavailable');
 
             return await service.getOptimalFeeTier(tokenIn, tokenOut, publicClient);
         } catch (err: any) {
@@ -86,8 +87,8 @@ export function useV3Swap(chainId: number = CHAIN_IDS.KALYCHAIN): UseV3SwapRetur
         try {
             setError(null);
 
-            if (!service) throw new Error('V3 not available on this chain');
-            if (!publicClient) throw new Error('Public client not available');
+            if (!service) throw new UserError('v3Unavailable');
+            if (!publicClient) throw new UserError('rpcUnavailable');
 
             // If no fee specified, find the best one
             const feeTier = fee || await getBestFeeTier(tokenIn, tokenOut);
@@ -126,8 +127,8 @@ export function useV3Swap(chainId: number = CHAIN_IDS.KALYCHAIN): UseV3SwapRetur
         try {
             setError(null);
 
-            if (!service) throw new Error('V3 not available on this chain');
-            if (!publicClient) throw new Error('Public client not available');
+            if (!service) throw new UserError('v3Unavailable');
+            if (!publicClient) throw new UserError('rpcUnavailable');
 
             // Wrap/Unwrap is always 1:1 — never route KLC<->WKLC through pools
             if (isWrapOperation(tokenIn, tokenOut, service.getWethAddress())) {
@@ -166,8 +167,8 @@ export function useV3Swap(chainId: number = CHAIN_IDS.KALYCHAIN): UseV3SwapRetur
         try {
             setError(null);
 
-            if (!service) throw new Error('V3 not available on this chain');
-            if (!publicClient) throw new Error('Public client not available');
+            if (!service) throw new UserError('v3Unavailable');
+            if (!publicClient) throw new UserError('rpcUnavailable');
 
             // Wrap/Unwrap is always 1:1
             if (isWrapOperation(tokenIn, tokenOut, service.getWethAddress())) {
@@ -246,12 +247,12 @@ export function useV3Swap(chainId: number = CHAIN_IDS.KALYCHAIN): UseV3SwapRetur
         amount?: string
     ): Promise<string> => {
         try {
-            if (!service) throw new Error('V3 not available on this chain');
-            if (!walletClient) throw new Error('Wallet client not available');
+            if (!service) throw new UserError('v3Unavailable');
+            if (!walletClient) throw new UserError('walletUnavailable');
 
             // Native tokens don't need approval
             if (token.isNative) {
-                throw new Error('Native tokens do not require approval');
+                throw new UserError('nativeNoApproval');
             }
 
             const routerAddress = service.getRouterAddress();
@@ -278,7 +279,7 @@ export function useV3Swap(chainId: number = CHAIN_IDS.KALYCHAIN): UseV3SwapRetur
 
             // Wait for transaction confirmation
             if (publicClient) {
-                await assertTxSucceeded(publicClient, txHash);
+                await assertTxSucceeded(publicClient, txHash, 'swap');
                 logger.debug(`V3 Approval confirmed: ${txHash}`);
             }
 
@@ -297,9 +298,9 @@ export function useV3Swap(chainId: number = CHAIN_IDS.KALYCHAIN): UseV3SwapRetur
             setIsLoading(true);
             setError(null);
 
-            if (!service) throw new Error('V3 not available on this chain');
-            if (!walletClient) throw new Error('Wallet client not available');
-            if (!publicClient) throw new Error('Public client not available');
+            if (!service) throw new UserError('v3Unavailable');
+            if (!walletClient) throw new UserError('walletUnavailable');
+            if (!publicClient) throw new UserError('rpcUnavailable');
 
             logger.debug('🔄 V3 Swap starting:', {
                 tokenIn: params.tokenIn.symbol,

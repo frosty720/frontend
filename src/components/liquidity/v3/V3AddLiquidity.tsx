@@ -2,8 +2,9 @@ import { useState } from 'react';
 import { Token } from '@/config/dex/types';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Card, CardContent } from '@/components/ui/card';
 import { useV3AddLiquidity } from '@/hooks/v3/useV3AddLiquidity';
+import { useDict } from '@/i18n/hooks';
+import { interpolate } from '@/i18n/interpolate';
 import TickRangeSelector from './TickRangeSelector';
 import { V3_DEFAULT_FEE_TIER } from '@/config/dex/v3-constants';
 
@@ -22,6 +23,8 @@ export default function V3AddLiquidity({
     tokenId,
     onSuccess
 }: V3AddLiquidityProps) {
+    const dict = useDict();
+    const l = dict.liquidity;
     const [amount0, setAmount0] = useState('');
     const [amount1, setAmount1] = useState('');
     const [tickLower, setTickLower] = useState<number>(-887220);
@@ -51,35 +54,33 @@ export default function V3AddLiquidity({
 
     return (
         <div className="space-y-4">
-            <h3 className="text-lg font-medium">Add Liquidity (V3)</h3>
+            <h3 className="text-lg font-semibold text-cream">{l.addTitle}</h3>
 
             {/* Amount Inputs */}
             <div className="grid gap-4">
                 <div className="space-y-2">
-                    <label className="text-sm font-medium">{token0.symbol} Amount</label>
+                    <label className="text-sm font-medium text-muted-foreground">{interpolate(l.amountLabel, { symbol: token0.symbol })}</label>
                     <Input
                         placeholder="0.0"
                         value={amount0}
-                        onChange={(e: any) => setAmount0(e.target.value)}
-                        className="v3-amount0-input"
+                        onChange={(e) => setAmount0(e.target.value)}
                     />
                 </div>
                 <div className="space-y-2">
-                    <label className="text-sm font-medium">{token1.symbol} Amount</label>
+                    <label className="text-sm font-medium text-muted-foreground">{interpolate(l.amountLabel, { symbol: token1.symbol })}</label>
                     <Input
                         placeholder="0.0"
                         value={amount1}
-                        onChange={(e: any) => setAmount1(e.target.value)}
-                        className="v3-amount1-input"
+                        onChange={(e) => setAmount1(e.target.value)}
                     />
                 </div>
             </div>
 
             {/* Range Selector (Only for Minting) */}
             {!tokenId && (
-                <div className="mt-4 border p-4 rounded-md">
-                    <h4 className="text-sm font-medium mb-2">Set Price Range</h4>
-                    <p className="text-xs text-gray-500 mb-2">Full range selected by default (Stub)</p>
+                <div className="mt-4 rounded-xl border border-line p-4">
+                    <h4 className="text-sm font-medium text-cream mb-2">{l.rangeSectionTitle}</h4>
+                    <p className="text-xs text-muted-deep mb-2">{l.rangeSectionHint}</p>
                     <TickRangeSelector
                         token0={token0}
                         token1={token1}
@@ -94,7 +95,7 @@ export default function V3AddLiquidity({
             )}
 
             {error && (
-                <div className="p-3 bg-red-100 text-red-700 rounded-md text-sm">
+                <div className="rounded-xl border border-danger/25 bg-danger/10 p-3 text-sm text-danger">
                     {error}
                 </div>
             )}
@@ -102,9 +103,9 @@ export default function V3AddLiquidity({
             <Button
                 onClick={handleAdd}
                 disabled={isLoading || !amount0 || !amount1}
-                className="w-full v3-add-liquidity-btn"
+                className="w-full"
             >
-                {isLoading ? 'Adding...' : 'Add Liquidity'}
+                {isLoading ? l.addButtonBusy : l.addButton}
             </Button>
         </div>
     );

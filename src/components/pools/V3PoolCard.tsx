@@ -108,7 +108,7 @@ export default function V3PoolCard({ pool, onUpdate }: V3PoolCardProps) {
       tokenBSymbol: pool.token1.symbol,
       fee: pool.feeTier,
     });
-    router.push(`/pools?${params.toString()}`);
+    router.push(`/pools/add?${params.toString()}`);
   };
 
   const handleOpenManage = (tab: 'add' | 'remove' | 'collect', position: V3Position) => {
