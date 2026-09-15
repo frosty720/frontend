@@ -4,6 +4,9 @@
 'use client';
 
 import React, { createContext, useContext, useReducer, ReactNode } from 'react';
+import type { ErrorCode, ErrorParams } from '@/lib/userError';
+import type { Dictionary } from '@/i18n/dictionaries/en';
+import { interpolate } from '@/i18n/interpolate';
 
 export enum TransferStatus {
   Preparing = 'preparing',
@@ -17,6 +20,13 @@ export enum TransferStatus {
   Failed = 'failed',
 }
 
+/**
+ * A translatable bridge failure: either a shared dictionary error code (optionally with
+ * interpolation params, e.g. `switchChain` needs `{chain}`) or the generic message for the
+ * transfer stage the failure happened in. Rendered via `describeBridgeFailure`.
+ */
+export type BridgeFailure = { code: ErrorCode; params?: ErrorParams } | { code: 'stage'; stage: TransferStatus };
+
 export interface TransferContext {
   timestamp: number;
   status: TransferStatus;
@@ -29,7 +39,12 @@ export interface TransferContext {
   amount: string;
   txHash?: string;
   msgId?: string;
-  errorMessage?: string;
+  /**
+   * `string` is only possible for records written before this field carried a translation key
+   * (kept so old in-memory records still render instead of crashing) — `describeBridgeFailure`
+   * falls back to the generic stage text for that case rather than showing raw English.
+   */
+  failure?: BridgeFailure | string;
 }
 
 interface TransferState {
@@ -38,13 +53,13 @@ interface TransferState {
 
 type TransferAction =
   | { type: 'ADD_TRANSFER'; payload: TransferContext }
-  | { type: 'UPDATE_TRANSFER_STATUS'; payload: { index: number; status: TransferStatus; txHash?: string; msgId?: string; errorMessage?: string } }
+  | { type: 'UPDATE_TRANSFER_STATUS'; payload: { index: number; status: TransferStatus; txHash?: string; msgId?: string; failure?: BridgeFailure | string } }
   | { type: 'CLEAR_TRANSFERS' };
 
 interface TransferStoreContextType {
   transfers: TransferContext[];
   addTransfer: (transfer: TransferContext) => number;
-  updateTransferStatus: (index: number, status: TransferStatus, txHash?: string, msgId?: string, errorMessage?: string) => void;
+  updateTransferStatus: (index: number, status: TransferStatus, txHash?: string, msgId?: string, failure?: BridgeFailure | string) => void;
   clearTransfers: () => void;
   getLatestTransfer: () => TransferContext | null;
 }
@@ -72,7 +87,7 @@ function transferReducer(state: TransferState, action: TransferAction): Transfer
                 status: action.payload.status,
                 ...(action.payload.txHash && { txHash: action.payload.txHash }),
                 ...(action.payload.msgId && { msgId: action.payload.msgId }),
-                ...(action.payload.errorMessage && { errorMessage: action.payload.errorMessage }),
+                ...(action.payload.failure !== undefined && { failure: action.payload.failure }),
               }
             : transfer
         ),
@@ -100,11 +115,11 @@ export function TransferStoreProvider({ children }: { children: ReactNode }) {
     status: TransferStatus,
     txHash?: string,
     msgId?: string,
-    errorMessage?: string
+    failure?: BridgeFailure | string
   ) => {
     dispatch({
       type: 'UPDATE_TRANSFER_STATUS',
-      payload: { index, status, txHash, msgId, errorMessage },
+      payload: { index, status, txHash, msgId, failure },
     });
   };
 
@@ -141,32 +156,6 @@ export function useTransferStore() {
 
 // Helper functions for status management
 export const transferStatusHelpers = {
-  // Get user-friendly status message
-  getStatusMessage: (status: TransferStatus): string => {
-    switch (status) {
-      case TransferStatus.Preparing:
-        return 'Preparing transfer...';
-      case TransferStatus.CreatingTxs:
-        return 'Creating transactions...';
-      case TransferStatus.SigningApproval:
-        return 'Sign approval in your wallet';
-      case TransferStatus.ConfirmingApproval:
-        return 'Confirming approval...';
-      case TransferStatus.SigningTransfer:
-        return 'Sign transfer in your wallet';
-      case TransferStatus.ConfirmingTransfer:
-        return 'Confirming transfer...';
-      case TransferStatus.ConfirmedTransfer:
-        return 'Transfer confirmed!';
-      case TransferStatus.Delivered:
-        return 'Transfer delivered!';
-      case TransferStatus.Failed:
-        return 'Transfer failed';
-      default:
-        return 'Unknown status';
-    }
-  },
-
   // Check if status is in progress
   isInProgress: (status: TransferStatus): boolean => {
     return ![TransferStatus.ConfirmedTransfer, TransferStatus.Delivered, TransferStatus.Failed].includes(status);
@@ -189,9 +178,9 @@ export const transferStatusHelpers = {
 
   // Get status color for UI
   getStatusColor: (status: TransferStatus): string => {
-    if (transferStatusHelpers.isSuccess(status)) return 'text-green-600';
-    if (transferStatusHelpers.isFailed(status)) return 'text-red-600';
-    return 'text-blue-600';
+    if (transferStatusHelpers.isSuccess(status)) return 'text-success';
+    if (transferStatusHelpers.isFailed(status)) return 'text-danger';
+    return 'text-info';
   },
 
   // Get status icon
@@ -209,28 +198,19 @@ export const txCategoryToStatuses = {
   transfer: [TransferStatus.SigningTransfer, TransferStatus.ConfirmingTransfer],
 } as const;
 
-// Error messages for different transfer stages
-export const errorMessages = {
-  [TransferStatus.Preparing]: 'Failed to prepare transfer. Please check your inputs and try again.',
-  [TransferStatus.CreatingTxs]: 'Failed to create transfer transactions. Please try again.',
-  [TransferStatus.SigningApproval]: 'Failed to sign approval transaction. Please try again.',
-  [TransferStatus.ConfirmingApproval]: 'Approval transaction failed. Please try again.',
-  [TransferStatus.SigningTransfer]: 'Failed to sign transfer transaction. Please try again.',
-  [TransferStatus.ConfirmingTransfer]: 'Transfer transaction failed. Please check the transaction and try again.',
-} as const;
-
-// Map a raw error to a user-facing message for the stage it occurred in.
-// Raw errors are logged by the caller; users only ever see these.
-export function humanizeBridgeError(error: unknown, stage: TransferStatus): string {
+// Map a raw error to a translatable bridge failure for the stage it occurred in. Raw errors are
+// logged by the caller; users only ever see the dictionary text `describeBridgeFailure` renders
+// for the returned code, in their own language.
+export function humanizeBridgeError(error: unknown, stage: TransferStatus): BridgeFailure {
   const details = error instanceof Error ? error.message : String(error);
   if (/user rejected|user denied|rejected the request/i.test(details)) {
-    return 'Transaction rejected in wallet.';
+    return { code: 'userRejected' };
   }
   if (details.includes('ChainMismatchError')) {
-    return 'Wallet must be connected to the origin chain.';
+    return { code: 'chainMismatch' };
   }
   if (details.includes('block height exceeded') || details.includes('timeout')) {
-    return 'Transaction timed out, the network may be busy. Please try again.';
+    return { code: 'timeout' };
   }
   // The wallet could not REACH the chain at all (dead/wrong RPC host, offline, DNS failure) —
   // distinct from the chain replying with an error. Without this the failure fell through to
@@ -238,10 +218,22 @@ export function humanizeBridgeError(error: unknown, stage: TransferStatus): stri
   // real fault is their network config. Seen 2026-09-08: a holder whose wallet RPC still pointed
   // at the retired testnetrpc host was told his signing had failed.
   if (/HttpRequestError|Failed to fetch|fetch failed|NetworkError|ERR_NAME_NOT_RESOLVED|ENOTFOUND|ECONNREFUSED/i.test(details)) {
-    return 'Could not reach the network. Check your wallet is connected to KalyChain (chain 3890) with a working RPC, then try again.';
+    return { code: 'networkUnreachable' };
   }
-  return (
-    errorMessages[stage as keyof typeof errorMessages] ||
-    'Unable to transfer tokens. Please try again.'
-  );
+  return { code: 'stage', stage };
+}
+
+/**
+ * Render a stored `BridgeFailure` in the reader's language. A plain `string` (a record stored
+ * before this field carried a translation key) falls back to the generic stage message — see the
+ * `failure` field doc on `TransferContext` for why raw English is never shown instead.
+ */
+export function describeBridgeFailure(failure: BridgeFailure | string | undefined, dict: Dictionary): string {
+  const stages = dict.errors.bridgeStages;
+  if (!failure || typeof failure === 'string') return stages.fallback;
+  if (failure.code === 'stage') {
+    const key = failure.stage as keyof typeof stages;
+    return key in stages ? stages[key] : stages.fallback;
+  }
+  return interpolate(dict.errors[failure.code], failure.params ?? {});
 }

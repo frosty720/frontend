@@ -20,6 +20,8 @@ import {
   WALLET_CHAIN_NAME,
   type WalletChoice,
 } from '@/lib/cutoverWallet';
+import { useDict } from '@/i18n/hooks';
+import { interpolate } from '@/i18n/interpolate';
 
 // One-time relaunch notice. Bump the version suffix to re-show it after a future migration.
 const STORAGE_KEY = 'kalyswap_kmt_cutover_notice_v1';
@@ -33,6 +35,7 @@ const STORAGE_KEY = 'kalyswap_kmt_cutover_notice_v1';
  * is not proof the wallet actually switched.
  */
 export function CutoverNotice() {
+  const dict = useDict();
   const [open, setOpen] = useState(false);
   const [wallets, setWallets] = useState<WalletChoice[]>([]);
   const [busyId, setBusyId] = useState('');
@@ -75,7 +78,7 @@ export function CutoverNotice() {
     try {
       const result = await connectToKalyChain(wallet.provider);
       if (result === 'cancelled') {
-        setError(`Request cancelled in ${wallet.name}. Nothing changed — you can try again.`);
+        setError(interpolate(dict.cutover.cancelled, { wallet: wallet.name }));
         return;
       }
       // Never claim success on the request alone: confirm the wallet is actually on the chain.
@@ -83,56 +86,51 @@ export function CutoverNotice() {
         setDone(true);
         return;
       }
-      setError(
-        `${wallet.name} accepted the request but is still on another network. Open it and switch to "${WALLET_CHAIN_NAME}" manually.`,
-      );
+      setError(interpolate(dict.cutover.stillOnAnotherNetwork, { wallet: wallet.name, network: WALLET_CHAIN_NAME }));
     } catch {
-      setError(
-        `${wallet.name} could not add the network. If it already has a KalyChain entry using this RPC, remove that old entry first, then try again.`,
-      );
+      setError(interpolate(dict.cutover.addFailed, { wallet: wallet.name }));
     } finally {
       setBusyId('');
     }
-  }, []);
+  }, [dict]);
 
   const connected = onNewChain || done;
 
   return (
     <Dialog open={open} onOpenChange={(value) => { if (!value) dismiss(); }}>
-      <DialogContent className="border-primary/40 sm:max-w-md">
+      <DialogContent className="border-line bg-surface sm:max-w-md">
         <DialogHeader>
-          <DialogTitle className="text-primary">
-            KalyChain has moved to a new chain
+          <DialogTitle className="text-gold">
+            {dict.cutover.title}
           </DialogTitle>
           <DialogDescription asChild>
             <div className="space-y-2 pt-1 text-sm text-muted-foreground">
               <p>
-                KalyChain has relaunched. KLC is now{' '}
-                <span className="font-semibold text-foreground">
-                  KMT at a 110:1 ratio
+                {dict.cutover.intro}{' '}
+                <span className="font-semibold text-cream">
+                  {dict.cutover.ratio}
                 </span>{' '}
-                (110 KLC = 1 KMT). Your balances, pools, and positions were
-                migrated automatically — there is nothing to claim.
+                {dict.cutover.introRest}
               </p>
               <p>
-                To keep trading, add the new{' '}
-                <span className="font-semibold text-foreground">{WALLET_CHAIN_NAME}</span>{' '}
-                network to your wallet. In-app wallets (email/social) switch
-                automatically.
+                {dict.cutover.addNetworkBefore}{' '}
+                <span className="font-semibold text-cream">{WALLET_CHAIN_NAME}</span>{' '}
+                {dict.cutover.addNetworkAfter}
               </p>
             </div>
           </DialogDescription>
         </DialogHeader>
 
         {connected ? (
-          <p className="text-sm font-medium text-primary">
-            &#10003; Connected to {WALLET_CHAIN_NAME}. You are on the new chain.
+          <p className="text-sm font-medium text-gold">
+            {'✓ '}
+            {interpolate(dict.cutover.connected, { network: WALLET_CHAIN_NAME })}
           </p>
         ) : (
           <>
             {wallets.length > 1 && (
               <p className="text-xs text-muted-foreground">
-                You have more than one wallet installed — pick the one you trade with.
+                {dict.cutover.multipleWallets}
               </p>
             )}
             <div className="flex flex-col gap-2">
@@ -148,25 +146,24 @@ export function CutoverNotice() {
                     <img src={wallet.icon} alt="" className="h-4 w-4 rounded" aria-hidden />
                   )}
                   {busyId === wallet.uuid
-                    ? `Check ${wallet.name}…`
-                    : `Add network in ${wallet.name}`}
+                    ? interpolate(dict.cutover.checkingButton, { wallet: wallet.name })
+                    : interpolate(dict.cutover.addNetworkButton, { wallet: wallet.name })}
                 </Button>
               ))}
             </div>
             {wallets.length === 0 && (
               <p className="text-sm text-muted-foreground">
-                No browser wallet detected. If you use the in-app wallet, you are
-                already on the new network — just continue.
+                {dict.cutover.noWalletDetected}
               </p>
             )}
           </>
         )}
 
-        {error && <p className="text-sm text-destructive">{error}</p>}
+        {error && <p className="text-sm text-danger">{error}</p>}
 
         <DialogFooter className="gap-2 sm:gap-0">
           <Button variant="outline" onClick={dismiss}>
-            Continue
+            {dict.cutover.dismiss}
           </Button>
         </DialogFooter>
       </DialogContent>

@@ -1,7 +1,7 @@
 import { stakingLogger } from '@/lib/logger';
 /**
  * Staking Action Hooks
- * 
+ *
  * Write hooks for executing staking contract transactions
  * Integrated with KalySwap v3 wallet system and toast notifications
  */
@@ -19,6 +19,10 @@ import {
   createStakingTransaction
 } from '@/utils/staking/contractHelpers'
 import { useToast } from '@/components/ui/toast'
+import { UserError } from '@/lib/userError'
+import { describeError } from '@/i18n/errorText'
+import { useDict } from '@/i18n/hooks'
+import { interpolate } from '@/i18n/interpolate'
 
 /**
  * Hook for staking KMT tokens
@@ -28,10 +32,11 @@ export function useStakeKLC() {
   const [error, setError] = useState<string | null>(null)
   const { signTransaction, address } = useWallet()
   const toast = useToast()
+  const dict = useDict()
 
   const stakeKLC = useCallback(async (amount: string) => {
     if (!signTransaction || !address) {
-      throw new Error('Wallet not connected')
+      throw new UserError('walletNotConnected')
     }
 
     try {
@@ -41,7 +46,7 @@ export function useStakeKLC() {
       // Validate amount
       const amountWei = parseKLCAmount(amount)
       if (amountWei === BigInt(0)) {
-        throw new Error('Invalid stake amount')
+        throw new UserError('invalidAmount')
       }
 
       stakingLogger.debug('🥩 Staking KMT:', {
@@ -54,7 +59,7 @@ export function useStakeKLC() {
       const transaction = createStakingTransaction(functionData, amountWei)
       const txHash = await signTransaction(transaction)
 
-      toast.success('Stake Transaction Sent', `Staking ${amount} KMT tokens...`)
+      toast.success(dict.stake.toastStakeSent, interpolate(dict.stake.toastStakeSentBody, { amount }))
 
       stakingLogger.debug('✅ Stake transaction sent:', txHash)
       return txHash
@@ -65,26 +70,14 @@ export function useStakeKLC() {
       stakingLogger.error('❌ Error message:', err instanceof Error ? err.message : 'Unknown error')
       stakingLogger.error('❌ Error stack:', err instanceof Error ? err.stack : 'No stack trace')
 
-      const errorMessage = err instanceof Error ? err.message : 'Failed to stake KMT'
+      const errorMessage = describeError(err, dict)
       setError(errorMessage)
-
-      // More specific error messages based on common issues
-      if (errorMessage.includes('insufficient funds') || errorMessage.includes('insufficient balance')) {
-        toast.error('Insufficient Funds', 'You do not have enough KMT for this transaction')
-      } else if (errorMessage.includes('user rejected') || errorMessage.includes('denied')) {
-        toast.error('Transaction Cancelled', 'You cancelled the transaction')
-      } else if (errorMessage.includes('Wallet not connected')) {
-        toast.error('Wallet Error', 'Please reconnect your wallet and try again')
-      } else if (errorMessage.includes('gas')) {
-        toast.error('Gas Error', 'Transaction failed due to gas issues. Please try again.')
-      } else {
-        toast.error('Stake Failed', errorMessage)
-      }
+      toast.error(dict.stake.toastStakeFailed, errorMessage)
       throw err
     } finally {
       setIsLoading(false)
     }
-  }, [signTransaction, address])
+  }, [signTransaction, address, toast, dict])
 
   return {
     stakeKLC,
@@ -101,10 +94,11 @@ export function useWithdrawKLC() {
   const [error, setError] = useState<string | null>(null)
   const { signTransaction, address } = useWallet()
   const toast = useToast()
+  const dict = useDict()
 
   const withdrawKLC = useCallback(async (amount: string) => {
     if (!signTransaction || !address) {
-      throw new Error('Wallet not connected')
+      throw new UserError('walletNotConnected')
     }
 
     try {
@@ -114,7 +108,7 @@ export function useWithdrawKLC() {
       // Validate amount
       const amountWei = parseKLCAmount(amount)
       if (amountWei === BigInt(0)) {
-        throw new Error('Invalid withdrawal amount')
+        throw new UserError('invalidAmount')
       }
 
       // Create withdraw transaction
@@ -126,23 +120,23 @@ export function useWithdrawKLC() {
       // Sign and send transaction
       const txHash = await signTransaction(transaction)
 
-      toast.success('Withdrawal Transaction Sent', `Withdrawing ${amount} KMT tokens...`)
+      toast.success(dict.stake.toastWithdrawSent, interpolate(dict.stake.toastWithdrawSentBody, { amount }))
 
       stakingLogger.debug('✅ Withdrawal transaction sent:', txHash)
       return txHash
 
     } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : 'Failed to withdraw KMT'
+      const errorMessage = describeError(err, dict)
       setError(errorMessage)
-      
-      toast.error('Withdrawal Failed', errorMessage)
-      
+
+      toast.error(dict.stake.toastWithdrawFailed, errorMessage)
+
       stakingLogger.error('❌ Withdrawal failed:', err)
       throw err
     } finally {
       setIsLoading(false)
     }
-  }, [signTransaction, address])
+  }, [signTransaction, address, toast, dict])
 
   return {
     withdrawKLC,
@@ -159,10 +153,11 @@ export function useClaimRewards() {
   const [error, setError] = useState<string | null>(null)
   const { signTransaction, address } = useWallet()
   const toast = useToast()
+  const dict = useDict()
 
   const claimRewards = useCallback(async () => {
     if (!signTransaction || !address) {
-      throw new Error('Wallet not connected')
+      throw new UserError('walletNotConnected')
     }
 
     try {
@@ -178,23 +173,23 @@ export function useClaimRewards() {
       // Sign and send transaction
       const txHash = await signTransaction(transaction)
 
-      toast.success('Claim Transaction Sent', 'Claiming your staking rewards...')
+      toast.success(dict.stake.toastClaimSent, dict.stake.toastClaimSentBody)
 
       stakingLogger.debug('✅ Claim transaction sent:', txHash)
       return txHash
 
     } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : 'Failed to claim rewards'
+      const errorMessage = describeError(err, dict)
       setError(errorMessage)
-      
-      toast.error('Claim Failed', errorMessage)
-      
+
+      toast.error(dict.stake.toastClaimFailed, errorMessage)
+
       stakingLogger.error('❌ Claim failed:', err)
       throw err
     } finally {
       setIsLoading(false)
     }
-  }, [signTransaction, address])
+  }, [signTransaction, address, toast, dict])
 
   return {
     claimRewards,
@@ -211,10 +206,11 @@ export function useExitStaking() {
   const [error, setError] = useState<string | null>(null)
   const { signTransaction, address } = useWallet()
   const toast = useToast()
+  const dict = useDict()
 
   const exitStaking = useCallback(async () => {
     if (!signTransaction || !address) {
-      throw new Error('Wallet not connected')
+      throw new UserError('walletNotConnected')
     }
 
     try {
@@ -230,23 +226,23 @@ export function useExitStaking() {
       // Sign and send transaction
       const txHash = await signTransaction(transaction)
 
-      toast.success('Exit Transaction Sent', 'Withdrawing all staked KMT and claiming rewards...')
+      toast.success(dict.stake.toastExitSent, dict.stake.toastExitSentBody)
 
       stakingLogger.debug('✅ Exit transaction sent:', txHash)
       return txHash
 
     } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : 'Failed to exit staking'
+      const errorMessage = describeError(err, dict)
       setError(errorMessage)
-      
-      toast.error('Exit Failed', errorMessage)
-      
+
+      toast.error(dict.stake.toastExitFailed, errorMessage)
+
       stakingLogger.error('❌ Exit failed:', err)
       throw err
     } finally {
       setIsLoading(false)
     }
-  }, [signTransaction, address])
+  }, [signTransaction, address, toast, dict])
 
   return {
     exitStaking,

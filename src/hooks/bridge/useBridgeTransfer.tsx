@@ -20,11 +20,23 @@ import {
 } from '@hyperlane-xyz/sdk';
 import { useBridgeContext } from './useBridgeContext';
 import { useWallet } from '../useWallet';
-import { useTransferStore, TransferStatus, TransferContext, txCategoryToStatuses, humanizeBridgeError } from './useTransferStore';
-import { useToast, toastHelpers } from '@/components/ui/toast';
+import {
+  useTransferStore,
+  TransferStatus,
+  TransferContext,
+  txCategoryToStatuses,
+  humanizeBridgeError,
+  describeBridgeFailure,
+  type BridgeFailure,
+} from './useTransferStore';
+import { useToast } from '@/components/ui/toast';
 import { bridgeHelpers } from '@/utils/bridge/bridgeHelpers';
 import { loggerHelpers } from '@/utils/bridge/logger';
 import { bridgeLogger } from '@/lib/logger';
+import { UserError } from '@/lib/userError';
+import { describeError } from '@/i18n/errorText';
+import { useDict } from '@/i18n/hooks';
+import { interpolate } from '@/i18n/interpolate';
 
 export interface TransferParams {
   originChain: string;
@@ -107,12 +119,13 @@ export function useBridgeTransfer() {
   const { address: account, signTransaction, chainId } = useWallet();
   const { addTransfer, updateTransferStatus } = useTransferStore();
   const toast = useToast();
+  const dict = useDict();
 
   const transfer = useCallback(async (params: TransferParams) => {
     if (!warpCore || !multiProvider || !account) {
-      const error = 'Bridge not initialized or wallet not connected';
-      toast.error('Bridge Error', error);
-      throw new Error(error);
+      const notReady = new UserError('bridgeNotReady');
+      toast.error(dict.bridge.errors.bridgeErrorTitle, describeError(notReady, dict));
+      throw notReady;
     }
 
     loggerHelpers.transferStart(params);
@@ -130,21 +143,21 @@ export function useBridgeTransfer() {
         loggerHelpers.chainSwitch(`Chain ${chainId}`, `${params.originChain} (${originChainId})`);
 
         // Manual chain switch required - show user-friendly message
-        const error = `Please switch to ${bridgeHelpers.getChainDisplayName(params.originChain)} in your wallet before proceeding`;
-        toast.error('Chain Switch Required', error);
+        const switchError = new UserError('switchChain', { chain: bridgeHelpers.getChainDisplayName(params.originChain) });
+        toast.error(dict.bridge.errors.chainSwitchTitle, describeError(switchError, dict));
         loggerHelpers.chainSwitch('Manual chain switch required', `${params.originChain} (${originChainId})`);
-        throw new Error(error);
+        throw switchError;
       }
 
       // Get tokens from warp core
       const tokens = warpCore.tokens;
       if (params.tokenIndex >= tokens.length) {
-        throw new Error('Invalid token index');
+        throw new UserError('tokenNotFound');
       }
 
       const token = tokens[params.tokenIndex];
       if (!token) {
-        throw new Error('Token not found');
+        throw new UserError('tokenNotFound');
       }
 
       // Parse amount with token decimals
@@ -154,7 +167,10 @@ export function useBridgeTransfer() {
       // Find destination token connection
       const connection = token.getConnectionForChain(params.destinationChain);
       if (!connection) {
-        throw new Error(`No route found from ${params.originChain} to ${params.destinationChain}`);
+        throw new UserError('noBridgeRoute', {
+          origin: bridgeHelpers.getChainDisplayName(params.originChain),
+          destination: bridgeHelpers.getChainDisplayName(params.destinationChain),
+        });
       }
 
       // Add transfer to store
@@ -181,10 +197,10 @@ export function useBridgeTransfer() {
       });
 
       if (!isCollateralSufficient) {
-        const error = 'Insufficient collateral on destination chain for transfer';
-        toast.error('Transfer Failed', error);
-        updateTransferStatus(transferIndex, TransferStatus.Failed, undefined, undefined, error);
-        throw new Error(error);
+        const collateralError = new UserError('insufficientCollateral');
+        toast.error(dict.bridge.errors.transferFailedTitle, describeError(collateralError, dict));
+        updateTransferStatus(transferIndex, TransferStatus.Failed, undefined, undefined, { code: 'insufficientCollateral' });
+        throw collateralError;
       }
 
       // Validate transfer
@@ -197,10 +213,14 @@ export function useBridgeTransfer() {
       });
 
       if (validation && Object.keys(validation).length > 0) {
-        const errorMessage = Object.values(validation)[0] as string;
-        toast.error('Validation Failed', errorMessage);
-        updateTransferStatus(transferIndex, TransferStatus.Failed, undefined, undefined, errorMessage);
-        throw new Error(errorMessage);
+        // The Hyperlane SDK's own validation message (English, unbounded set of possible
+        // strings) — kept for the log/thrown Error so classification below still works, but
+        // never shown to the user: only the translated generic stage text is.
+        const sdkMessage = Object.values(validation)[0] as string;
+        const validationFailure: BridgeFailure = { code: 'stage', stage: TransferStatus.Preparing };
+        toast.error(dict.bridge.errors.validationFailedTitle, describeBridgeFailure(validationFailure, dict));
+        updateTransferStatus(transferIndex, TransferStatus.Failed, undefined, undefined, validationFailure);
+        throw new Error(sdkMessage);
       }
 
       // Update status: Creating transactions
@@ -250,7 +270,7 @@ export function useBridgeTransfer() {
         const provider = multiProvider.getEthersV5Provider(params.originChain);
         const receipt = await provider.waitForTransaction(txHash);
         if (receipt.status === 0) {
-          throw new Error(`Transaction reverted on ${params.originChain}: ${txHash}`);
+          throw new UserError('bridgeReverted', { chain: bridgeHelpers.getChainDisplayName(params.originChain), hash: txHash });
         }
         bridgeLogger.debug(`✅ ${category} transaction confirmed: ${txHash}`);
 
@@ -275,37 +295,46 @@ export function useBridgeTransfer() {
         }
 
         // Show transaction confirmed toast
-        toastHelpers.transactionSuccess(txHash, params.originChain, toast);
+        const explorerUrl = bridgeHelpers.getTransactionUrl(txHash, params.originChain);
+        toast.success(
+          dict.bridge.toasts.txConfirmedTitle,
+          interpolate(dict.bridge.toasts.txConfirmedBody, { hash: `${txHash.slice(0, 6)}...${txHash.slice(-4)}` }),
+          { duration: 8000, link: explorerUrl ? { label: dict.bridge.toasts.viewOnExplorer, url: explorerUrl } : undefined },
+        );
       }
 
       // Update final status
       updateTransferStatus(transferIndex, TransferStatus.ConfirmedTransfer, txHashes[txHashes.length - 1], msgId);
 
       // Show success toast
-      toastHelpers.bridgeSuccess(
-        params.amount,
-        token.symbol,
-        bridgeHelpers.getChainDisplayName(params.originChain),
-        bridgeHelpers.getChainDisplayName(params.destinationChain),
-        toast
+      toast.success(
+        dict.bridge.toasts.bridgeStartedTitle,
+        interpolate(dict.bridge.toasts.bridgeStartedBody, {
+          amount: params.amount,
+          token: token.symbol,
+          from: bridgeHelpers.getChainDisplayName(params.originChain),
+          to: bridgeHelpers.getChainDisplayName(params.destinationChain),
+        }),
+        { duration: 10000 },
       );
 
-      setSuccessMessage(`Transfer initiated! ${txHashes.length} transaction(s) sent.`);
+      setSuccessMessage(interpolate(dict.bridge.form.transferInitiated, { count: txHashes.length }));
       bridgeLogger.debug('🎉 Bridge transfer completed successfully!');
 
       return transferTxs;
     } catch (err) {
       // Raw error goes to the log; users see the stage-aware message.
       bridgeLogger.error(`❌ Bridge transfer failed at stage ${currentStatus}:`, err);
-      const errorMessage = humanizeBridgeError(err, currentStatus);
+      const failure = humanizeBridgeError(err, currentStatus);
+      const errorMessage = describeBridgeFailure(failure, dict);
 
       // Update transfer status to failed if we have a transfer index
       if (transferIndex !== undefined) {
-        updateTransferStatus(transferIndex, TransferStatus.Failed, undefined, undefined, errorMessage);
+        updateTransferStatus(transferIndex, TransferStatus.Failed, undefined, undefined, failure);
       }
 
       // Show error toast
-      toastHelpers.bridgeError(errorMessage, toast);
+      toast.error(dict.bridge.toasts.bridgeFailedTitle, errorMessage, { duration: 10000 });
 
       setError(errorMessage);
       setSuccessMessage(null);
@@ -313,7 +342,7 @@ export function useBridgeTransfer() {
     } finally {
       setIsLoading(false);
     }
-  }, [warpCore, multiProvider, account, signTransaction, addTransfer, updateTransferStatus, toast]);
+  }, [warpCore, multiProvider, account, signTransaction, addTransfer, updateTransferStatus, toast, dict]);
 
   return {
     transfer,

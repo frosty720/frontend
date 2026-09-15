@@ -4,12 +4,14 @@ import { useState, useEffect } from 'react'
 import { Button } from '@/components/ui/button'
 import { Wallet } from 'lucide-react'
 import { ConnectWalletButton } from './ConnectWallet'
+import { useDict } from '@/i18n/hooks'
 
 interface ClientOnlyConnectWalletProps {
   className?: string
 }
 
 export function ClientOnlyConnectWallet({ className }: ClientOnlyConnectWalletProps) {
+  const dict = useDict()
   const [mounted, setMounted] = useState(false)
 
   useEffect(() => {
@@ -19,13 +21,9 @@ export function ClientOnlyConnectWallet({ className }: ClientOnlyConnectWalletPr
   // Show loading state during SSR
   if (!mounted) {
     return (
-      <Button
-        size="sm"
-        className={`bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-white border-0 font-semibold ${className}`}
-        disabled
-      >
-        <Wallet className="h-4 w-4 mr-2" />
-        Connect
+      <Button size="sm" className={className} disabled>
+        <Wallet className="h-4 w-4" />
+        {dict.shell.connect}
       </Button>
     )
   }

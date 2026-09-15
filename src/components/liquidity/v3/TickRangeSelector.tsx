@@ -1,14 +1,15 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect } from 'react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Token } from '@/config/dex/types';
 import { MIN_TICK, MAX_TICK, getTickSpacing } from '@/config/dex/v3-constants';
-import { tickToPrice, priceToTick, snapTickToSpacing } from '@/utils/v3-math';
-import { Plus, Minus } from 'lucide-react';
+import { priceToTick, snapTickToSpacing } from '@/utils/v3-math';
+import { useDict } from '@/i18n/hooks';
+import { interpolate } from '@/i18n/interpolate';
 
 interface TickRangeSelectorProps {
     token0: Token;
@@ -25,6 +26,9 @@ export default function TickRangeSelector({
     currentPrice,
     onRangeChange
 }: TickRangeSelectorProps) {
+    const dict = useDict();
+    const r = dict.liquidity.range;
+
     // Ticks state
     const [minTick, setMinTick] = useState<number>(MIN_TICK);
     const [maxTick, setMaxTick] = useState<number>(MAX_TICK);
@@ -106,24 +110,24 @@ export default function TickRangeSelector({
     // Adjust display when ticks change internally (sync logic omitted for brevity as mainly driven by inputs)
 
     return (
-        <Card className="bg-gray-800/30 border-gray-700">
+        <Card className="bg-surface-alt border-line">
             <CardContent className="p-4 space-y-4">
                 <div className="flex justify-between items-center">
-                    <Label className="text-gray-300">Set Price Range</Label>
+                    <Label className="text-muted-foreground">{r.title}</Label>
                     <Button
                         variant={isFullRange ? "secondary" : "outline"}
                         size="sm"
                         onClick={handleFullRange}
                         className="text-xs h-7"
                     >
-                        Full Range
+                        {r.fullRange}
                     </Button>
                 </div>
 
                 <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-2">
-                        <Label className="text-xs text-gray-400">Min Price</Label>
-                        <div className="bg-gray-900 border border-gray-700 rounded-lg p-3">
+                        <Label className="text-xs text-muted-foreground">{r.minPrice}</Label>
+                        <div className="bg-surface border border-line rounded-lg p-3">
                             <Input
                                 type="text"
                                 value={minPrice}
@@ -132,15 +136,15 @@ export default function TickRangeSelector({
                                 className="bg-transparent border-none p-0 h-auto text-center focus-visible:ring-0"
                                 disabled={isFullRange}
                             />
-                            <div className="text-xs text-gray-500 text-center mt-1">
-                                {token1.symbol} per {token0.symbol}
+                            <div className="text-xs text-muted-deep text-center mt-1">
+                                {interpolate(r.perToken, { quote: token1.symbol, base: token0.symbol })}
                             </div>
                         </div>
                     </div>
 
                     <div className="space-y-2">
-                        <Label className="text-xs text-gray-400">Max Price</Label>
-                        <div className="bg-gray-900 border border-gray-700 rounded-lg p-3">
+                        <Label className="text-xs text-muted-foreground">{r.maxPrice}</Label>
+                        <div className="bg-surface border border-line rounded-lg p-3">
                             <Input
                                 type="text"
                                 value={maxPrice}
@@ -149,16 +153,16 @@ export default function TickRangeSelector({
                                 className="bg-transparent border-none p-0 h-auto text-center focus-visible:ring-0"
                                 disabled={isFullRange}
                             />
-                            <div className="text-xs text-gray-500 text-center mt-1">
-                                {token1.symbol} per {token0.symbol}
+                            <div className="text-xs text-muted-deep text-center mt-1">
+                                {interpolate(r.perToken, { quote: token1.symbol, base: token0.symbol })}
                             </div>
                         </div>
                     </div>
                 </div>
 
                 {currentPrice && (
-                    <div className="text-center text-xs text-gray-500">
-                        Current Price: <span className="text-white font-mono">{currentPrice}</span>
+                    <div className="text-center text-xs text-muted-deep">
+                        {interpolate(r.currentPrice, { price: currentPrice })}
                     </div>
                 )}
             </CardContent>

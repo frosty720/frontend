@@ -1,520 +1,167 @@
-
-@import "./reset.css";
-
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
-
+@import "tailwindcss";
 @import "tw-animate-css";
 
 @custom-variant dark (&:is(.dark *));
 
 :root {
-  /* KalySwap Dark Amber Theme - Matching Landing Page */
-  --foreground-rgb: 255, 255, 255;
-  --background-start-rgb: 0, 0, 0;
-  --background-end-rgb: 146, 64, 14;
-  --radius: 0.75rem;
+	/* Brand palette — shared with kaly-site and kalyswap-lander */
+	--ink: #0A0A0A;
+	--surface: #141414;
+	--surface-alt: #1A1A1A;
+	--surface-hi: #212121;
+	--cream: #F5F0E6;
+	--muted-deep: #6F6960;
+	--line: rgba(255, 255, 255, 0.08);
+	--line-strong: rgba(255, 255, 255, 0.14);
+	--gold: #F59E0B;
+	--gold-dark: #D97706;
+	--gold-bright: #F7931A;
+	--gold-light: #FBBF24;
+	--gold-soft: rgba(245, 158, 11, 0.12);
+	--on-gold: #1A1206;
+	--violet: #8B5CF6;
+	--success: #22C55E;
+	--info: #38BDF8;
+	--danger: #EF4444;
+	--radius: 0.875rem;
 
-  /* Main background - black to amber gradient */
-  --background: #000000;
-  --foreground: #ffffff;
-
-  /* Cards - white/10 with white borders */
-  --card: rgba(255, 255, 255, 0.1);
-  --card-foreground: #ffffff;
-
-  /* Popover/dropdown styling */
-  --popover: rgba(255, 255, 255, 0.1);
-  --popover-foreground: #ffffff;
-
-  /* Primary - amber gradient */
-  --primary: #f59e0b;
-  --primary-foreground: #ffffff;
-
-  /* Secondary - white/10 */
-  --secondary: rgba(255, 255, 255, 0.1);
-  --secondary-foreground: #ffffff;
-
-  /* Muted elements */
-  --muted: rgba(255, 255, 255, 0.1);
-  --muted-foreground: #fef3c7;
-
-  /* Accent - amber */
-  --accent: #fbbf24;
-  --accent-foreground: #000000;
-
-  /* Destructive actions */
-  --destructive: #ef4444;
-
-  /* Borders - white/20 */
-  --border: rgba(255, 255, 255, 0.2);
-
-  /* Input fields - white/10 */
-  --input: rgba(255, 255, 255, 0.1);
-
-  /* Focus ring - amber */
-  --ring: #f59e0b;
-
-  /* Chart colors - amber theme */
-  --chart-1: #f59e0b;
-  --chart-2: #10b981;
-  --chart-3: #fbbf24;
-  --chart-4: #d97706;
-  --chart-5: #ef4444;
-
-  /* Sidebar colors - amber theme */
-  --sidebar: rgba(255, 255, 255, 0.1);
-  --sidebar-foreground: #ffffff;
-  --sidebar-primary: #f59e0b;
-  --sidebar-primary-foreground: #ffffff;
-  --sidebar-accent: rgba(255, 255, 255, 0.1);
-  --sidebar-accent-foreground: #ffffff;
-  --sidebar-border: rgba(255, 255, 255, 0.2);
-  --sidebar-ring: #f59e0b;
-}
-
-@layer utilities {
-  .text-balance {
-    text-wrap: balance;
-  }
+	/* shadcn semantic tokens mapped onto the brand */
+	--background: var(--ink);
+	--foreground: var(--cream);
+	--card: var(--surface);
+	--card-foreground: var(--cream);
+	--popover: var(--surface-alt);
+	--popover-foreground: var(--cream);
+	--primary: var(--gold);
+	--primary-foreground: var(--on-gold);
+	--secondary: var(--surface-hi);
+	--secondary-foreground: var(--cream);
+	--muted: var(--surface-alt);
+	--muted-foreground: #9A938A;
+	--accent: var(--gold-soft);
+	--accent-foreground: var(--gold-light);
+	--destructive: var(--danger);
+	--destructive-foreground: #FFFFFF;
+	--border: var(--line);
+	--input: var(--surface-alt);
+	--ring: var(--gold);
+	--chart-1: var(--gold);
+	--chart-2: var(--success);
+	--chart-3: var(--gold-light);
+	--chart-4: var(--violet);
+	--chart-5: var(--danger);
+	--sidebar: var(--surface);
+	--sidebar-foreground: var(--cream);
+	--sidebar-primary: var(--gold);
+	--sidebar-primary-foreground: var(--on-gold);
+	--sidebar-accent: var(--gold-soft);
+	--sidebar-accent-foreground: var(--gold-light);
+	--sidebar-border: var(--line);
+	--sidebar-ring: var(--gold);
 }
 
 @theme inline {
-  --radius-sm: calc(var(--radius) - 4px);
-  --radius-md: calc(var(--radius) - 2px);
-  --radius-lg: var(--radius);
-  --radius-xl: calc(var(--radius) + 4px);
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --color-card: var(--card);
-  --color-card-foreground: var(--card-foreground);
-  --color-popover: var(--popover);
-  --color-popover-foreground: var(--popover-foreground);
-  --color-primary: var(--primary);
-  --color-primary-foreground: var(--primary-foreground);
-  --color-secondary: var(--secondary);
-  --color-secondary-foreground: var(--secondary-foreground);
-  --color-muted: var(--muted);
-  --color-muted-foreground: var(--muted-foreground);
-  --color-accent: var(--accent);
-  --color-accent-foreground: var(--accent-foreground);
-  --color-destructive: var(--destructive);
-  --color-border: var(--border);
-  --color-input: var(--input);
-  --color-ring: var(--ring);
-  --color-chart-1: var(--chart-1);
-  --color-chart-2: var(--chart-2);
-  --color-chart-3: var(--chart-3);
-  --color-chart-4: var(--chart-4);
-  --color-chart-5: var(--chart-5);
-  --color-sidebar: var(--sidebar);
-  --color-sidebar-foreground: var(--sidebar-foreground);
-  --color-sidebar-primary: var(--sidebar-primary);
-  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
-  --color-sidebar-accent: var(--sidebar-accent);
-  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
-  --color-sidebar-border: var(--sidebar-border);
-  --color-sidebar-ring: var(--sidebar-ring);
+	--color-ink: var(--ink);
+	--color-surface: var(--surface);
+	--color-surface-alt: var(--surface-alt);
+	--color-surface-hi: var(--surface-hi);
+	--color-cream: var(--cream);
+	--color-muted-deep: var(--muted-deep);
+	--color-line: var(--line);
+	--color-line-strong: var(--line-strong);
+	--color-gold: var(--gold);
+	--color-gold-dark: var(--gold-dark);
+	--color-gold-bright: var(--gold-bright);
+	--color-gold-light: var(--gold-light);
+	--color-gold-soft: var(--gold-soft);
+	--color-on-gold: var(--on-gold);
+	--color-violet: var(--violet);
+	--color-success: var(--success);
+	--color-info: var(--info);
+	--color-danger: var(--danger);
+
+	--color-background: var(--background);
+	--color-foreground: var(--foreground);
+	--color-card: var(--card);
+	--color-card-foreground: var(--card-foreground);
+	--color-popover: var(--popover);
+	--color-popover-foreground: var(--popover-foreground);
+	--color-primary: var(--primary);
+	--color-primary-foreground: var(--primary-foreground);
+	--color-secondary: var(--secondary);
+	--color-secondary-foreground: var(--secondary-foreground);
+	--color-muted: var(--muted);
+	--color-muted-foreground: var(--muted-foreground);
+	--color-accent: var(--accent);
+	--color-accent-foreground: var(--accent-foreground);
+	--color-destructive: var(--destructive);
+	--color-destructive-foreground: var(--destructive-foreground);
+	--color-border: var(--border);
+	--color-input: var(--input);
+	--color-ring: var(--ring);
+	--color-chart-1: var(--chart-1);
+	--color-chart-2: var(--chart-2);
+	--color-chart-3: var(--chart-3);
+	--color-chart-4: var(--chart-4);
+	--color-chart-5: var(--chart-5);
+	--color-sidebar: var(--sidebar);
+	--color-sidebar-foreground: var(--sidebar-foreground);
+	--color-sidebar-primary: var(--sidebar-primary);
+	--color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+	--color-sidebar-accent: var(--sidebar-accent);
+	--color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+	--color-sidebar-border: var(--sidebar-border);
+	--color-sidebar-ring: var(--sidebar-ring);
+
+	--font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+	--font-display: var(--font-space-grotesk), var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+
+	--radius-sm: calc(var(--radius) - 4px);
+	--radius-md: calc(var(--radius) - 2px);
+	--radius-lg: var(--radius);
+	--radius-xl: calc(var(--radius) + 2px);
+	--radius-2xl: 1.125rem;
 }
 
-.dark {
-  --background: oklch(0.129 0.042 264.695);
-  --foreground: oklch(0.984 0.003 247.858);
-  --card: oklch(0.208 0.042 265.755);
-  --card-foreground: oklch(0.984 0.003 247.858);
-  --popover: oklch(0.208 0.042 265.755);
-  --popover-foreground: oklch(0.984 0.003 247.858);
-  --primary: oklch(0.929 0.013 255.508);
-  --primary-foreground: oklch(0.208 0.042 265.755);
-  --secondary: oklch(0.279 0.041 260.031);
-  --secondary-foreground: oklch(0.984 0.003 247.858);
-  --muted: oklch(0.279 0.041 260.031);
-  --muted-foreground: oklch(0.704 0.04 256.788);
-  --accent: oklch(0.279 0.041 260.031);
-  --accent-foreground: oklch(0.984 0.003 247.858);
-  --destructive: oklch(0.704 0.191 22.216);
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.551 0.027 264.364);
-  --chart-1: oklch(0.488 0.243 264.376);
-  --chart-2: oklch(0.696 0.17 162.48);
-  --chart-3: oklch(0.769 0.188 70.08);
-  --chart-4: oklch(0.627 0.265 303.9);
-  --chart-5: oklch(0.645 0.246 16.439);
-  --sidebar: oklch(0.208 0.042 265.755);
-  --sidebar-foreground: oklch(0.984 0.003 247.858);
-  --sidebar-primary: oklch(0.488 0.243 264.376);
-  --sidebar-primary-foreground: oklch(0.984 0.003 247.858);
-  --sidebar-accent: oklch(0.279 0.041 260.031);
-  --sidebar-accent-foreground: oklch(0.984 0.003 247.858);
-  --sidebar-border: oklch(1 0 0 / 10%);
-  --sidebar-ring: oklch(0.551 0.027 264.364);
+@theme {
+	/* Sidebar collapses to a drawer below this width (reference layout breakpoint). */
+	--breakpoint-desk: 60rem;
 }
 
 @layer base {
-  * {
-    @apply border-border outline-ring/50;
-  }
+	* {
+		@apply border-border outline-ring/50;
+	}
 
-  html {
-    scroll-behavior: smooth;
-  }
+	html {
+		scroll-behavior: smooth;
+		color-scheme: dark;
+	}
 
-  body {
-    @apply text-foreground;
-    background: linear-gradient(135deg, #000000 0%, #1c1917 50%, #92400e 100%);
-    background-attachment: fixed;
-    min-height: 100vh;
-  }
+	body {
+		@apply bg-background font-sans text-foreground antialiased;
+		min-height: 100vh;
+	}
+
+	h1,
+	h2,
+	h3 {
+		@apply font-display;
+	}
+
+	::-webkit-scrollbar {
+		width: 10px;
+		height: 10px;
+	}
+
+	::-webkit-scrollbar-thumb {
+		background: var(--surface-hi);
+		border-radius: 8px;
+	}
 }
 
-/* KalySwap Component Styling - Mobile App Design */
-@layer components {
-
-  /* Enhanced Card Components with Glass Morphism - Amber Theme */
-  .card {
-    background: rgba(28, 25, 23, 0.9);
-    backdrop-filter: blur(10px);
-    border: 1px solid rgba(245, 158, 11, 0.3);
-    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
-    transition: all 0.3s ease;
-  }
-
-  .card:hover {
-    border-color: rgba(245, 158, 11, 0.5);
-    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.4);
-    transform: translateY(-2px);
-  }
-
-  /* Ensure all Card components use consistent amber borders */
-  [data-slot="card"],
-  .card,
-  .bg-card {
-    border-color: rgba(245, 158, 11, 0.3) !important;
-    background: rgba(28, 25, 23, 0.9) !important;
-  }
-
-  /* Force solid backgrounds for ALL Select dropdowns globally */
-  [data-radix-select-content],
-  [data-radix-select-viewport],
-  [data-radix-popper-content-wrapper] > div,
-  div[role="listbox"] {
-    background: #1c1917 !important;
-    border: 1px solid rgba(245, 158, 11, 0.3) !important;
-    backdrop-filter: none !important;
-    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.8) !important;
-  }
-
-  /* Primary Buttons - Amber Gradient */
-  .btn-primary,
-  button[class*="bg-primary"],
-  .button:not(.button-secondary):not(.button-outline) {
-    background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
-    color: white;
-    font-weight: 600;
-    border: none;
-    transition: all 0.2s ease;
-  }
-
-  .btn-primary:hover,
-  button[class*="bg-primary"]:hover {
-    background: linear-gradient(135deg, #d97706 0%, #b45309 100%);
-    box-shadow: 0 8px 25px rgba(245, 158, 11, 0.4);
-    transform: translateY(-1px);
-  }
-
-  .btn-primary:active,
-  button[class*="bg-primary"]:active {
-    transform: translateY(0);
-  }
-
-  /* Secondary Buttons - White/10 */
-  .btn-secondary,
-  button[class*="bg-secondary"] {
-    background: rgba(255, 255, 255, 0.1);
-    border: 1px solid rgba(255, 255, 255, 0.2);
-    backdrop-filter: blur(10px);
-    color: white;
-    font-weight: 600;
-    transition: all 0.2s ease;
-  }
-
-  .btn-secondary:hover,
-  button[class*="bg-secondary"]:hover {
-    background: rgba(255, 255, 255, 0.2);
-    box-shadow: 0 8px 25px rgba(255, 255, 255, 0.1);
-    transform: translateY(-1px);
-  }
-
-  /* Input Fields - White/10 Glass Effect */
-  .input,
-  input[type="text"],
-  input[type="number"],
-  input[type="email"],
-  input[type="password"],
-  textarea {
-    background: rgba(255, 255, 255, 0.1);
-    border: 1px solid rgba(255, 255, 255, 0.2);
-    color: white;
-    backdrop-filter: blur(8px);
-    transition: all 0.2s ease;
-  }
-
-  .input:focus,
-  input:focus,
-  textarea:focus {
-    border-color: #f59e0b;
-    box-shadow: 0 0 0 2px rgba(245, 158, 11, 0.2);
-    background: rgba(255, 255, 255, 0.15);
-  }
-
-  .input::placeholder,
-  input::placeholder,
-  textarea::placeholder {
-    color: #fef3c7;
-  }
-
-  /* Tab Components */
-  .tabs-list {
-    background: rgba(255, 255, 255, 0.1);
-    backdrop-filter: blur(8px);
-    border: 1px solid rgba(255, 255, 255, 0.2);
-  }
-
-  .tabs-trigger {
-    color: #fef3c7;
-    transition: all 0.2s ease;
-  }
-
-  .tabs-trigger[data-state="active"] {
-    background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
-    color: white;
-    box-shadow: 0 4px 12px rgba(245, 158, 11, 0.3);
-  }
-
-  /* Select Components */
-  .select-trigger {
-    background: rgba(255, 255, 255, 0.1);
-    border: 1px solid rgba(255, 255, 255, 0.2);
-    color: white;
-    backdrop-filter: blur(8px);
-  }
-
-  .select-content {
-    background: rgba(255, 255, 255, 0.1);
-    backdrop-filter: blur(12px);
-    border: 1px solid rgba(255, 255, 255, 0.2);
-  }
-
-  .select-item {
-    color: white;
-    transition: all 0.2s ease;
-  }
-
-  .select-item:hover {
-    background: rgba(245, 158, 11, 0.2);
-  }
-
-  /* Labels */
-  .label {
-    color: #fef3c7;
-    font-weight: 500;
-  }
-
-  /* Loading Spinners */
-  .animate-spin {
-    border-color: rgba(245, 158, 11, 0.3);
-    border-top-color: #f59e0b;
-  }
-
-  /* Connection Warning Card - Amber Theme */
-  .border-orange-200 {
-    border-color: rgba(245, 158, 11, 0.3) !important;
-  }
-
-  .bg-orange-50 {
-    background: rgba(245, 158, 11, 0.1) !important;
-    backdrop-filter: blur(10px);
-    border: 1px solid rgba(245, 158, 11, 0.3);
-  }
-
-  .text-orange-700 {
-    color: #f59e0b !important;
-  }
-
-  .text-orange-600 {
-    color: #fbbf24 !important;
-  }
-
-  /* Gray text to amber colors for dark theme */
-  .text-gray-500 {
-    color: #fef3c7 !important;
-  }
-
-  .text-gray-600 {
-    color: #fef3c7 !important;
-  }
-
-  .text-gray-700 {
-    color: #ffffff !important;
-  }
-
-  /* Card titles */
-  .card h3,
-  .card h2,
-  [class*="CardTitle"] {
-    color: white !important;
-  }
-
-  /* Enhance disabled states */
-  [disabled] {
-    opacity: 0.5;
-    cursor: not-allowed;
-  }
-
-  /* Coming soon sections */
-  .text-center .opacity-50 {
-    color: #fef3c7;
-  }
-
-  /* Fix token symbol readability */
-  .select-item,
-  .select-trigger,
-  .select-value {
-    color: white !important;
-  }
-
-  /* Token selector text */
-  .token-selector span,
-  .token-selector div {
-    color: white !important;
-  }
-
-  /* Chart background fix - make it match the amber theme */
-  .trading-chart-wrapper .bg-white,
-  .chart-container .bg-white,
-  [class*="bg-white"] {
-    background: rgba(255, 255, 255, 0.1) !important;
-    backdrop-filter: blur(10px);
-    border: 1px solid rgba(255, 255, 255, 0.2);
-  }
-
-  /* Chart text colors */
-  .trading-chart-wrapper,
-  .chart-container {
-    color: white;
-  }
-
-  .trading-chart-wrapper * {
-    color: white !important;
-  }
-
-  /* Fix any remaining white backgrounds in charts */
-  canvas + div,
-  .chart-controls,
-  .chart-header {
-    background: transparent !important;
-    color: white !important;
-  }
-
-  /* Ensure all text in trading interface is readable */
-  .trading-controls-container * {
-    color: white !important;
-  }
-
-  /* Fix select dropdown text */
-  [role="option"] {
-    color: white !important;
-  }
-
-  /* Fix placeholder text */
-  ::placeholder {
-    color: #fef3c7 !important;
-    opacity: 1;
-  }
-
-  /* Force solid background for all dialogs - Amber Theme */
-  [data-radix-dialog-content] {
-    background: #0c0a09 !important; /* stone-950 */
-    border: 1px solid rgba(255, 255, 255, 0.2) !important;
-    backdrop-filter: none !important;
-  }
-}
-
-/*
- * V3 "Manage Position" Add-liquidity inputs.
- * Wrapped in @layer components so it sits in the SAME layer as the global
- * `::placeholder { color:#fef3c7 !important }` amber rule — for !important
- * declarations layered styles beat unlayered ones, so an unlayered override
- * would lose; within the same layer the more-specific `.v3-modal-input`
- * selector wins. (Tailwind v4 important syntax is a suffix like `text-white!`,
- * which is why earlier utility overrides silently did nothing.)
- */
-@layer components {
-  .v3-modal-input {
-    background-color: rgba(0, 0, 0, 0.35) !important;
-    color: #ffffff !important;
-    -webkit-text-fill-color: #ffffff !important;
-    border: 1px solid rgba(255, 255, 255, 0.12) !important;
-    backdrop-filter: none !important;
-  }
-  .v3-modal-input::placeholder {
-    color: #6b7280 !important; /* gray-500 */
-    /* -webkit-text-fill-color on the input leaks into the placeholder pseudo and
-       would paint it white; pin it back to gray so the placeholder stays gray. */
-    -webkit-text-fill-color: #6b7280 !important;
-    opacity: 1;
-  }
-  .v3-modal-input:focus,
-  .v3-modal-input:focus-visible {
-    background-color: rgba(0, 0, 0, 0.35) !important;
-    border-color: rgba(245, 158, 11, 0.5) !important; /* amber-500/50 */
-    outline: none !important;
-  }
-  /* Kill the browser autofill white/yellow wash that can make the field look white */
-  .v3-modal-input:-webkit-autofill,
-  .v3-modal-input:-webkit-autofill:hover,
-  .v3-modal-input:-webkit-autofill:focus {
-    -webkit-text-fill-color: #ffffff !important;
-    -webkit-box-shadow: 0 0 0 1000px rgba(20, 17, 6, 1) inset !important;
-    caret-color: #ffffff;
-  }
-}
-
-/*
- * Thirdweb wallet modal ("View Assets", token/network lists) — force a visible
- * scrollbar. Thirdweb wraps its scrollable lists in a Container that applies its
- * internal `noScrollBar` style (`::-webkit-scrollbar { display:none }` +
- * `scrollbar-width: none`), so the asset list scrolls with no visual affordance
- * and users don't realize tokens below the fold (e.g. KUSD) exist.
- *
- * The modal renders into <body> (Radix Dialog portal) with the `tw-modal` class
- * and no shadow DOM, so this global rule reaches it. Thirdweb's noScrollBar is
- * NOT !important, so these !important overrides win regardless of cascade layers.
- * Unlayered is fine here for that reason.
- */
-.tw-modal,
-.tw-modal * {
-  scrollbar-width: thin !important;
-  scrollbar-color: rgba(245, 158, 11, 0.55) transparent !important; /* amber thumb */
-}
-.tw-modal::-webkit-scrollbar,
-.tw-modal *::-webkit-scrollbar {
-  display: block !important;
-  width: 8px !important;
-  height: 8px !important;
-}
-.tw-modal::-webkit-scrollbar-track,
-.tw-modal *::-webkit-scrollbar-track {
-  background: transparent !important;
-}
-.tw-modal::-webkit-scrollbar-thumb,
-.tw-modal *::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.22) !important;
-  border-radius: 4px !important;
-}
-.tw-modal::-webkit-scrollbar-thumb:hover,
-.tw-modal *::-webkit-scrollbar-thumb:hover {
-  background: rgba(245, 158, 11, 0.7) !important; /* amber-500 on hover */
+@layer utilities {
+	.text-balance {
+		text-wrap: balance;
+	}
 }

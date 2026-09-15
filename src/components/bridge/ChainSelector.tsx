@@ -13,6 +13,8 @@ import {
 } from '@/components/ui/select';
 import { useBridgeContext } from '@/hooks/bridge/useBridgeContext';
 import { bridgeHelpers } from '@/utils/bridge/bridgeHelpers';
+import { useDict } from '@/i18n/hooks';
+import { interpolate } from '@/i18n/interpolate';
 
 // ChainIcon component for bridge chains
 function ChainIcon({ chainName, size = 20 }: { chainName: string; size?: number }) {
@@ -35,7 +37,7 @@ function ChainIcon({ chainName, size = 20 }: { chainName: string; size?: number 
   if (imageError) {
     return (
       <div
-        className="rounded-full bg-gradient-to-r from-blue-500 to-purple-500 flex items-center justify-center text-white font-bold text-xs"
+        className="rounded-full bg-gradient-to-r from-gold to-violet flex items-center justify-center text-white font-bold text-xs"
         style={{ width: size, height: size, fontSize: size * 0.4 }}
       >
         {chainName.charAt(0).toUpperCase()}
@@ -66,8 +68,10 @@ export function ChainSelector({
   value,
   onValueChange,
   disabled = false,
-  placeholder = "Select chain"
+  placeholder
 }: ChainSelectorProps) {
+  const dict = useDict();
+  const effectivePlaceholder = placeholder ?? dict.bridge.chainSelector.placeholder;
   const { chains } = useBridgeContext();
 
   // Get available chains from bridge context
@@ -80,22 +84,22 @@ export function ChainSelector({
       disabled={disabled}
     >
       <SelectTrigger className="w-full">
-        <SelectValue placeholder={placeholder}>
+        <SelectValue placeholder={effectivePlaceholder}>
           {value ? (
             <div className="flex items-center gap-2">
               <ChainIcon chainName={value} size={20} />
               <span>{bridgeHelpers.getChainDisplayName(value)}</span>
             </div>
           ) : (
-            placeholder
+            effectivePlaceholder
           )}
         </SelectValue>
       </SelectTrigger>
-      <SelectContent className="select-content">
+      <SelectContent>
         {availableChains.map((chainName) => {
           const chain = chains[chainName];
           return (
-            <SelectItem key={chainName} value={chainName} className="select-item">
+            <SelectItem key={chainName} value={chainName}>
               <div className="flex items-center gap-2">
                 <ChainIcon chainName={chainName} size={16} />
                 <div className="flex flex-col">
@@ -103,7 +107,7 @@ export function ChainSelector({
                     {bridgeHelpers.getChainDisplayName(chainName)}
                   </span>
                   <span className="text-xs text-muted-foreground">
-                    Chain ID: {chain.chainId}
+                    {interpolate(dict.bridge.chainSelector.chainId, { id: chain.chainId })}
                   </span>
                 </div>
               </div>

@@ -6,7 +6,7 @@ import { Badge } from '@/components/ui/badge';
 import { Coins, TrendingUp, Clock, Users } from 'lucide-react';
 import { useStakingBalances } from '@/hooks/staking';
 import { useWallet } from '@/hooks/useWallet';
-import '@/app/launchpad/launchpad.css';
+import '@/app/[locale]/launchpad/launchpad.css';
 
 interface StakingStatsProps {
   className?: string;

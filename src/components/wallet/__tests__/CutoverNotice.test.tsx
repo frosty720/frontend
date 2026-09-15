@@ -16,6 +16,8 @@ import { vi, describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { readFileSync } from 'fs';
 import { join } from 'path';
 import { CHAIN_IDS, kalychain } from '@/config/chains';
+import { DictionaryProvider } from '@/i18n/DictionaryProvider';
+import en from '@/i18n/dictionaries/en';
 
 let mockAccount: { isConnected: boolean } = { isConnected: false };
 let mockChainId = 1;
@@ -53,6 +55,14 @@ function happyWallet() {
 
 const announced: Array<() => void> = [];
 
+function renderNotice() {
+	render(
+		<DictionaryProvider dict={en} locale="en">
+			<CutoverNotice />
+		</DictionaryProvider>,
+	);
+}
+
 describe('CutoverNotice', () => {
 	beforeEach(() => {
 		window.localStorage.clear();
@@ -72,24 +82,24 @@ describe('CutoverNotice', () => {
 	}
 
 	it('shows the relaunch notice with the 110:1 ratio on first visit', async () => {
-		render(<CutoverNotice />);
+		renderNotice();
 		expect(await screen.findByText('KalyChain has moved to a new chain')).toBeTruthy();
 		expect(screen.getByText(/KMT at a 110:1 ratio/)).toBeTruthy();
 	});
 
 	it('persists dismissal and stays hidden on the next visit', async () => {
-		render(<CutoverNotice />);
+		renderNotice();
 		fireEvent.click(await screen.findByRole('button', { name: 'Continue' }));
 		expect(window.localStorage.getItem(STORAGE_KEY)).toBe('dismissed');
 		cleanup();
-		render(<CutoverNotice />);
+		renderNotice();
 		expect(screen.queryByText('KalyChain has moved to a new chain')).toBeNull();
 	});
 
 	it('offers one named button per installed wallet instead of guessing', async () => {
 		register('a', 'MetaMask', happyWallet());
 		register('b', 'Rabby', happyWallet());
-		render(<CutoverNotice />);
+		renderNotice();
 		expect(await screen.findByRole('button', { name: /Add network in MetaMask/ })).toBeTruthy();
 		expect(screen.getByRole('button', { name: /Add network in Rabby/ })).toBeTruthy();
 		expect(screen.getByText(/more than one wallet installed/)).toBeTruthy();
@@ -102,7 +112,7 @@ describe('CutoverNotice', () => {
 		const rabby = happyWallet();
 		register('a', 'MetaMask', metamask);
 		register('b', 'Rabby', rabby);
-		render(<CutoverNotice />);
+		renderNotice();
 		fireEvent.click(await screen.findByRole('button', { name: /Add network in Rabby/ }));
 		await waitFor(() => expect(rabby).toHaveBeenCalled());
 		expect(metamask).not.toHaveBeenCalled();
@@ -117,7 +127,7 @@ describe('CutoverNotice', () => {
 			return null;
 		});
 		register('a', 'MetaMask', request);
-		render(<CutoverNotice />);
+		renderNotice();
 		fireEvent.click(await screen.findByRole('button', { name: /Add network in MetaMask/ }));
 		await waitFor(() => expect(request).toHaveBeenCalledTimes(3));
 		const methods = request.mock.calls.map((c) => c[0].method);
@@ -137,7 +147,7 @@ describe('CutoverNotice', () => {
 			return null;
 		});
 		register('a', 'MetaMask', request);
-		render(<CutoverNotice />);
+		renderNotice();
 		fireEvent.click(await screen.findByRole('button', { name: /Add network in MetaMask/ }));
 		await waitFor(() =>
 			expect(request.mock.calls.some((c) => c[0].method === 'wallet_addEthereumChain')).toBe(true),
@@ -159,7 +169,7 @@ describe('CutoverNotice', () => {
 			method === 'eth_chainId' ? '0x1' : null,
 		);
 		register('a', 'MetaMask', request);
-		render(<CutoverNotice />);
+		renderNotice();
 		fireEvent.click(await screen.findByRole('button', { name: /Add network in MetaMask/ }));
 		expect(await screen.findByText(/still on another network/)).toBeTruthy();
 		expect(screen.queryByText(/You are on the new chain/)).toBeNull();
@@ -167,7 +177,7 @@ describe('CutoverNotice', () => {
 
 	it('confirms success only after eth_chainId reports the new chain', async () => {
 		register('a', 'MetaMask', happyWallet());
-		render(<CutoverNotice />);
+		renderNotice();
 		fireEvent.click(await screen.findByRole('button', { name: /Add network in MetaMask/ }));
 		expect(await screen.findByText(/You are on the new chain/)).toBeTruthy();
 	});
@@ -177,7 +187,7 @@ describe('CutoverNotice', () => {
 			throw Object.assign(new Error('User rejected'), { code: 4001 });
 		});
 		register('a', 'MetaMask', request);
-		render(<CutoverNotice />);
+		renderNotice();
 		fireEvent.click(await screen.findByRole('button', { name: /Add network in MetaMask/ }));
 		expect(await screen.findByText(/Request cancelled in MetaMask/)).toBeTruthy();
 		expect(request).toHaveBeenCalledTimes(1);
@@ -191,26 +201,26 @@ describe('CutoverNotice', () => {
 			throw Object.assign(new Error('RPC URL already in use'), { code: -32602 });
 		});
 		register('a', 'MetaMask', request);
-		render(<CutoverNotice />);
+		renderNotice();
 		fireEvent.click(await screen.findByRole('button', { name: /Add network in MetaMask/ }));
 		expect(await screen.findByText(/remove that old entry first/)).toBeTruthy();
 	});
 
 	it('falls back to a legacy injected provider when nothing announces', async () => {
 		(window as { ethereum?: unknown }).ethereum = { request: happyWallet(), isMetaMask: true };
-		render(<CutoverNotice />);
+		renderNotice();
 		expect(await screen.findByRole('button', { name: /Add network in MetaMask/ })).toBeTruthy();
 	});
 
 	it('tells in-app wallet users there is nothing to do when no browser wallet exists', async () => {
-		render(<CutoverNotice />);
+		renderNotice();
 		expect(await screen.findByText(/No browser wallet detected/)).toBeTruthy();
 	});
 
 	it('tells connected users on the new chain there is nothing to do', async () => {
 		mockAccount = { isConnected: true };
 		mockChainId = CHAIN_IDS.KALYCHAIN;
-		render(<CutoverNotice />);
+		renderNotice();
 		expect(await screen.findByText(/You are on the new chain/)).toBeTruthy();
 		expect(screen.queryByRole('button', { name: /Add network in/ })).toBeNull();
 	});

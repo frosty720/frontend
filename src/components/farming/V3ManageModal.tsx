@@ -1,42 +1,44 @@
 'use client'
 
 import React, { useState, useCallback, useEffect } from 'react'
+import { formatUnits } from 'viem'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { AlertCircle, CheckCircle, Zap, ArrowDownCircle, Gift, LogOut } from 'lucide-react'
+import { AlertCircle, CheckCircle, Sprout, Gift, LogOut, Loader2 } from 'lucide-react'
 import { useAccount, usePublicClient } from 'wagmi'
 import { useV3Staking } from '@/hooks/v3/useV3Staking'
 import { getV3Config } from '@/config/dex/v3-config'
 import { V3NonfungiblePositionManagerABI } from '@/config/abis'
 import type { V3Incentive } from '@/services/dex/v3-staking-types'
 import { useResolvedChainId } from '@/hooks/useResolvedChainId';
+import { describeError } from '@/i18n/errorText'
+import { useDict, useFormat } from '@/i18n/hooks'
+import { interpolate } from '@/i18n/interpolate'
+import { tokenIdScanOrder } from '@/utils/farm'
 
 interface V3ManageModalProps {
     isOpen: boolean;
     onClose: () => void;
     incentive: V3Incentive;
+    /** Token IDs already confirmed as the wallet's stakes in this incentive; checked before the ID scan. */
+    knownTokenIds?: bigint[];
     onActionComplete: () => void;
-}
-
-function formatRewardAmount(amount: bigint, decimals: number = 18): string {
-    if (amount === 0n) return '0'
-    const divisor = 10n ** BigInt(decimals)
-    const whole = amount / divisor
-    const fraction = amount % divisor
-    const fractionStr = fraction.toString().padStart(decimals, '0').slice(0, 6).replace(/0+$/, '')
-    if (fractionStr) return `${whole.toString()}.${fractionStr}`
-    return whole.toString()
 }
 
 export default function V3ManageModal({
     isOpen,
     onClose,
     incentive,
+    knownTokenIds,
     onActionComplete,
 }: V3ManageModalProps) {
+    const dict = useDict()
+    const fmt = useFormat()
+    const d = dict.farmManage.dialog
+    const m = dict.farmManage.manage
+
     const { address } = useAccount()
     const chainId = useResolvedChainId()
     const publicClient = usePublicClient({ chainId })
@@ -55,13 +57,16 @@ export default function V3ManageModal({
     const [pendingReward, setPendingReward] = useState<bigint>(0n)
     const [loadingReward, setLoadingReward] = useState(false)
 
-    const token0Symbol = incentive.poolToken0Symbol || 'Token0'
-    const token1Symbol = incentive.poolToken1Symbol || 'Token1'
-    const rewardSymbol = incentive.rewardTokenSymbol || 'KSWAP'
+    const token0Symbol = incentive.poolToken0Symbol || '?'
+    const token1Symbol = incentive.poolToken1Symbol || '?'
+    const rewardSymbol = incentive.rewardTokenSymbol || '?'
     const rewardDecimals = incentive.rewardTokenDecimals || 18
     const pairName = `${token0Symbol}/${token1Symbol}`
+    const pendingText = fmt.number(Number(formatUnits(pendingReward, rewardDecimals)), { maximumFractionDigits: 6 })
 
     const effectiveTokenId = stakedTokenId ?? (manualTokenId ? BigInt(manualTokenId) : null)
+    // A string key keeps detection from re-running (and re-reading the chain) on every parent render.
+    const knownTokenIdsKey = (knownTokenIds ?? []).join(',')
 
     // Auto-detect staked positions by scanning user's NFTs that are deposited in the staker
     useEffect(() => {
@@ -84,17 +89,18 @@ export default function V3ManageModal({
                     args: [stakerAddress],
                 }) as bigint
 
-                // Also check known recent token IDs (1-20 range for testnet)
-                // by querying deposits() on the staker
+                // Check the token IDs already known to be staked first, then known recent
+                // token IDs (1-20 range for testnet) by querying deposits() on the staker
                 const maxCheck = Math.min(Number(stakerBalance) + 20, 50)
-                for (let i = 1; i <= maxCheck; i++) {
+                const known = knownTokenIdsKey ? knownTokenIdsKey.split(',').map((id) => BigInt(id)) : []
+                for (const tokenId of tokenIdScanOrder(known, maxCheck)) {
                     try {
-                        const deposit = await service.getDepositInfo(BigInt(i))
+                        const deposit = await service.getDepositInfo(tokenId)
                         if (deposit.owner.toLowerCase() === address.toLowerCase() && deposit.numberOfStakes > 0) {
                             // Verify this position is staked in THIS incentive by checking getRewardInfo
                             try {
-                                await getPositionReward(incentive.key, BigInt(i))
-                                setStakedTokenId(BigInt(i))
+                                await getPositionReward(incentive.key, tokenId)
+                                setStakedTokenId(tokenId)
                                 return
                             } catch {
                                 // Not staked in this incentive
@@ -112,7 +118,7 @@ export default function V3ManageModal({
         }
 
         detectStakedPosition()
-    }, [isOpen, address, publicClient, incentive.key, service, getPositionReward, chainId])
+    }, [isOpen, address, publicClient, incentive.key, service, getPositionReward, chainId, knownTokenIdsKey])
 
     // Fetch pending rewards when we have a token ID
     useEffect(() => {
@@ -150,16 +156,16 @@ export default function V3ManageModal({
             await harvestRewards(incentive.key, effectiveTokenId)
 
             setTxStatus('success')
-            setSuccessMessage(`Harvested ${formatRewardAmount(pendingReward, rewardDecimals)} ${rewardSymbol}! Position is still staked.`)
+            setSuccessMessage(interpolate(m.harvestSuccess, { amount: pendingText, symbol: rewardSymbol }))
             setPendingReward(0n)
             onActionComplete()
         } catch (err) {
             setTxStatus('error')
-            setError(err instanceof Error ? err.message : 'Failed to harvest rewards')
+            setError(describeError(err, dict))
         } finally {
             setIsProcessing(false)
         }
-    }, [pendingReward, effectiveTokenId, harvestRewards, incentive.key, rewardDecimals, rewardSymbol, onActionComplete])
+    }, [pendingReward, effectiveTokenId, harvestRewards, incentive.key, pendingText, rewardSymbol, onActionComplete, m, dict])
 
     const handleUnstakeAndWithdraw = useCallback(async () => {
         if (!effectiveTokenId) return
@@ -172,15 +178,15 @@ export default function V3ManageModal({
 
             setTxHash(result.unstakeHash)
             setTxStatus('success')
-            setSuccessMessage('Position unstaked and withdrawn! Rewards are now claimable.')
+            setSuccessMessage(m.unstakeSuccess)
             onActionComplete()
         } catch (err) {
             setTxStatus('error')
-            setError(err instanceof Error ? err.message : 'Failed to unstake position')
+            setError(describeError(err, dict))
         } finally {
             setIsProcessing(false)
         }
-    }, [effectiveTokenId, incentive.key, unstakeAndWithdraw, onActionComplete])
+    }, [effectiveTokenId, incentive.key, unstakeAndWithdraw, onActionComplete, m, dict])
 
     const handleClose = useCallback(() => {
         if (!isProcessing) {
@@ -197,70 +203,64 @@ export default function V3ManageModal({
 
     return (
         <Dialog open={isOpen} onOpenChange={handleClose}>
-            <DialogContent
-                className="!bg-stone-900 !border-amber-500/30 text-white max-w-md"
-                style={{ backgroundColor: '#1c1917', borderColor: 'rgba(245, 158, 11, 0.3)' }}
-            >
+            <DialogContent className="border-line bg-surface sm:max-w-md">
                 <DialogHeader>
-                    <DialogTitle className="text-xl font-bold text-white">Manage Position</DialogTitle>
-                    <DialogDescription className="text-gray-400">
-                        View rewards and manage your staked V3 position.
-                    </DialogDescription>
+                    <DialogTitle className="font-display text-xl text-cream">{m.title}</DialogTitle>
+                    <DialogDescription>{m.description}</DialogDescription>
                 </DialogHeader>
 
                 {txStatus === 'success' ? (
-                    <div className="space-y-4 py-4">
+                    <div className="space-y-4 py-2">
                         <div className="text-center">
-                            <CheckCircle className="w-12 h-12 text-green-400 mx-auto mb-4" />
-                            <h3 className="text-lg font-semibold text-white mb-2">{successMessage}</h3>
+                            <CheckCircle className="mx-auto mb-4 size-12 text-success" />
+                            <h3 className="mb-2 font-display text-lg font-semibold text-cream">{successMessage}</h3>
                             {txHash && (
-                                <div className="bg-stone-800/50 rounded-lg p-3 mt-4">
-                                    <p className="text-xs text-gray-400 mb-1">Transaction:</p>
-                                    <p className="text-xs font-mono text-amber-400 break-all">{txHash}</p>
+                                <div className="mt-4 rounded-xl bg-surface-alt p-3 text-left">
+                                    <p className="mb-1 text-xs text-muted-deep">{m.transaction}</p>
+                                    <p className="break-all font-mono text-xs text-gold">{txHash}</p>
                                 </div>
                             )}
                         </div>
-                        <Button onClick={handleClose} className="w-full continue-button">Close</Button>
+                        <Button onClick={handleClose} className="w-full">{d.close}</Button>
                     </div>
                 ) : (
                     <div className="space-y-4">
                         {/* Position Info */}
-                        <Card className="bg-stone-800/80 border-amber-500/30">
-                            <CardContent className="p-4">
-                                <div className="flex items-center gap-3 mb-3">
-                                    <Zap className="w-5 h-5 text-purple-400" />
-                                    <span className="font-semibold text-white">{pairName} Farm</span>
-                                </div>
+                        <div className="rounded-xl border border-line bg-surface-alt p-4">
+                            <div className="mb-3 flex items-center gap-2">
+                                <Sprout className="size-4 text-gold" aria-hidden />
+                                <span className="font-semibold text-cream">{interpolate(d.farmTitle, { pair: pairName })}</span>
+                            </div>
 
-                                {isDetecting ? (
-                                    <div className="flex items-center gap-2 text-sm text-gray-400">
-                                        <div className="w-4 h-4 border-2 border-purple-400 border-t-transparent rounded-full animate-spin" />
-                                        Detecting your staked position...
+                            {isDetecting ? (
+                                <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                                    <Loader2 className="size-4 animate-spin text-gold" />
+                                    {m.detecting}
+                                </div>
+                            ) : effectiveTokenId ? (
+                                <div className="space-y-2 text-sm">
+                                    <div className="flex justify-between gap-3">
+                                        <span className="text-muted-foreground">{d.positionTokenId}</span>
+                                        <span className="font-mono text-cream">#{effectiveTokenId.toString()}</span>
                                     </div>
-                                ) : effectiveTokenId ? (
-                                    <div className="space-y-2 text-sm">
-                                        <div className="flex justify-between">
-                                            <span className="text-gray-400">Position Token ID:</span>
-                                            <span className="text-white font-mono">#{effectiveTokenId.toString()}</span>
-                                        </div>
-                                        <div className="flex justify-between">
-                                            <span className="text-gray-400">Pending Rewards:</span>
-                                            <span className="text-amber-400 font-semibold">
-                                                {loadingReward ? '...' : `${formatRewardAmount(pendingReward, rewardDecimals)} ${rewardSymbol}`}
-                                            </span>
-                                        </div>
+                                    <div className="flex justify-between gap-3">
+                                        <span className="text-muted-foreground">{d.pendingRewards}</span>
+                                        <span className="font-semibold text-gold">
+                                            {loadingReward ? '…' : `${pendingText} ${rewardSymbol}`}
+                                        </span>
                                     </div>
-                                ) : (
-                                    <p className="text-sm text-gray-400">No staked position detected.</p>
-                                )}
-                            </CardContent>
-                        </Card>
+                                </div>
+                            ) : (
+                                <p className="text-sm text-muted-foreground">{m.noneDetected}</p>
+                            )}
+                        </div>
 
                         {/* Manual token ID if not auto-detected */}
                         {!isDetecting && !stakedTokenId && (
                             <div className="space-y-2">
-                                <Label className="text-gray-300">Staked Position Token ID</Label>
+                                <Label htmlFor="manage-token-id" className="text-muted-foreground">{d.stakedTokenIdLabel}</Label>
                                 <Input
+                                    id="manage-token-id"
                                     type="text"
                                     value={manualTokenId}
                                     onChange={(e) => {
@@ -268,32 +268,33 @@ export default function V3ManageModal({
                                             setManualTokenId(e.target.value)
                                         }
                                     }}
-                                    placeholder="Enter your staked position token ID"
-                                    className="bg-stone-800 border-amber-500/30 text-white"
+                                    placeholder={d.stakedTokenIdPlaceholder}
+                                    className="h-10 rounded-xl border-line bg-surface-alt text-cream"
                                     disabled={isProcessing}
                                 />
                             </div>
                         )}
 
                         {/* Action Buttons */}
-                        {effectiveTokenId && (
+                        {effectiveTokenId ? (
                             <div className="space-y-3">
                                 {/* Harvest Rewards Button */}
                                 <Button
                                     onClick={handleClaimRewards}
                                     disabled={isProcessing || pendingReward === 0n || loadingReward}
-                                    className="w-full continue-button h-12 text-base font-semibold"
+                                    size="lg"
+                                    className="w-full"
                                 >
                                     {isProcessing && txStatus === 'claiming' ? (
-                                        <div className="flex items-center gap-2">
-                                            <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                                            Harvesting... (3 transactions)
-                                        </div>
+                                        <>
+                                            <Loader2 className="animate-spin" />
+                                            {m.harvesting}
+                                        </>
                                     ) : (
-                                        <div className="flex items-center gap-2">
-                                            <Gift className="w-4 h-4" />
-                                            Harvest {formatRewardAmount(pendingReward, rewardDecimals)} {rewardSymbol}
-                                        </div>
+                                        <>
+                                            <Gift />
+                                            {interpolate(m.harvest, { amount: pendingText, symbol: rewardSymbol })}
+                                        </>
                                     )}
                                 </Button>
 
@@ -301,34 +302,31 @@ export default function V3ManageModal({
                                 <Button
                                     onClick={handleUnstakeAndWithdraw}
                                     disabled={isProcessing}
-                                    variant="outline"
-                                    className="w-full border-red-500/30 text-red-400 hover:text-red-300 hover:bg-red-500/10"
+                                    variant="destructive"
+                                    className="w-full"
                                 >
                                     {isProcessing && txStatus === 'unstaking' ? (
-                                        <div className="flex items-center gap-2">
-                                            <div className="w-4 h-4 border-2 border-red-400/30 border-t-red-400 rounded-full animate-spin" />
-                                            Unstaking...
-                                        </div>
+                                        <>
+                                            <Loader2 className="animate-spin" />
+                                            {m.unstaking}
+                                        </>
                                     ) : (
-                                        <div className="flex items-center gap-2">
-                                            <LogOut className="w-4 h-4" />
-                                            Unstake &amp; Withdraw NFT
-                                        </div>
+                                        <>
+                                            <LogOut />
+                                            {m.unstakeWithdraw}
+                                        </>
                                     )}
                                 </Button>
 
-                                <p className="text-xs text-gray-500 text-center">
-                                    Harvest claims your rewards and re-stakes automatically (3 transactions).
-                                    Unstake withdraws the NFT to your wallet permanently.
-                                </p>
+                                <p className="text-center text-xs text-muted-deep">{m.footnote}</p>
                             </div>
-                        )}
+                        ) : null}
 
                         {/* Error Display */}
                         {error && (
-                            <div className="flex items-center gap-2 p-3 bg-red-500/10 border border-red-500/20 rounded-lg">
-                                <AlertCircle className="w-4 h-4 text-red-400 flex-shrink-0" />
-                                <p className="text-red-400 text-sm">{error}</p>
+                            <div className="flex items-center gap-2 rounded-xl border border-danger/25 bg-danger/10 p-3">
+                                <AlertCircle className="size-4 shrink-0 text-danger" />
+                                <p className="text-sm text-danger">{error}</p>
                             </div>
                         )}
 
@@ -337,9 +335,10 @@ export default function V3ManageModal({
                             <Button
                                 onClick={handleClose}
                                 disabled={isProcessing}
-                                className="w-full bg-stone-700 hover:bg-stone-600 text-white"
+                                variant="secondary"
+                                className="w-full"
                             >
-                                Cancel
+                                {d.cancel}
                             </Button>
                         )}
                     </div>

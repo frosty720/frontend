@@ -5,23 +5,19 @@ import { CHAIN_IDS } from '@/config/chains';
 import { launchpadLogger } from '@/lib/logger';
 
 import { useState, useEffect } from 'react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import { Switch } from '@/components/ui/switch';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
+import { Pill } from '@/components/primitives/Pill';
 import {
   Zap,
   Info,
   AlertTriangle,
   CheckCircle,
   Calendar,
-  DollarSign,
-  Target,
-  Users,
   Wallet,
   Shield,
   Globe,
@@ -29,8 +25,7 @@ import {
   Github,
   MessageCircle,
   Send,
-  Twitter,
-  Building
+  Twitter
 } from 'lucide-react';
 
 // Contract configuration imports
@@ -53,7 +48,12 @@ import 'react-datepicker/dist/react-datepicker.css';
 import '@/styles/datepicker-dark.css';
 import { kalyFeeOverrides } from '@/config/gas';
 import { assertTxSucceeded } from '@/utils/transactions';
-import { ConnectWalletButton } from '@/components/wallet/ConnectWallet';
+import { ClientOnlyConnectWallet } from '@/components/wallet/ClientOnlyConnectWallet';
+import { EmptyState } from '@/components/primitives/EmptyState';
+import { useDict } from '@/i18n/hooks';
+import { interpolate } from '@/i18n/interpolate';
+import { describeError } from '@/i18n/errorText';
+import { UserError } from '@/lib/userError';
 
 // GraphQL mutation for saving confirmed fairlaunch projects
 const SAVE_FAIRLAUNCH_AFTER_DEPLOYMENT = `
@@ -119,6 +119,9 @@ interface FairlaunchCreatorProps {
 }
 
 export default function FairlaunchCreator() {
+  const dict = useDict();
+  const f = dict.launchpadForms.fairlaunch;
+  const sh = dict.launchpadForms.shared;
 
   // Wagmi hooks for wallet interaction
   const { address, isConnected } = useAccount();
@@ -191,7 +194,7 @@ export default function FairlaunchCreator() {
 
   // Helper function to get token information (decimals, symbol)
   const getTokenInfo = async (tokenAddress: string) => {
-    if (!publicClient) throw new Error('Public client not available');
+    if (!publicClient) throw new UserError('rpcUnavailable');
 
     const tokenContract = getContract({
       address: tokenAddress as `0x${string}`,
@@ -213,7 +216,7 @@ export default function FairlaunchCreator() {
 
   // Helper function to check token allowance
   const checkTokenAllowance = async (tokenAddress: string, spenderAddress: string) => {
-    if (!publicClient || !address) throw new Error('Wallet not connected');
+    if (!publicClient || !address) throw new UserError('walletNotConnected');
 
     const tokenContract = getContract({
       address: tokenAddress as `0x${string}`,
@@ -231,8 +234,8 @@ export default function FairlaunchCreator() {
 
   // Helper function to approve tokens
   const approveTokens = async (tokenAddress: string, spenderAddress: string, amount: bigint) => {
-    if (!address) throw new Error('Wallet not connected');
-    if (!walletClient) throw new Error('Wallet client not available');
+    if (!address) throw new UserError('walletNotConnected');
+    if (!walletClient) throw new UserError('walletUnavailable');
 
     try {
       const hash = await walletClient.writeContract({
@@ -246,7 +249,7 @@ export default function FairlaunchCreator() {
       });
 
       // Wait for transaction confirmation
-      const receipt = await assertTxSucceeded(publicClient!, hash, 'Token approval');
+      const receipt = await assertTxSucceeded(publicClient!, hash, 'tokenApproval');
       return receipt;
     } catch (error) {
       throw new Error(`Failed to approve tokens: ${error instanceof Error ? error.message : 'Unknown error'}`);
@@ -339,48 +342,48 @@ export default function FairlaunchCreator() {
 
   const validateForm = () => {
     // Validate project information
-    if (!formData.projectName.trim()) return 'Project name is required';
-    if (!formData.projectDescription.trim()) return 'Project description is required';
-    if (formData.projectDescription.length > 500) return 'Project description must be 500 characters or less';
+    if (!formData.projectName.trim()) return sh.errorProjectNameRequired;
+    if (!formData.projectDescription.trim()) return sh.errorProjectDescriptionRequired;
+    if (formData.projectDescription.length > 500) return sh.errorProjectDescriptionTooLong;
 
     // Validate URLs
-    if (!isValidUrl(formData.websiteUrl)) return 'Invalid website URL format';
-    if (!isValidUrl(formData.whitepaperUrl)) return 'Invalid whitepaper URL format';
-    if (!isValidUrl(formData.githubUrl)) return 'Invalid GitHub URL format';
-    if (!isValidUrl(formData.discordUrl)) return 'Invalid Discord URL format';
-    if (!isValidUrl(formData.telegramUrl)) return 'Invalid Telegram URL format';
-    if (!isValidUrl(formData.twitterUrl)) return 'Invalid Twitter URL format';
-    if (!isValidUrl(formData.additionalSocialUrl)) return 'Invalid additional social URL format';
+    if (!isValidUrl(formData.websiteUrl)) return sh.errorInvalidWebsiteUrl;
+    if (!isValidUrl(formData.whitepaperUrl)) return sh.errorInvalidWhitepaperUrl;
+    if (!isValidUrl(formData.githubUrl)) return sh.errorInvalidGithubUrl;
+    if (!isValidUrl(formData.discordUrl)) return sh.errorInvalidDiscordUrl;
+    if (!isValidUrl(formData.telegramUrl)) return sh.errorInvalidTelegramUrl;
+    if (!isValidUrl(formData.twitterUrl)) return sh.errorInvalidTwitterUrl;
+    if (!isValidUrl(formData.additionalSocialUrl)) return sh.errorInvalidAdditionalSocialUrl;
 
     // Validate fairlaunch configuration
-    if (!formData.saleToken.trim()) return 'Sale token address is required';
-    if (!formData.buybackRate.trim()) return 'Token distribution rate is required';
-    if (!formData.sellingAmount.trim()) return 'Selling amount is required';
-    if (!formData.softCap.trim()) return 'Soft cap is required';
-    if (!formData.fairlaunchStart.trim()) return 'Fairlaunch start time is required';
-    if (!formData.fairlaunchEnd.trim()) return 'Fairlaunch end time is required';
+    if (!formData.saleToken.trim()) return sh.errorSaleTokenRequired;
+    if (!formData.buybackRate.trim()) return f.errorBuybackRateRequired;
+    if (!formData.sellingAmount.trim()) return f.errorSellingAmountRequired;
+    if (!formData.softCap.trim()) return sh.errorSoftCapRequired;
+    if (!formData.fairlaunchStart.trim()) return f.errorFairStartRequired;
+    if (!formData.fairlaunchEnd.trim()) return f.errorFairEndRequired;
 
     // Validate numeric values
     const buybackRate = Number(formData.buybackRate);
     const sellingAmount = Number(formData.sellingAmount);
     const softCap = Number(formData.softCap);
 
-    if (buybackRate <= 0) return 'Token distribution rate must be greater than 0';
-    if (sellingAmount <= 0) return 'Selling amount must be greater than 0';
-    if (softCap <= 0) return 'Soft cap must be greater than 0';
+    if (buybackRate <= 0) return f.errorBuybackRatePositive;
+    if (sellingAmount <= 0) return f.errorSellingAmountPositive;
+    if (softCap <= 0) return sh.errorSoftCapPositive;
 
     // Validate timestamps
     const startTime = new Date(formData.fairlaunchStart).getTime();
     const endTime = new Date(formData.fairlaunchEnd).getTime();
     const now = Date.now();
 
-    if (startTime <= now) return 'Fairlaunch start time must be in the future';
-    if (endTime <= startTime) return 'Fairlaunch end time must be after start time';
+    if (startTime <= now) return f.errorFairStartInFuture;
+    if (endTime <= startTime) return f.errorFairEndAfterStart;
 
     // Validate liquidity percentage (fairlaunch should be 100%)
     const liquidityPercent = Number(formData.liquidityPercent);
     if (liquidityPercent !== 100) {
-      return 'Fairlaunch requires 100% liquidity percentage';
+      return f.errorLiquidityMustBe100;
     }
 
     return null; // No validation errors
@@ -411,7 +414,7 @@ export default function FairlaunchCreator() {
     }
 
     if (!isConnected || !address || !walletClient || !publicClient) {
-      setError('Please connect your wallet to create a fairlaunch');
+      setError(f.walletRequiredBody);
       return;
     }
 
@@ -493,7 +496,7 @@ export default function FairlaunchCreator() {
       launchpadLogger.debug(`📝 Transaction hash: ${hash}`);
       launchpadLogger.debug('⏳ Waiting for transaction confirmation...');
 
-      const receipt = await assertTxSucceeded(publicClient, hash, 'Fairlaunch creation');
+      const receipt = await assertTxSucceeded(publicClient, hash, 'fairlaunchCreation');
       launchpadLogger.debug(`✅ Transaction confirmed in block ${receipt.blockNumber}`);
 
       // Step 5: Parse fairlaunch address from events
@@ -538,7 +541,7 @@ export default function FairlaunchCreator() {
 
       let setRouterHash: `0x${string}` | undefined;
 
-      if (true) {
+      {
         // The position manager and liquidity helper are wired by the FACTORY via
         // initV3() at creation and are locked (audit M5) — setPositionManager() no
         // longer exists on-chain. All the owner may still choose is the fee tier.
@@ -558,7 +561,7 @@ export default function FairlaunchCreator() {
         launchpadLogger.debug('✅ V3 pool fee tier set successfully');
       }
 
-      if (setRouterHash) await assertTxSucceeded(publicClient, setRouterHash, 'Set pool fee');
+      if (setRouterHash) await assertTxSucceeded(publicClient, setRouterHash, 'setPoolFee');
       setIsSettingRouter(false);
 
       // Step 7: Save to database
@@ -573,7 +576,7 @@ export default function FairlaunchCreator() {
         launchpadLogger.debug('✅ Fairlaunch project successfully saved to database:', savedProject.id);
       } catch (dbError) {
         launchpadLogger.error('❌ Failed to save to database, but blockchain transaction succeeded:', dbError);
-        setError(`Fairlaunch created successfully, but failed to save project details: ${dbError instanceof Error ? dbError.message : 'Unknown error'}`);
+        setError(interpolate(f.dbSaveFailedError, { error: describeError(dbError, dict) }));
       }
 
       setCurrentStep('complete');
@@ -602,7 +605,7 @@ export default function FairlaunchCreator() {
 
     } catch (err) {
       launchpadLogger.error('❌ Error creating fairlaunch:', err);
-      setError(err instanceof Error ? err.message : 'Failed to create fairlaunch');
+      setError(describeError(err, dict));
       setCurrentStep('idle');
     } finally {
       setIsCreating(false);
@@ -630,7 +633,7 @@ export default function FairlaunchCreator() {
   };
 
   const getFairlaunchABI = () => {
-    return true ? FAIRLAUNCH_V3_ABI : FAIRLAUNCH_ABI;
+    return FAIRLAUNCH_V3_ABI;
   };
 
   const formatDateTime = (dateString: string) => {
@@ -642,650 +645,590 @@ export default function FairlaunchCreator() {
   // backend records ownership from the deployment receipt (`receipt.from`).
   if (!isConnected) {
     return (
-      <Card className="form-card">
-        <CardContent className="p-8 text-center">
-          <div className="flex flex-col items-center space-y-4">
-            <div className="p-4 bg-amber-500/20 rounded-full">
-              <Building className="h-8 w-8 text-amber-400" />
-            </div>
-            <h3 className="text-xl font-semibold text-white">Connect Your Wallet</h3>
-            <p className="text-gray-300 max-w-md">
-              Connect a wallet to create fairlaunches. Your wallet is your account — there is
-              nothing to sign up for.
-            </p>
-            <div className="mt-6">
-              <ConnectWalletButton />
-            </div>
-          </div>
-        </CardContent>
-      </Card>
+      <EmptyState
+        icon={Wallet}
+        title={sh.connectWalletTitle}
+        body={f.connectBody}
+        action={<ClientOnlyConnectWallet />}
+      />
     );
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-8">
       {/* Fairlaunch Info */}
-      <Card className="form-card">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-white">
-            <Zap className="h-5 w-5" />
-            Create Fairlaunch
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="flex items-start gap-3 p-4 bg-orange-900/20 border border-orange-500/20 rounded-lg">
-            <Info className="h-5 w-5 text-orange-400 mt-0.5 flex-shrink-0" />
-            <div>
-              <h4 className="font-medium text-white mb-1">Fairlaunch Campaign</h4>
-              <p className="text-sm text-gray-300">
-                Launch a fair distribution campaign where token price is determined by total contributions.
-                All participants get tokens at the same final rate.
-              </p>
-              <div className="mt-2 space-x-2">
-                <Badge className="badge-fairlaunch text-xs">
-                  Fee: {getCreationFee()} KMT
-                </Badge>
-                <Badge className="badge-fairlaunch text-xs">
-                  Fair Distribution
-                </Badge>
-              </div>
+      <section className="space-y-4">
+        <h2 className="flex items-center gap-2 font-display text-lg font-semibold text-cream">
+          <Zap className="size-5 text-gold" />
+          {f.mainHeading}
+        </h2>
+        <div className="flex items-start gap-3 rounded-xl border border-gold/25 bg-gold-soft p-4">
+          <Info className="mt-0.5 size-5 shrink-0 text-gold-light" />
+          <div>
+            <h4 className="mb-1 font-semibold text-cream">{f.introTitle}</h4>
+            <p className="text-sm text-muted-foreground">{f.introBody}</p>
+            <div className="mt-2 flex flex-wrap gap-2">
+              <Badge>{interpolate(f.feeBadge, { fee: getCreationFee() })}</Badge>
+              <Pill tone="violet">{f.fairBadge}</Pill>
             </div>
           </div>
-        </CardContent>
-      </Card>
+        </div>
+      </section>
 
       {/* V3 Indicator Banner */}
-      {true && (
-        <div className="bg-purple-900/30 border border-purple-500/30 rounded-lg p-3 mb-4">
-          <p className="text-purple-300 text-sm">
-            V3 Fairlaunch — Liquidity will be deployed to a V3 pool and the position NFT will be permanently burned
-          </p>
-        </div>
-      )}
+      <div className="rounded-xl border border-info/25 bg-info/10 p-3">
+        <p className="text-sm text-info">{f.v3Banner}</p>
+      </div>
 
       {/* Fairlaunch vs Presale Comparison */}
-      <Card className="form-card">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-white">
-            <Shield className="h-5 w-5" />
-            Fairlaunch vs Presale
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="p-4 bg-orange-900/20 border border-orange-500/20 rounded-lg">
-              <h4 className="font-medium text-white mb-2">Fairlaunch</h4>
-              <ul className="text-sm text-gray-300 space-y-1">
-                <li>• Price determined by total contributions</li>
-                <li>• Everyone gets same final rate</li>
-                <li>• No early bird advantage</li>
-                <li>• 100% liquidity typically</li>
-                <li>• More fair distribution</li>
-              </ul>
-            </div>
-            <div className="p-4 bg-purple-900/20 border border-purple-500/20 rounded-lg">
-              <h4 className="font-medium text-white mb-2">Presale</h4>
-              <ul className="text-sm text-gray-300 space-y-1">
-                <li>• Fixed token rate</li>
-                <li>• First come, first served</li>
-                <li>• Early participants get advantage</li>
-                <li>• Configurable liquidity %</li>
-                <li>• Traditional model</li>
-              </ul>
-            </div>
+      <section className="space-y-4 border-t border-line pt-8">
+        <h2 className="flex items-center gap-2 font-display text-lg font-semibold text-cream">
+          <Shield className="size-5 text-gold" />
+          {f.comparisonHeading}
+        </h2>
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+          <div className="rounded-xl bg-surface-alt p-4">
+            <h4 className="mb-2 font-semibold text-cream">{f.comparisonFairlaunchTitle}</h4>
+            <ul className="space-y-1 text-sm text-muted-foreground">
+              {f.comparisonFairlaunchItems.map((item) => (
+                <li key={item}>• {item}</li>
+              ))}
+            </ul>
           </div>
-        </CardContent>
-      </Card>
+          <div className="rounded-xl bg-surface-alt p-4">
+            <h4 className="mb-2 font-semibold text-cream">{f.comparisonPresaleTitle}</h4>
+            <ul className="space-y-1 text-sm text-muted-foreground">
+              {f.comparisonPresaleItems.map((item) => (
+                <li key={item}>• {item}</li>
+              ))}
+            </ul>
+          </div>
+        </div>
+      </section>
 
       {/* Project Information */}
-      <Card className="form-card">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-white">
-            <Info className="h-5 w-5" />
-            Project Information
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-6">
-          <div className="flex items-start gap-3 p-4 bg-blue-900/20 border border-blue-500/20 rounded-lg">
-            <Info className="h-5 w-5 text-blue-400 mt-0.5 flex-shrink-0" />
-            <div>
-              <h4 className="font-medium text-white mb-1">Project Details</h4>
-              <p className="text-sm text-gray-300">
-                Provide comprehensive information about your project. This information will be saved to our database
-                only after successful fairlaunch deployment on the blockchain.
-              </p>
-            </div>
+      <section className="space-y-6 border-t border-line pt-8">
+        <h2 className="flex items-center gap-2 font-display text-lg font-semibold text-cream">
+          <Info className="size-5 text-gold" />
+          {sh.projectInfoHeading}
+        </h2>
+
+        <div className="flex items-start gap-3 rounded-xl border border-info/25 bg-info/10 p-4">
+          <Info className="mt-0.5 size-5 shrink-0 text-info" />
+          <div>
+            <h4 className="mb-1 font-semibold text-cream">{f.projectDetailsTitle}</h4>
+            <p className="text-sm text-muted-foreground">{f.projectDetailsBody}</p>
           </div>
+        </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div className="space-y-2">
-              <Label htmlFor="projectName" className="flex items-center gap-1 text-gray-300">
-                Project Name <span className="text-red-400">*</span>
-              </Label>
-              <Input
-                id="projectName"
-                placeholder="e.g., KalySwap Protocol"
-                value={formData.projectName}
-                onChange={(e) => handleInputChange('projectName', e.target.value)}
-                className="h-12 form-input"
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="websiteUrl" className="flex items-center gap-2 text-gray-300">
-                <Globe className="h-4 w-4" />
-                Website URL
-              </Label>
-              <Input
-                id="websiteUrl"
-                placeholder="https://yourproject.com"
-                value={formData.websiteUrl}
-                onChange={(e) => handleInputChange('websiteUrl', e.target.value)}
-                className="h-12 form-input"
-              />
-            </div>
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="projectDescription" className="flex items-center gap-1 text-gray-300">
-              Project Description <span className="text-red-400">*</span>
-              <span className="text-xs text-gray-400 ml-auto">
-                {formData.projectDescription.length}/500 characters
-              </span>
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+          <div className="space-y-1.5">
+            <Label htmlFor="projectName" className="flex items-center gap-1 text-[13px] text-muted-foreground">
+              {sh.projectNameLabel} <span className="text-danger">{sh.requiredMark}</span>
             </Label>
-            <Textarea
-              id="projectDescription"
-              placeholder="Brief overview of your project, its goals, and value proposition..."
-              value={formData.projectDescription}
-              onChange={(e) => handleInputChange('projectDescription', e.target.value)}
-              className="min-h-[100px] resize-none form-input"
-              maxLength={500}
+            <Input
+              id="projectName"
+              placeholder={sh.projectNamePlaceholder}
+              value={formData.projectName}
+              onChange={(e) => handleInputChange('projectName', e.target.value)}
+              className="h-12 rounded-xl border-line bg-surface-alt text-cream placeholder:text-muted-deep"
             />
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div className="space-y-2">
-              <Label htmlFor="whitepaperUrl" className="flex items-center gap-2 text-gray-300">
-                <FileText className="h-4 w-4" />
-                Whitepaper URL
-              </Label>
-              <Input
-                id="whitepaperUrl"
-                placeholder="https://docs.yourproject.com/whitepaper"
-                value={formData.whitepaperUrl}
-                onChange={(e) => handleInputChange('whitepaperUrl', e.target.value)}
-                className="h-12 form-input"
-              />
-            </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="websiteUrl" className="flex items-center gap-2 text-[13px] text-muted-foreground">
+              <Globe className="size-4" />
+              {sh.websiteLabel}
+            </Label>
+            <Input
+              id="websiteUrl"
+              placeholder={sh.websitePlaceholder}
+              value={formData.websiteUrl}
+              onChange={(e) => handleInputChange('websiteUrl', e.target.value)}
+              className="h-12 rounded-xl border-line bg-surface-alt text-cream placeholder:text-muted-deep"
+            />
+          </div>
+        </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="githubUrl" className="flex items-center gap-2 text-gray-300">
-                <Github className="h-4 w-4" />
-                GitHub URL
-              </Label>
-              <Input
-                id="githubUrl"
-                placeholder="https://github.com/yourproject"
-                value={formData.githubUrl}
-                onChange={(e) => handleInputChange('githubUrl', e.target.value)}
-                className="h-12 form-input"
-              />
-            </div>
+        <div className="space-y-1.5">
+          <Label htmlFor="projectDescription" className="flex items-center gap-1 text-[13px] text-muted-foreground">
+            {sh.descriptionLabel} <span className="text-danger">{sh.requiredMark}</span>
+            <span className="ml-auto text-xs text-muted-deep">
+              {interpolate(sh.descriptionCounter, { count: formData.projectDescription.length })}
+            </span>
+          </Label>
+          <Textarea
+            id="projectDescription"
+            placeholder={sh.descriptionPlaceholder}
+            value={formData.projectDescription}
+            onChange={(e) => handleInputChange('projectDescription', e.target.value)}
+            className="min-h-[100px] resize-none rounded-xl border-line bg-surface-alt text-cream placeholder:text-muted-deep"
+            maxLength={500}
+          />
+        </div>
+
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+          <div className="space-y-1.5">
+            <Label htmlFor="whitepaperUrl" className="flex items-center gap-2 text-[13px] text-muted-foreground">
+              <FileText className="size-4" />
+              {sh.whitepaperLabel}
+            </Label>
+            <Input
+              id="whitepaperUrl"
+              placeholder={sh.whitepaperPlaceholder}
+              value={formData.whitepaperUrl}
+              onChange={(e) => handleInputChange('whitepaperUrl', e.target.value)}
+              className="h-12 rounded-xl border-line bg-surface-alt text-cream placeholder:text-muted-deep"
+            />
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div className="space-y-2">
-              <Label htmlFor="discordUrl" className="flex items-center gap-2 text-gray-300">
-                <MessageCircle className="h-4 w-4" />
-                Discord URL
-              </Label>
-              <Input
-                id="discordUrl"
-                placeholder="https://discord.gg/yourproject"
-                value={formData.discordUrl}
-                onChange={(e) => handleInputChange('discordUrl', e.target.value)}
-                className="h-12 form-input"
-              />
-            </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="githubUrl" className="flex items-center gap-2 text-[13px] text-muted-foreground">
+              <Github className="size-4" />
+              {f.githubLabel}
+            </Label>
+            <Input
+              id="githubUrl"
+              placeholder={f.githubPlaceholder}
+              value={formData.githubUrl}
+              onChange={(e) => handleInputChange('githubUrl', e.target.value)}
+              className="h-12 rounded-xl border-line bg-surface-alt text-cream placeholder:text-muted-deep"
+            />
+          </div>
+        </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="telegramUrl" className="flex items-center gap-2 text-gray-300">
-                <Send className="h-4 w-4" />
-                Telegram URL
-              </Label>
-              <Input
-                id="telegramUrl"
-                placeholder="https://t.me/yourproject"
-                value={formData.telegramUrl}
-                onChange={(e) => handleInputChange('telegramUrl', e.target.value)}
-                className="h-12 form-input"
-              />
-            </div>
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+          <div className="space-y-1.5">
+            <Label htmlFor="discordUrl" className="flex items-center gap-2 text-[13px] text-muted-foreground">
+              <MessageCircle className="size-4" />
+              {f.discordLabel}
+            </Label>
+            <Input
+              id="discordUrl"
+              placeholder={f.discordPlaceholder}
+              value={formData.discordUrl}
+              onChange={(e) => handleInputChange('discordUrl', e.target.value)}
+              className="h-12 rounded-xl border-line bg-surface-alt text-cream placeholder:text-muted-deep"
+            />
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div className="space-y-2">
-              <Label htmlFor="twitterUrl" className="flex items-center gap-2 text-gray-300">
-                <Twitter className="h-4 w-4" />
-                Twitter URL
-              </Label>
-              <Input
-                id="twitterUrl"
-                placeholder="https://twitter.com/yourproject"
-                value={formData.twitterUrl}
-                onChange={(e) => handleInputChange('twitterUrl', e.target.value)}
-                className="h-12 form-input"
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="additionalSocialUrl" className="text-gray-300">Additional Social URL</Label>
-              <Input
-                id="additionalSocialUrl"
-                placeholder="https://yourproject.medium.com"
-                value={formData.additionalSocialUrl}
-                onChange={(e) => handleInputChange('additionalSocialUrl', e.target.value)}
-                className="h-12 form-input"
-              />
-            </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="telegramUrl" className="flex items-center gap-2 text-[13px] text-muted-foreground">
+              <Send className="size-4" />
+              {f.telegramLabel}
+            </Label>
+            <Input
+              id="telegramUrl"
+              placeholder={f.telegramPlaceholder}
+              value={formData.telegramUrl}
+              onChange={(e) => handleInputChange('telegramUrl', e.target.value)}
+              className="h-12 rounded-xl border-line bg-surface-alt text-cream placeholder:text-muted-deep"
+            />
           </div>
-        </CardContent>
-      </Card>
+        </div>
+
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+          <div className="space-y-1.5">
+            <Label htmlFor="twitterUrl" className="flex items-center gap-2 text-[13px] text-muted-foreground">
+              <Twitter className="size-4" />
+              {f.twitterLabel}
+            </Label>
+            <Input
+              id="twitterUrl"
+              placeholder={f.twitterPlaceholder}
+              value={formData.twitterUrl}
+              onChange={(e) => handleInputChange('twitterUrl', e.target.value)}
+              className="h-12 rounded-xl border-line bg-surface-alt text-cream placeholder:text-muted-deep"
+            />
+          </div>
+
+          <div className="space-y-1.5">
+            <Label htmlFor="additionalSocialUrl" className="text-[13px] text-muted-foreground">{f.additionalSocialLabel}</Label>
+            <Input
+              id="additionalSocialUrl"
+              placeholder={f.additionalSocialPlaceholder}
+              value={formData.additionalSocialUrl}
+              onChange={(e) => handleInputChange('additionalSocialUrl', e.target.value)}
+              className="h-12 rounded-xl border-line bg-surface-alt text-cream placeholder:text-muted-deep"
+            />
+          </div>
+        </div>
+      </section>
 
       {/* Fairlaunch Configuration */}
-      <Card className="form-card">
-        <CardHeader>
-          <CardTitle className="text-white">Fairlaunch Configuration</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-6">
-          {/* Token Settings */}
-          <div className="space-y-4">
-            <h3 className="text-lg font-medium text-white">Token Settings</h3>
+      <section className="space-y-6 border-t border-line pt-8">
+        <h2 className="font-display text-lg font-semibold text-cream">{f.configHeading}</h2>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div className="space-y-2">
-                <Label htmlFor="saleToken" className="text-gray-300">Sale Token Address *</Label>
-                <Input
-                  id="saleToken"
-                  placeholder="0x..."
-                  value={formData.saleToken}
-                  onChange={(e) => handleInputChange('saleToken', e.target.value)}
-                  className="h-12 form-input"
-                />
-              </div>
+        {/* Token Settings */}
+        <div className="space-y-4">
+          <h3 className="font-display text-base font-semibold text-cream">{sh.tokenSettingsHeading}</h3>
 
-              <div className="space-y-2">
-                <Label htmlFor="baseToken" className="text-gray-300">Base Token</Label>
-                <Select
-                  value={formData.baseToken}
-                  onValueChange={(value) => {
-                    handleInputChange('baseToken', value);
-                    handleInputChange('isNative', value === 'native');
-                  }}
-                >
-                  <SelectTrigger className="h-12 form-input">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent className="select-content">
-                    {BASE_TOKENS.map((token) => (
-                      <SelectItem
-                        key={token.symbol}
-                        value={token.isNative ? 'native' : token.address}
-                        className="select-item"
-                      >
-                        {token.symbol} ({token.name})
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="sellingAmount" className="text-gray-300">Selling Amount *</Label>
-                <Input
-                  id="sellingAmount"
-                  placeholder="e.g., 1000000 (total tokens for sale)"
-                  value={formData.sellingAmount}
-                  onChange={(e) => handleInputChange('sellingAmount', e.target.value)}
-                  className="h-12 form-input"
-                />
-                <p className="text-xs text-gray-400">Total amount of tokens available for the fairlaunch</p>
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="buybackRate" className="text-gray-300">Initial Rate (Reference Only) *</Label>
-                <Input
-                  id="buybackRate"
-                  placeholder="e.g., 1000 (tokens per KMT)"
-                  value={formData.buybackRate}
-                  onChange={(e) => handleInputChange('buybackRate', e.target.value)}
-                  className="h-12 form-input"
-                />
-                <p className="text-xs text-gray-400">
-                  Reference rate only - actual rate is calculated as: Selling Amount ÷ Total Raised Amount
-                </p>
-              </div>
-            </div>
-          </div>
-
-          {/* Cap & Liquidity Settings */}
-          <div className="space-y-4 pt-6 border-t border-blue-500/20">
-            <h3 className="text-lg font-medium text-white">Cap & Liquidity Settings</h3>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div className="space-y-2">
-                <Label htmlFor="softCap" className="text-gray-300">Soft Cap *</Label>
-                <Input
-                  id="softCap"
-                  placeholder="e.g., 100"
-                  value={formData.softCap}
-                  onChange={(e) => handleInputChange('softCap', e.target.value)}
-                  className="h-12 form-input"
-                />
-                <p className="text-xs text-gray-400">Minimum amount to raise for success</p>
-              </div>
-
-              <div className="space-y-2">
-                <Label className="text-gray-300">Liquidity</Label>
-                <div className="h-12 px-3 py-2 border border-blue-500/20 rounded-md bg-slate-800/50 flex items-center">
-                  <span className="font-medium text-white">100% (Fixed)</span>
-                </div>
-                <div className="text-xs text-gray-400 space-y-1">
-                  <p>• ALL raised funds create the liquidity pool</p>
-                  <p>• LP tokens are automatically burned after fairlaunch</p>
-                  <p>• This ensures maximum liquidity and prevents rug pulls</p>
-                </div>
-              </div>
-            </div>
-          </div>
-
-
-
-          {/* V3 Fee Tier Selector */}
-          {true && (
-            <div className="space-y-4 pt-6 border-t border-blue-500/20">
-              <h3 className="text-lg font-medium text-white">V3 Pool Fee Tier</h3>
-              <div className="space-y-2">
-                <Label className="text-gray-300">Fee Tier</Label>
-                <Select
-                  value={String(v3FeeTier)}
-                  onValueChange={(value) => setV3FeeTier(Number(value))}
-                >
-                  <SelectTrigger className="h-12 form-input">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent className="select-content">
-                    <SelectItem value="500" className="select-item">0.05% — Best for stablecoin pairs</SelectItem>
-                    <SelectItem value="3000" className="select-item">0.3% — Best for most pairs</SelectItem>
-                    <SelectItem value="10000" className="select-item">1% — Best for exotic pairs</SelectItem>
-                  </SelectContent>
-                </Select>
-                <p className="text-xs text-gray-400">
-                  The fee tier determines the swap fee for the V3 liquidity pool. 0.3% is recommended for most token pairs.
-                </p>
-              </div>
-            </div>
-          )}
-
-          {/* Timing Settings */}
-          <div className="space-y-4 pt-6 border-t border-blue-500/20">
-            <h3 className="text-lg font-medium text-white">Timing Settings</h3>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div className="space-y-2">
-                <Label className="text-gray-300">Fairlaunch Start *</Label>
-                <DatePicker
-                  selected={formData.fairlaunchStart ? new Date(formData.fairlaunchStart) : null}
-                  onChange={(date) => {
-                    if (date) {
-                      handleInputChange('fairlaunchStart', date.toISOString());
-                    }
-                  }}
-                  showTimeSelect
-                  timeFormat="HH:mm"
-                  timeIntervals={15}
-                  dateFormat="MMMM d, yyyy h:mm aa"
-                  className="h-12 w-full px-3 py-2 bg-gray-800/50 border border-gray-600 rounded-md text-white focus:outline-none focus:ring-2 focus:ring-amber-500"
-                  placeholderText="Select Date and Time"
-                  minDate={new Date()}
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label className="text-gray-300">Fairlaunch End *</Label>
-                <DatePicker
-                  selected={formData.fairlaunchEnd ? new Date(formData.fairlaunchEnd) : null}
-                  onChange={(date) => {
-                    if (date) {
-                      handleInputChange('fairlaunchEnd', date.toISOString());
-                    }
-                  }}
-                  showTimeSelect
-                  timeFormat="HH:mm"
-                  timeIntervals={15}
-                  dateFormat="MMMM d, yyyy h:mm aa"
-                  className="h-12 w-full px-3 py-2 bg-gray-800/50 border border-gray-600 rounded-md text-white focus:outline-none focus:ring-2 focus:ring-amber-500"
-                  placeholderText="Select Date and Time"
-                  minDate={formData.fairlaunchStart ? new Date(formData.fairlaunchStart) : new Date()}
-                />
-              </div>
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+            <div className="space-y-1.5">
+              <Label htmlFor="saleToken" className="text-[13px] text-muted-foreground">{sh.saleTokenLabel}</Label>
+              <Input
+                id="saleToken"
+                placeholder={sh.saleTokenPlaceholder}
+                value={formData.saleToken}
+                onChange={(e) => handleInputChange('saleToken', e.target.value)}
+                className="h-12 rounded-xl border-line bg-surface-alt text-cream placeholder:text-muted-deep"
+              />
             </div>
 
-            {formData.fairlaunchStart && formData.fairlaunchEnd && (
-              <div className="flex items-center gap-4 text-sm text-gray-300 mt-2">
-                <div className="flex items-center gap-1">
-                  <Calendar className="h-4 w-4" />
-                  <span>Start: {formatDateTime(formData.fairlaunchStart)}</span>
-                </div>
-                <div className="flex items-center gap-1">
-                  <Calendar className="h-4 w-4" />
-                  <span>End: {formatDateTime(formData.fairlaunchEnd)}</span>
-                </div>
-              </div>
-            )}
-          </div>
-
-          {/* Token Requirements Info */}
-          {formData.sellingAmount && formData.liquidityPercent && (
-            <div className="flex items-start gap-3 p-4 bg-purple-900/20 border border-purple-500/20 rounded-lg">
-              <Info className="h-5 w-5 text-purple-400 mt-0.5 flex-shrink-0" />
-              <div>
-                <h4 className="font-medium text-white mb-1">Token Requirements</h4>
-                <div className="text-sm text-gray-300 space-y-1">
-                  <p>• <strong>Selling Amount:</strong> {formData.sellingAmount} tokens</p>
-                  <p>• <strong>Liquidity Amount:</strong> {formData.sellingAmount} tokens (100% for fairlaunch)</p>
-                  <p>• <strong>Total Required:</strong> {Number(formData.sellingAmount) * 2} tokens</p>
-                  <p className="mt-2 text-xs text-gray-400">
-                    You need to approve this total amount before creating the fairlaunch.
-                  </p>
-                </div>
-              </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="baseToken" className="text-[13px] text-muted-foreground">{sh.baseTokenLabel}</Label>
+              <Select
+                value={formData.baseToken}
+                onValueChange={(value) => {
+                  handleInputChange('baseToken', value);
+                  handleInputChange('isNative', value === 'native');
+                }}
+              >
+                <SelectTrigger className="h-12 rounded-xl border-line bg-surface-alt text-cream">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {BASE_TOKENS.map((token) => (
+                    <SelectItem
+                      key={token.symbol}
+                      value={token.isNative ? 'native' : token.address}
+                    >
+                      {interpolate(sh.baseTokenOption, { symbol: token.symbol, name: token.name })}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
-          )}
 
-          {/* Router / Position Manager Configuration Info */}
-          <div className="flex items-start gap-3 p-4 bg-blue-900/20 border border-blue-500/20 rounded-lg">
-            <Info className="h-5 w-5 text-blue-400 mt-0.5 flex-shrink-0" />
-            <div>
-              <h4 className="font-medium text-white mb-1">
-                V3 Position Manager Configuration
-              </h4>
-              <div className="text-sm text-gray-300 space-y-1">
-                <>
-                    <p>• <strong>Position Manager:</strong> {(getContracts(DEFAULT_CHAIN_ID) as any).V3_NONFUNGIBLE_POSITION_MANAGER}</p>
-                    <p>• <strong>Liquidity Helper:</strong> {(getContracts(DEFAULT_CHAIN_ID) as any).V3_LIQUIDITY_HELPER}</p>
-                    <p>• <strong>Fee Tier:</strong> {v3FeeTier === 500 ? '0.05%' : v3FeeTier === 3000 ? '0.3%' : '1%'}</p>
-                    <p>• <strong>Network:</strong> KalyChain</p>
-                    <p>• <strong>DEX:</strong> KalySwap V3</p>
-                    <div className="mt-2 pt-2 border-t border-blue-500/20">
-                      <p className="text-xs text-gray-400">
-                        <strong>Note:</strong> The V3 position manager and liquidity helper will be automatically configured after fairlaunch creation.
-                        Liquidity will be deployed as a full-range V3 position and the NFT will be permanently burned.
-                      </p>
-                    </div>
-                </>
-              </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="sellingAmount" className="text-[13px] text-muted-foreground">{f.sellingAmountLabel}</Label>
+              <Input
+                id="sellingAmount"
+                placeholder={f.sellingAmountPlaceholder}
+                value={formData.sellingAmount}
+                onChange={(e) => handleInputChange('sellingAmount', e.target.value)}
+                className="h-12 rounded-xl border-line bg-surface-alt text-cream placeholder:text-muted-deep"
+              />
+              <p className="text-xs text-muted-deep">{f.sellingAmountHelp}</p>
             </div>
-          </div>
 
-          {/* How Fairlaunch Works */}
-          <div className="flex items-start gap-3 p-4 bg-green-900/20 border border-green-500/20 rounded-lg">
-            <Info className="h-5 w-5 text-green-400 mt-0.5 flex-shrink-0" />
-            <div>
-              <h4 className="font-medium text-white mb-1">How Fairlaunch Works</h4>
-              <div className="text-sm text-gray-300 space-y-2">
-                <p>
-                  In a fairlaunch, the final token rate is determined <strong>ONLY</strong> by: <strong className="text-white">Selling Amount ÷ Total Raised Amount</strong>.
-                </p>
-                <p>
-                  <strong className="text-white">Your tokens = Your contribution × Final rate</strong>
-                </p>
-                <p>
-                  The "Initial Rate" setting above is for reference only - the actual rate depends entirely on how much is raised. Everyone receives tokens at the same final rate regardless of when they contributed.
-                </p>
-                <div className="mt-2 pt-2 border-t border-green-500/20">
-                  <p className="text-xs text-gray-400">
-                    <strong>Example:</strong> If 1,000,000 tokens are offered and 500 KMT is raised total, the final rate is 2,000 tokens per KMT for everyone, regardless of the initial rate setting.
-                  </p>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Progress Display */}
-          {isCreating && (
-            <div className="flex items-start gap-3 p-4 bg-blue-900/20 border border-blue-500/20 rounded-lg">
-              <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-blue-400 mt-0.5 flex-shrink-0"></div>
-              <div className="flex-1">
-                <h4 className="font-medium text-white mb-2">Creating Fairlaunch</h4>
-                <div className="space-y-2">
-                  <div className={`flex items-center gap-2 text-sm ${currentStep === 'approving' ? 'text-blue-400 font-medium' : currentStep === 'creating' || currentStep === 'setting-router' || currentStep === 'saving' || currentStep === 'complete' ? 'text-green-400' : 'text-gray-400'}`}>
-                    {(currentStep === 'creating' || currentStep === 'setting-router' || currentStep === 'saving' || currentStep === 'complete') ? (
-                      <CheckCircle className="h-4 w-4" />
-                    ) : currentStep === 'approving' ? (
-                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-400"></div>
-                    ) : (
-                      <div className="h-4 w-4 rounded-full border-2 border-gray-500"></div>
-                    )}
-                    <span>1. Approve tokens ({tokenSymbol || 'Token'})</span>
-                  </div>
-                  <div className={`flex items-center gap-2 text-sm ${currentStep === 'creating' ? 'text-blue-400 font-medium' : currentStep === 'setting-router' || currentStep === 'saving' || currentStep === 'complete' ? 'text-green-400' : 'text-gray-400'}`}>
-                    {(currentStep === 'setting-router' || currentStep === 'saving' || currentStep === 'complete') ? (
-                      <CheckCircle className="h-4 w-4" />
-                    ) : currentStep === 'creating' ? (
-                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-400"></div>
-                    ) : (
-                      <div className="h-4 w-4 rounded-full border-2 border-gray-500"></div>
-                    )}
-                    <span>2. Deploy fairlaunch contract</span>
-                  </div>
-                  <div className={`flex items-center gap-2 text-sm ${currentStep === 'setting-router' ? 'text-blue-400 font-medium' : currentStep === 'saving' || currentStep === 'complete' ? 'text-green-400' : 'text-gray-400'}`}>
-                    {(currentStep === 'saving' || currentStep === 'complete') ? (
-                      <CheckCircle className="h-4 w-4" />
-                    ) : currentStep === 'setting-router' ? (
-                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-400"></div>
-                    ) : (
-                      <div className="h-4 w-4 rounded-full border-2 border-gray-500"></div>
-                    )}
-                    <span>3. {true ? 'Configure V3 position manager' : 'Configure router'}</span>
-                  </div>
-                  <div className={`flex items-center gap-2 text-sm ${currentStep === 'saving' ? 'text-blue-400 font-medium' : currentStep === 'complete' ? 'text-green-400' : 'text-gray-400'}`}>
-                    {currentStep === 'complete' ? (
-                      <CheckCircle className="h-4 w-4" />
-                    ) : currentStep === 'saving' ? (
-                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-400"></div>
-                    ) : (
-                      <div className="h-4 w-4 rounded-full border-2 border-gray-500"></div>
-                    )}
-                    <span>4. Save project details</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* Error Display */}
-          {error && (
-            <div className="flex items-start gap-3 p-4 bg-red-900/20 border border-red-500/20 rounded-lg">
-              <AlertTriangle className="h-5 w-5 text-red-400 mt-0.5 flex-shrink-0" />
-              <div>
-                <h4 className="font-medium text-white mb-1">Error</h4>
-                <p className="text-sm text-gray-300">{error}</p>
-              </div>
-            </div>
-          )}
-
-          {/* Success Display */}
-          {createdFairlaunch && (
-            <div className="flex items-start gap-3 p-4 bg-green-900/20 border border-green-500/20 rounded-lg">
-              <CheckCircle className="h-5 w-5 text-green-400 mt-0.5 flex-shrink-0" />
-              <div className="flex-1">
-                <h4 className="font-medium text-white mb-1">Fairlaunch Created Successfully!</h4>
-                <p className="text-sm text-gray-300 mb-2">
-                  Your fairlaunch has been deployed to: <code className="bg-green-900/30 px-1 rounded text-green-400">{createdFairlaunch}</code>
-                </p>
-                <Button variant="outline" size="sm" className="text-green-400 border-green-500/20 hover:bg-green-500/20">
-                  View Fairlaunch Details
-                </Button>
-              </div>
-            </div>
-          )}
-
-          {/* Creation Fee Info */}
-          <div className="flex items-start gap-3 p-4 bg-gray-900/20 border border-gray-500/20 rounded-lg">
-            <Wallet className="h-5 w-5 text-gray-400 mt-0.5 flex-shrink-0" />
-            <div>
-              <h4 className="font-medium text-white mb-1">Creation Fee</h4>
-              <p className="text-sm text-gray-300">
-                A fee of <strong className="text-white">{getCreationFee()} KMT</strong> is required to create your fairlaunch.
-                This covers deployment and platform costs.
+            <div className="space-y-1.5">
+              <Label htmlFor="buybackRate" className="text-[13px] text-muted-foreground">{f.buybackRateLabel}</Label>
+              <Input
+                id="buybackRate"
+                placeholder={f.buybackRatePlaceholder}
+                value={formData.buybackRate}
+                onChange={(e) => handleInputChange('buybackRate', e.target.value)}
+                className="h-12 rounded-xl border-line bg-surface-alt text-cream placeholder:text-muted-deep"
+              />
+              <p className="text-xs text-muted-deep">
+                {f.buybackRateHelp}
               </p>
             </div>
           </div>
+        </div>
 
-          {/* Wallet Connection Check */}
-          {!isConnected && (
-            <div className="flex items-start gap-3 p-4 bg-yellow-900/20 border border-yellow-500/20 rounded-lg">
-              <Wallet className="h-5 w-5 text-yellow-400 mt-0.5 flex-shrink-0" />
-              <div>
-                <h4 className="font-medium text-white mb-1">Wallet Required</h4>
-                <p className="text-sm text-gray-300">
-                  Please connect your wallet to create a fairlaunch.
-                </p>
+        {/* Cap & Liquidity Settings */}
+        <div className="space-y-4 border-t border-line pt-6">
+          <h3 className="font-display text-base font-semibold text-cream">{f.capLiquidityHeading}</h3>
+
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+            <div className="space-y-1.5">
+              <Label htmlFor="softCap" className="text-[13px] text-muted-foreground">{sh.softCapLabel}</Label>
+              <Input
+                id="softCap"
+                placeholder={sh.softCapPlaceholder}
+                value={formData.softCap}
+                onChange={(e) => handleInputChange('softCap', e.target.value)}
+                className="h-12 rounded-xl border-line bg-surface-alt text-cream placeholder:text-muted-deep"
+              />
+              <p className="text-xs text-muted-deep">{sh.softCapHelp}</p>
+            </div>
+
+            <div className="space-y-1.5">
+              <Label className="text-[13px] text-muted-foreground">{f.liquidityFixedLabel}</Label>
+              <div className="flex h-12 items-center rounded-xl border border-line bg-surface-alt px-3 py-2">
+                <span className="font-medium text-cream">{f.liquidityFixedValue}</span>
+              </div>
+              <div className="space-y-1 text-xs text-muted-deep">
+                {f.liquidityFixedItems.map((item) => (
+                  <p key={item}>• {item}</p>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* V3 Fee Tier Selector */}
+        <div className="space-y-4 border-t border-line pt-6">
+          <h3 className="font-display text-base font-semibold text-cream">{f.feeTierHeading}</h3>
+          <div className="space-y-1.5">
+            <Label className="text-[13px] text-muted-foreground">{f.feeTierLabel}</Label>
+            <Select
+              value={String(v3FeeTier)}
+              onValueChange={(value) => setV3FeeTier(Number(value))}
+            >
+              <SelectTrigger className="h-12 rounded-xl border-line bg-surface-alt text-cream">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="500">{f.feeTier500}</SelectItem>
+                <SelectItem value="3000">{f.feeTier3000}</SelectItem>
+                <SelectItem value="10000">{f.feeTier10000}</SelectItem>
+              </SelectContent>
+            </Select>
+            <p className="text-xs text-muted-deep">
+              {f.feeTierHelp}
+            </p>
+          </div>
+        </div>
+
+        {/* Timing Settings */}
+        <div className="space-y-4 border-t border-line pt-6">
+          <h3 className="font-display text-base font-semibold text-cream">{sh.timingHeading}</h3>
+
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+            <div className="space-y-1.5">
+              <Label className="text-[13px] text-muted-foreground">{f.startLabel}</Label>
+              <DatePicker
+                selected={formData.fairlaunchStart ? new Date(formData.fairlaunchStart) : null}
+                onChange={(date) => {
+                  if (date) {
+                    handleInputChange('fairlaunchStart', date.toISOString());
+                  }
+                }}
+                showTimeSelect
+                timeFormat="HH:mm"
+                timeIntervals={15}
+                dateFormat="MMMM d, yyyy h:mm aa"
+                className="h-12 w-full rounded-xl border border-line bg-surface-alt px-3 py-2 text-cream outline-none placeholder:text-muted-deep focus:ring-2 focus:ring-gold/50"
+                placeholderText={sh.selectDateTime}
+                minDate={new Date()}
+              />
+            </div>
+
+            <div className="space-y-1.5">
+              <Label className="text-[13px] text-muted-foreground">{f.endLabel}</Label>
+              <DatePicker
+                selected={formData.fairlaunchEnd ? new Date(formData.fairlaunchEnd) : null}
+                onChange={(date) => {
+                  if (date) {
+                    handleInputChange('fairlaunchEnd', date.toISOString());
+                  }
+                }}
+                showTimeSelect
+                timeFormat="HH:mm"
+                timeIntervals={15}
+                dateFormat="MMMM d, yyyy h:mm aa"
+                className="h-12 w-full rounded-xl border border-line bg-surface-alt px-3 py-2 text-cream outline-none placeholder:text-muted-deep focus:ring-2 focus:ring-gold/50"
+                placeholderText={sh.selectDateTime}
+                minDate={formData.fairlaunchStart ? new Date(formData.fairlaunchStart) : new Date()}
+              />
+            </div>
+          </div>
+
+          {formData.fairlaunchStart && formData.fairlaunchEnd && (
+            <div className="mt-2 flex items-center gap-4 text-sm text-muted-foreground">
+              <div className="flex items-center gap-1">
+                <Calendar className="size-4" />
+                <span>{interpolate(f.startSummary, { date: formatDateTime(formData.fairlaunchStart) })}</span>
+              </div>
+              <div className="flex items-center gap-1">
+                <Calendar className="size-4" />
+                <span>{interpolate(f.endSummary, { date: formatDateTime(formData.fairlaunchEnd) })}</span>
               </div>
             </div>
           )}
+        </div>
 
-          {/* Create Button */}
-          <Button
-            onClick={handleCreateFairlaunch}
-            disabled={isCreating || !isConnected}
-            className="w-full h-12 text-base font-medium"
-            size="lg"
-          >
-            {isCreating ? (
-              <>
-                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
-                {currentStep === 'approving' && 'Approving Tokens...'}
-                {currentStep === 'creating' && 'Creating Fairlaunch...'}
-                {currentStep === 'setting-router' && (true ? 'Setting Position Manager...' : 'Setting Router...')}
-                {currentStep === 'saving' && 'Saving Project...'}
-                {currentStep === 'idle' && 'Preparing...'}
-              </>
-            ) : !isConnected ? (
-              <>
-                <Wallet className="h-4 w-4 mr-2" />
-                Connect Wallet to Create Fairlaunch
-              </>
-            ) : (
-              <>
-                <Zap className="h-4 w-4 mr-2" />
-                Create Fairlaunch ({getCreationFee()} KMT)
-              </>
-            )}
-          </Button>
-        </CardContent>
-      </Card>
+        {/* Token Requirements Info */}
+        {formData.sellingAmount && formData.liquidityPercent && (
+          <div className="flex items-start gap-3 rounded-xl border border-violet/25 bg-violet/10 p-4">
+            <Info className="mt-0.5 size-5 shrink-0 text-violet" />
+            <div>
+              <h4 className="mb-1 font-semibold text-cream">{f.tokenReqTitle}</h4>
+              <div className="space-y-1 text-sm text-muted-foreground">
+                <p>{interpolate(f.tokenReqSelling, { amount: formData.sellingAmount })}</p>
+                <p>{interpolate(f.tokenReqLiquidity, { amount: formData.sellingAmount })}</p>
+                <p>{interpolate(f.tokenReqTotal, { amount: Number(formData.sellingAmount) * 2 })}</p>
+                <p className="mt-2 text-xs text-muted-deep">
+                  {f.tokenReqNote}
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Router / Position Manager Configuration Info */}
+        <div className="flex items-start gap-3 rounded-xl border border-info/25 bg-info/10 p-4">
+          <Info className="mt-0.5 size-5 shrink-0 text-info" />
+          <div>
+            <h4 className="mb-1 font-semibold text-cream">
+              {f.v3ConfigTitle}
+            </h4>
+            <div className="space-y-1 text-sm text-muted-foreground">
+              <p>{interpolate(f.v3ConfigPositionManager, { addr: (getContracts(DEFAULT_CHAIN_ID) as any).V3_NONFUNGIBLE_POSITION_MANAGER })}</p>
+              <p>{interpolate(f.v3ConfigLiquidityHelper, { addr: (getContracts(DEFAULT_CHAIN_ID) as any).V3_LIQUIDITY_HELPER })}</p>
+              <p>{interpolate(f.v3ConfigFeeTier, { tier: v3FeeTier === 500 ? '0.05%' : v3FeeTier === 3000 ? '0.3%' : '1%' })}</p>
+              <p>{sh.v3Network}</p>
+              <p>{f.v3ConfigDex}</p>
+              <div className="mt-2 border-t border-info/20 pt-2">
+                <p className="text-xs text-muted-deep">
+                  {f.v3ConfigNote}
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* How Fairlaunch Works */}
+        <div className="flex items-start gap-3 rounded-xl border border-success/25 bg-success/10 p-4">
+          <Info className="mt-0.5 size-5 shrink-0 text-success" />
+          <div>
+            <h4 className="mb-1 font-semibold text-cream">{f.howItWorksTitle}</h4>
+            <div className="space-y-2 text-sm text-muted-foreground">
+              <p>{f.howItWorksP1}</p>
+              <p className="font-semibold text-cream">{f.howItWorksP2}</p>
+              <p>{f.howItWorksP3}</p>
+              <div className="mt-2 border-t border-success/20 pt-2">
+                <p className="text-xs text-muted-deep">{f.howItWorksExample}</p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Progress Display */}
+        {isCreating && (
+          <div className="flex items-start gap-3 rounded-xl border border-info/25 bg-info/10 p-4">
+            <div className="mt-0.5 size-5 shrink-0 animate-spin rounded-full border-b-2 border-info"></div>
+            <div className="flex-1">
+              <h4 className="mb-2 font-semibold text-cream">{f.progressHeading}</h4>
+              <div className="space-y-2">
+                <div className={`flex items-center gap-2 text-sm ${currentStep === 'approving' ? 'font-semibold text-info' : currentStep === 'creating' || currentStep === 'setting-router' || currentStep === 'saving' || currentStep === 'complete' ? 'text-success' : 'text-muted-foreground'}`}>
+                  {(currentStep === 'creating' || currentStep === 'setting-router' || currentStep === 'saving' || currentStep === 'complete') ? (
+                    <CheckCircle className="size-4" />
+                  ) : currentStep === 'approving' ? (
+                    <div className="size-4 animate-spin rounded-full border-b-2 border-info"></div>
+                  ) : (
+                    <div className="size-4 rounded-full border-2 border-line-strong"></div>
+                  )}
+                  <span>{interpolate(sh.stepApproveTokens, { symbol: tokenSymbol || sh.tokenFallback })}</span>
+                </div>
+                <div className={`flex items-center gap-2 text-sm ${currentStep === 'creating' ? 'font-semibold text-info' : currentStep === 'setting-router' || currentStep === 'saving' || currentStep === 'complete' ? 'text-success' : 'text-muted-foreground'}`}>
+                  {(currentStep === 'setting-router' || currentStep === 'saving' || currentStep === 'complete') ? (
+                    <CheckCircle className="size-4" />
+                  ) : currentStep === 'creating' ? (
+                    <div className="size-4 animate-spin rounded-full border-b-2 border-info"></div>
+                  ) : (
+                    <div className="size-4 rounded-full border-2 border-line-strong"></div>
+                  )}
+                  <span>{f.stepDeploy}</span>
+                </div>
+                <div className={`flex items-center gap-2 text-sm ${currentStep === 'setting-router' ? 'font-semibold text-info' : currentStep === 'saving' || currentStep === 'complete' ? 'text-success' : 'text-muted-foreground'}`}>
+                  {(currentStep === 'saving' || currentStep === 'complete') ? (
+                    <CheckCircle className="size-4" />
+                  ) : currentStep === 'setting-router' ? (
+                    <div className="size-4 animate-spin rounded-full border-b-2 border-info"></div>
+                  ) : (
+                    <div className="size-4 rounded-full border-2 border-line-strong"></div>
+                  )}
+                  <span>{sh.stepConfigureManager}</span>
+                </div>
+                <div className={`flex items-center gap-2 text-sm ${currentStep === 'saving' ? 'font-semibold text-info' : currentStep === 'complete' ? 'text-success' : 'text-muted-foreground'}`}>
+                  {currentStep === 'complete' ? (
+                    <CheckCircle className="size-4" />
+                  ) : currentStep === 'saving' ? (
+                    <div className="size-4 animate-spin rounded-full border-b-2 border-info"></div>
+                  ) : (
+                    <div className="size-4 rounded-full border-2 border-line-strong"></div>
+                  )}
+                  <span>{f.stepSave}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Error Display */}
+        {error && (
+          <div className="flex items-start gap-3 rounded-xl border border-danger/25 bg-danger/10 p-4">
+            <AlertTriangle className="mt-0.5 size-5 shrink-0 text-danger" />
+            <div>
+              <h4 className="mb-1 font-semibold text-cream">{sh.errorTitle}</h4>
+              <p className="text-sm text-muted-foreground">{error}</p>
+            </div>
+          </div>
+        )}
+
+        {/* Success Display */}
+        {createdFairlaunch && (
+          <div className="flex items-start gap-3 rounded-xl border border-success/25 bg-success/10 p-4">
+            <CheckCircle className="mt-0.5 size-5 shrink-0 text-success" />
+            <div className="flex-1">
+              <h4 className="mb-1 font-semibold text-cream">{f.successTitle}</h4>
+              <p className="mb-2 text-sm text-muted-foreground">
+                {f.successBody} <code className="rounded bg-success/15 px-1 text-success">{createdFairlaunch}</code>
+              </p>
+              <Button variant="secondary" size="sm">
+                {f.viewDetailsBtn}
+              </Button>
+            </div>
+          </div>
+        )}
+
+        {/* Creation Fee Info */}
+        <div className="flex items-start gap-3 rounded-xl bg-surface-alt p-4">
+          <Wallet className="mt-0.5 size-5 shrink-0 text-muted-foreground" />
+          <div>
+            <h4 className="mb-1 font-semibold text-cream">{sh.creationFeeTitle}</h4>
+            <p className="text-sm text-muted-foreground">
+              {interpolate(f.creationFeeBody, { fee: getCreationFee() })}
+            </p>
+          </div>
+        </div>
+
+        {/* Wallet Connection Check */}
+        {!isConnected && (
+          <div className="flex items-start gap-3 rounded-xl border border-gold/25 bg-gold-soft p-4">
+            <Wallet className="mt-0.5 size-5 shrink-0 text-gold-light" />
+            <div>
+              <h4 className="mb-1 font-semibold text-cream">{sh.walletRequiredTitle}</h4>
+              <p className="text-sm text-muted-foreground">
+                {f.walletRequiredBody}
+              </p>
+            </div>
+          </div>
+        )}
+
+        {/* Create Button */}
+        <Button
+          onClick={handleCreateFairlaunch}
+          disabled={isCreating || !isConnected}
+          className="h-12 w-full text-base font-medium"
+          size="lg"
+        >
+          {isCreating ? (
+            <>
+              <div className="mr-2 size-4 animate-spin rounded-full border-b-2 border-on-gold"></div>
+              {currentStep === 'approving' && sh.btnApprovingTokens}
+              {currentStep === 'creating' && f.btnCreating}
+              {currentStep === 'setting-router' && sh.btnSettingPositionManager}
+              {currentStep === 'saving' && sh.btnSavingProject}
+              {currentStep === 'idle' && sh.preparing}
+            </>
+          ) : !isConnected ? (
+            <>
+              <Wallet />
+              {f.btnConnect}
+            </>
+          ) : (
+            <>
+              <Zap />
+              {interpolate(f.btnCreate, { fee: getCreationFee() })}
+            </>
+          )}
+        </Button>
+      </section>
     </div>
   );
 }

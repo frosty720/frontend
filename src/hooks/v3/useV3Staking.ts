@@ -14,6 +14,7 @@ import { useV3StakingSubgraph } from '@/hooks/v3/useV3StakingSubgraph';
 import { dexLogger as logger } from '@/lib/logger';
 import type { IncentiveKey, V3Incentive, V3Deposit } from '@/services/dex/v3-staking-types';
 import { assertTxSucceeded } from '@/utils/transactions';
+import { UserError } from '@/lib/userError';
 
 /** UI metadata for an incentive, derived from the subgraph (pool/reward token). */
 interface IncentiveMeta {
@@ -204,8 +205,8 @@ export function useV3Staking(chainIdOverride?: number) {
         incentiveKey: IncentiveKey,
         tokenId: bigint,
     ): Promise<{ depositHash: string; stakeHash: string }> => {
-        if (!walletClient) throw new Error('Wallet not connected');
-        if (!publicClient) throw new Error('Public client not available');
+        if (!walletClient) throw new UserError('walletNotConnected');
+        if (!publicClient) throw new UserError('rpcUnavailable');
 
         logger.debug('V3 Staking: Starting deposit + stake flow', {
             tokenId: tokenId.toString(),
@@ -213,12 +214,12 @@ export function useV3Staking(chainIdOverride?: number) {
 
         // Step 1: Deposit NFT into staker
         const depositHash = await service.depositToken(tokenId, walletClient);
-        await assertTxSucceeded(publicClient, depositHash, 'Deposit position');
+        await assertTxSucceeded(publicClient, depositHash, 'depositPosition');
         logger.debug('V3 Staking: Deposit confirmed', { depositHash });
 
         // Step 2: Stake the deposited NFT
         const stakeHash = await service.stakeToken(incentiveKey, tokenId, walletClient);
-        await assertTxSucceeded(publicClient, stakeHash, 'Stake');
+        await assertTxSucceeded(publicClient, stakeHash, 'stake');
         logger.debug('V3 Staking: Stake confirmed', { stakeHash });
 
         // Invalidate queries to refresh data
@@ -237,9 +238,9 @@ export function useV3Staking(chainIdOverride?: number) {
         incentiveKey: IncentiveKey,
         tokenId: bigint,
     ): Promise<{ unstakeHash: string; withdrawHash: string }> => {
-        if (!walletClient) throw new Error('Wallet not connected');
-        if (!publicClient) throw new Error('Public client not available');
-        if (!address) throw new Error('No account address');
+        if (!walletClient) throw new UserError('walletNotConnected');
+        if (!publicClient) throw new UserError('rpcUnavailable');
+        if (!address) throw new UserError('walletNotConnected');
 
         logger.debug('V3 Staking: Starting unstake + withdraw flow', {
             tokenId: tokenId.toString(),
@@ -247,12 +248,12 @@ export function useV3Staking(chainIdOverride?: number) {
 
         // Step 1: Unstake from incentive
         const unstakeHash = await service.unstakeToken(incentiveKey, tokenId, walletClient);
-        await assertTxSucceeded(publicClient, unstakeHash, 'Unstake');
+        await assertTxSucceeded(publicClient, unstakeHash, 'unstake');
         logger.debug('V3 Staking: Unstake confirmed', { unstakeHash });
 
         // Step 2: Withdraw NFT back to owner
         const withdrawHash = await service.withdrawToken(tokenId, address, walletClient);
-        await assertTxSucceeded(publicClient, withdrawHash, 'Withdraw position');
+        await assertTxSucceeded(publicClient, withdrawHash, 'withdrawPosition');
         logger.debug('V3 Staking: Withdraw confirmed', { withdrawHash });
 
         // Invalidate queries
@@ -269,9 +270,9 @@ export function useV3Staking(chainIdOverride?: number) {
         rewardToken: string,
         amount: bigint,
     ): Promise<string> => {
-        if (!walletClient) throw new Error('Wallet not connected');
-        if (!publicClient) throw new Error('Public client not available');
-        if (!address) throw new Error('No account address');
+        if (!walletClient) throw new UserError('walletNotConnected');
+        if (!publicClient) throw new UserError('rpcUnavailable');
+        if (!address) throw new UserError('walletNotConnected');
 
         logger.debug('V3 Staking: Claiming rewards', {
             rewardToken,
@@ -279,7 +280,7 @@ export function useV3Staking(chainIdOverride?: number) {
         });
 
         const hash = await service.claimReward(rewardToken, address, amount, walletClient);
-        await assertTxSucceeded(publicClient, hash, 'Claim reward');
+        await assertTxSucceeded(publicClient, hash, 'claimReward');
         logger.debug('V3 Staking: Claim confirmed', { hash });
 
         // Invalidate rewards query
@@ -296,9 +297,9 @@ export function useV3Staking(chainIdOverride?: number) {
         incentiveKey: IncentiveKey,
         tokenId: bigint,
     ): Promise<string> => {
-        if (!walletClient) throw new Error('Wallet not connected');
-        if (!publicClient) throw new Error('Public client not available');
-        if (!address) throw new Error('No account address');
+        if (!walletClient) throw new UserError('walletNotConnected');
+        if (!publicClient) throw new UserError('rpcUnavailable');
+        if (!address) throw new UserError('walletNotConnected');
 
         logger.debug('V3 Staking: Starting harvest (unstake → claim → restake)', {
             tokenId: tokenId.toString(),
@@ -306,20 +307,20 @@ export function useV3Staking(chainIdOverride?: number) {
 
         // Step 1: Unstake (moves accumulated rewards to rewards mapping)
         const unstakeHash = await service.unstakeToken(incentiveKey, tokenId, walletClient);
-        await assertTxSucceeded(publicClient, unstakeHash, 'Unstake');
+        await assertTxSucceeded(publicClient, unstakeHash, 'unstake');
         logger.debug('V3 Staking: Unstake confirmed for harvest', { unstakeHash });
 
         // Step 2: Claim the accumulated rewards
         const accumulated = await service.getAccumulatedRewards(incentiveKey.rewardToken, address);
         if (accumulated > 0n) {
             const claimHash = await service.claimReward(incentiveKey.rewardToken, address, accumulated, walletClient);
-            await assertTxSucceeded(publicClient, claimHash, 'Claim reward');
+            await assertTxSucceeded(publicClient, claimHash, 'claimReward');
             logger.debug('V3 Staking: Claim confirmed for harvest', { claimHash, amount: accumulated.toString() });
         }
 
         // Step 3: Re-stake (position is still deposited in staker, just needs restaking)
         const restakeHash = await service.stakeToken(incentiveKey, tokenId, walletClient);
-        await assertTxSucceeded(publicClient, restakeHash, 'Restake');
+        await assertTxSucceeded(publicClient, restakeHash, 'restake');
         logger.debug('V3 Staking: Re-stake confirmed for harvest', { restakeHash });
 
         // Invalidate queries

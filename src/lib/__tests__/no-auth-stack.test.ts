@@ -74,7 +74,7 @@ describe('backend-session stack removal', () => {
 	});
 
 	it('the swap page has no Send tab', () => {
-		const text = readFileSync(join(SRC, 'app', 'swaps', 'page.tsx'), 'utf8');
+		const text = readFileSync(join(SRC, 'app', '[locale]', 'swaps', 'page.tsx'), 'utf8');
 		expect(text).not.toMatch(/value="send"/);
 		expect(text).not.toMatch(/promptForPassword/);
 	});

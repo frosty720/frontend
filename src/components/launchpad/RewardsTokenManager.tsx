@@ -1,7 +1,6 @@
 'use client';
 
 import React, { useCallback, useEffect, useState } from 'react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -14,6 +13,9 @@ import { kalyFeeOverrides } from '@/config/gas';
 import { assertTxSucceeded } from '@/utils/transactions';
 import { launchpadLogger } from '@/lib/logger';
 import { useResolvedChainId } from '@/hooks/useResolvedChainId';
+import { useDict } from '@/i18n/hooks';
+import { interpolate } from '@/i18n/interpolate';
+import { describeError } from '@/i18n/errorText';
 
 interface RewardsTokenManagerProps {
 	/** Prefilled when arriving straight from token creation. */
@@ -48,6 +50,10 @@ const ADDRESS_RE = /^0x[0-9a-fA-F]{40}$/;
  * approve the RewardsToken contract itself as spender.
  */
 export default function RewardsTokenManager({ tokenAddress: initialAddress }: RewardsTokenManagerProps) {
+	const dict = useDict();
+	const r = dict.launchpadForms.rewards;
+	const sh = dict.launchpadForms.shared;
+
 	const { address, isConnected } = useAccount();
 	const publicClient = usePublicClient();
 	const { data: walletClient } = useWalletClient();
@@ -117,7 +123,7 @@ export default function RewardsTokenManager({ tokenAddress: initialAddress }: Re
 		} catch (err) {
 			launchpadLogger.error('Failed to load rewards token', err);
 			setInfo(null);
-			setLoadError('Could not read that address as a Rewards Token. Check the address and chain.');
+			setLoadError(r.loadError);
 		} finally {
 			setIsLoading(false);
 		}
@@ -135,8 +141,14 @@ export default function RewardsTokenManager({ tokenAddress: initialAddress }: Re
 		try {
 			const token = tokenAddress as `0x${string}`;
 			const value = parseUnits(amount, info.rewardDecimals);
-			if (value <= 0n) throw new Error('Enter an amount greater than zero.');
-			if (value > info.rewardBalance) throw new Error(`Not enough ${info.rewardSymbol}.`);
+			if (value <= 0n) {
+				setError(r.errorAmountZero);
+				return;
+			}
+			if (value > info.rewardBalance) {
+				setError(interpolate(r.errorInsufficientBalance, { symbol: info.rewardSymbol }));
+				return;
+			}
 
 			// depositRewards does transferFrom(depositor -> tracker), so the RewardsToken
 			// contract is the spender that needs the allowance.
@@ -148,7 +160,7 @@ export default function RewardsTokenManager({ tokenAddress: initialAddress }: Re
 					functionName: 'approve',
 					args: [token, value],
 				});
-				await assertTxSucceeded(publicClient, approveHash, 'Approval');
+				await assertTxSucceeded(publicClient, approveHash, 'approval');
 			}
 
 			const hash = await walletClient.writeContract({
@@ -158,14 +170,14 @@ export default function RewardsTokenManager({ tokenAddress: initialAddress }: Re
 				functionName: 'depositRewards',
 				args: [value],
 			});
-			await assertTxSucceeded(publicClient, hash, 'Deposit rewards');
+			await assertTxSucceeded(publicClient, hash, 'depositRewards');
 
-			setNotice(`Deposited ${amount} ${info.rewardSymbol} to holders.`);
+			setNotice(interpolate(r.noticeDeposited, { amount, symbol: info.rewardSymbol }));
 			setAmount('');
 			reload();
 		} catch (err) {
 			launchpadLogger.error('Deposit rewards failed', err);
-			setError(err instanceof Error ? err.message : 'Deposit failed');
+			setError(describeError(err, dict));
 		} finally {
 			setIsDepositing(false);
 		}
@@ -184,12 +196,12 @@ export default function RewardsTokenManager({ tokenAddress: initialAddress }: Re
 				functionName: 'claim',
 				args: [],
 			});
-			await assertTxSucceeded(publicClient, hash, 'Claim rewards');
-			setNotice('Rewards claimed.');
+			await assertTxSucceeded(publicClient, hash, 'claimRewards');
+			setNotice(r.noticeClaimed);
 			reload();
 		} catch (err) {
 			launchpadLogger.error('Claim rewards failed', err);
-			setError(err instanceof Error ? err.message : 'Claim failed');
+			setError(describeError(err, dict));
 		} finally {
 			setIsClaiming(false);
 		}
@@ -200,141 +212,132 @@ export default function RewardsTokenManager({ tokenAddress: initialAddress }: Re
 		isConnected && !!info && !noEligibleHolders && !isDepositing && amount.trim() !== '';
 
 	return (
-		<div className="space-y-6">
-			<Card className="form-card">
-				<CardHeader>
-					<CardTitle className="flex items-center gap-2 text-white">
-						<Gift className="h-5 w-5" />
-						Fund Rewards
-					</CardTitle>
-				</CardHeader>
-				<CardContent className="space-y-4">
-					<div className="space-y-2">
-						<Label htmlFor="rewardsTokenAddress" className="text-gray-300">Rewards Token Address</Label>
-						<Input
-							id="rewardsTokenAddress"
-							placeholder="0x..."
-							value={tokenAddress}
-							onChange={(e) => setTokenAddress(e.target.value.trim())}
-							className="h-12 form-input font-mono"
-						/>
+		<div className="space-y-8">
+			<section className="space-y-4">
+				<h2 className="flex items-center gap-2 font-display text-lg font-semibold text-cream">
+					<Gift className="size-5 text-gold" />
+					{r.fundHeading}
+				</h2>
+
+				<div className="space-y-1.5">
+					<Label htmlFor="rewardsTokenAddress" className="text-[13px] text-muted-foreground">{r.addressLabel}</Label>
+					<Input
+						id="rewardsTokenAddress"
+						placeholder={sh.addressPlaceholder}
+						value={tokenAddress}
+						onChange={(e) => setTokenAddress(e.target.value.trim())}
+						className="h-12 rounded-xl border-line bg-surface-alt font-mono text-cream placeholder:text-muted-deep"
+					/>
+				</div>
+
+				{isLoading && (
+					<div className="flex items-center gap-2 text-sm text-muted-foreground">
+						<Loader2 className="size-4 animate-spin" /> {r.loadingToken}
 					</div>
+				)}
 
-					{isLoading && (
-						<div className="flex items-center gap-2 text-gray-300 text-sm">
-							<Loader2 className="h-4 w-4 animate-spin" /> Reading token…
-						</div>
-					)}
-
-					{info && (
-						<>
-							<div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-								<div className="pool-info-card p-3">
-									<div className="text-xs text-gray-400">Token</div>
-									<div className="text-white font-medium break-all">{info.name} ({info.symbol})</div>
-								</div>
-								<div className="pool-info-card p-3">
-									<div className="text-xs text-gray-400">Holders earn</div>
-									<div className="text-white font-medium">{info.rewardSymbol}</div>
-								</div>
-								<div className="pool-info-card p-3">
-									<div className="text-xs text-gray-400">Distributed so far</div>
-									<div className="text-white font-medium tabular-nums break-all">
-										{formatUnits(info.totalDistributed, info.rewardDecimals)} {info.rewardSymbol}
-									</div>
+				{info && (
+					<>
+						<div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+							<div className="rounded-xl bg-surface-alt p-3">
+								<div className="text-xs text-muted-deep">{r.tokenLabel}</div>
+								<div className="break-all font-medium text-cream">{interpolate(r.tokenValue, { name: info.name, symbol: info.symbol })}</div>
+							</div>
+							<div className="rounded-xl bg-surface-alt p-3">
+								<div className="text-xs text-muted-deep">{r.holdersEarnLabel}</div>
+								<div className="font-medium text-cream">{info.rewardSymbol}</div>
+							</div>
+							<div className="rounded-xl bg-surface-alt p-3">
+								<div className="text-xs text-muted-deep">{r.distributedLabel}</div>
+								<div className="break-all font-medium tabular-nums text-cream">
+									{interpolate(r.amountSymbol, { amount: formatUnits(info.totalDistributed, info.rewardDecimals), symbol: info.rewardSymbol })}
 								</div>
 							</div>
+						</div>
 
-							{noEligibleHolders && (
-								<div className="flex items-start gap-3 p-4 bg-amber-900/20 border border-amber-500/20 rounded-lg">
-									<AlertTriangle className="h-5 w-5 text-amber-400 mt-0.5 flex-shrink-0" />
-									<div className="text-sm text-gray-300">
-										<span className="text-white font-medium">No eligible holders yet.</span>{' '}
-										The deployer holds the whole supply and is excluded from rewards, so a deposit
-										would have nobody to pay and the contract rejects it. Distribute tokens — or
-										seed a pool — then come back.
-									</div>
+						{noEligibleHolders && (
+							<div className="flex items-start gap-3 rounded-xl border border-gold/25 bg-gold-soft p-4">
+								<AlertTriangle className="mt-0.5 size-5 shrink-0 text-gold-light" />
+								<div className="text-sm text-muted-foreground">
+									<span className="font-semibold text-cream">{r.noEligibleTitle}</span>{' '}
+									{r.noEligibleBody}
 								</div>
+							</div>
+						)}
+
+						<div className="space-y-1.5">
+							<div className="flex flex-wrap items-center justify-between gap-2">
+								<Label htmlFor="rewardsAmount" className="text-[13px] text-muted-foreground">
+									{r.amountLabel}
+								</Label>
+								<span className="text-xs tabular-nums text-muted-deep">
+									{interpolate(r.balanceLine, { amount: formatUnits(info.rewardBalance, info.rewardDecimals), symbol: info.rewardSymbol })}
+								</span>
+							</div>
+							<Input
+								id="rewardsAmount"
+								type="number"
+								placeholder="0.0"
+								value={amount}
+								onChange={(e) => setAmount(e.target.value)}
+								disabled={noEligibleHolders}
+								className="h-12 rounded-xl border-line bg-surface-alt text-cream placeholder:text-muted-deep"
+							/>
+							{info.allowance === 0n && (
+								<p className="flex items-start gap-1 text-xs text-muted-deep">
+									<Info className="mt-0.5 size-3 shrink-0" />
+									{r.approvalHint}
+								</p>
 							)}
-
-							<div className="space-y-2">
-								<div className="flex items-center justify-between gap-2 flex-wrap">
-									<Label htmlFor="rewardsAmount" className="text-gray-300">
-										Amount to deposit
-									</Label>
-									<span className="text-xs text-gray-400 tabular-nums">
-										Balance: {formatUnits(info.rewardBalance, info.rewardDecimals)} {info.rewardSymbol}
-									</span>
-								</div>
-								<Input
-									id="rewardsAmount"
-									type="number"
-									placeholder="0.0"
-									value={amount}
-									onChange={(e) => setAmount(e.target.value)}
-									disabled={noEligibleHolders}
-									className="h-12 form-input"
-								/>
-								{info.allowance === 0n && (
-									<p className="text-xs text-gray-400 flex items-start gap-1">
-										<Info className="h-3 w-3 mt-0.5 flex-shrink-0" />
-										First deposit needs an approval, so this will ask for two transactions.
-									</p>
-								)}
-							</div>
-
-							<Button onClick={handleDeposit} disabled={!canDeposit} className="w-full continue-button" size="lg">
-								{isDepositing ? (
-									<><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Confirming…</>
-								) : (
-									<><Coins className="h-4 w-4 mr-2" /> Deposit {info.rewardSymbol}</>
-								)}
-							</Button>
-						</>
-					)}
-
-					{(error || loadError) && (
-						<div className="p-3 bg-red-900/20 border border-red-500/20 rounded-lg text-sm text-red-300">
-							{error ?? loadError}
 						</div>
-					)}
-					{notice && (
-						<div className="p-3 bg-emerald-900/20 border border-emerald-500/20 rounded-lg text-sm text-emerald-300">
-							{notice}
-						</div>
-					)}
-				</CardContent>
-			</Card>
 
-			{info && (
-				<Card className="form-card">
-					<CardHeader>
-						<CardTitle className="flex items-center gap-2 text-white">
-							<Coins className="h-5 w-5" />
-							Your Rewards
-						</CardTitle>
-					</CardHeader>
-					<CardContent className="space-y-4">
-						<div className="flex items-center justify-between gap-3 flex-wrap">
-							<span className="text-sm text-gray-300">Claimable now</span>
-							<Badge className="badge-upcoming text-sm tabular-nums">
-								{formatUnits(info.withdrawable, info.rewardDecimals)} {info.rewardSymbol}
-							</Badge>
-						</div>
-						<Button
-							onClick={handleClaim}
-							disabled={!isConnected || isClaiming || info.withdrawable === 0n}
-							variant="outline"
-							className="w-full bg-gray-900/30 text-white hover:bg-gray-800/50 border-gray-500/30"
-						>
-							{isClaiming ? (
-								<><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Confirming…</>
+						<Button onClick={handleDeposit} disabled={!canDeposit} className="w-full" size="lg">
+							{isDepositing ? (
+								<><Loader2 className="animate-spin" /> {sh.confirming}</>
 							) : (
-								'Claim Rewards'
+								<><Coins /> {interpolate(r.btnDeposit, { symbol: info.rewardSymbol })}</>
 							)}
 						</Button>
-					</CardContent>
-				</Card>
+					</>
+				)}
+
+				{(error || loadError) && (
+					<div className="rounded-xl border border-danger/25 bg-danger/10 p-3 text-sm text-danger">
+						{error ?? loadError}
+					</div>
+				)}
+				{notice && (
+					<div className="rounded-xl border border-success/25 bg-success/10 p-3 text-sm text-success">
+						{notice}
+					</div>
+				)}
+			</section>
+
+			{info && (
+				<section className="space-y-4 border-t border-line pt-8">
+					<h2 className="flex items-center gap-2 font-display text-lg font-semibold text-cream">
+						<Coins className="size-5 text-gold" />
+						{r.yourRewardsHeading}
+					</h2>
+					<div className="flex flex-wrap items-center justify-between gap-3">
+						<span className="text-sm text-muted-foreground">{r.claimableLabel}</span>
+						<Badge className="text-sm tabular-nums">
+							{interpolate(r.amountSymbol, { amount: formatUnits(info.withdrawable, info.rewardDecimals), symbol: info.rewardSymbol })}
+						</Badge>
+					</div>
+					<Button
+						onClick={handleClaim}
+						disabled={!isConnected || isClaiming || info.withdrawable === 0n}
+						variant="secondary"
+						className="w-full"
+					>
+						{isClaiming ? (
+							<><Loader2 className="animate-spin" /> {sh.confirming}</>
+						) : (
+							r.btnClaim
+						)}
+					</Button>
+				</section>
 			)}
 		</div>
 	);

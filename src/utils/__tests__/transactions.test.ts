@@ -16,28 +16,28 @@ function clientReturning(status: 'success' | 'reverted') {
 describe('assertTxSucceeded', () => {
 	it('returns the receipt when the transaction succeeded', async () => {
 		const client = clientReturning('success');
-		const receipt = await assertTxSucceeded(client, HASH, 'Collect');
+		const receipt = await assertTxSucceeded(client, HASH, 'collect');
 		expect(receipt.blockNumber).toBe(42n);
 		expect(client.waitForTransactionReceipt).toHaveBeenCalledWith({ hash: HASH });
 	});
 
 	it('throws when the transaction reverted — the whole point', async () => {
 		const client = clientReturning('reverted');
-		await expect(assertTxSucceeded(client, HASH, 'Collect')).rejects.toBeInstanceOf(
+		await expect(assertTxSucceeded(client, HASH, 'collect')).rejects.toBeInstanceOf(
 			TransactionRevertedError
 		);
 	});
 
 	it('names the action in the error so the toast is not generic', async () => {
 		const client = clientReturning('reverted');
-		await expect(assertTxSucceeded(client, HASH, 'Remove liquidity')).rejects.toThrow(
+		await expect(assertTxSucceeded(client, HASH, 'removeLiquidity')).rejects.toThrow(
 			/Remove liquidity failed/
 		);
 	});
 
 	it('carries the hash for support/debugging', async () => {
 		const client = clientReturning('reverted');
-		await assertTxSucceeded(client, HASH, 'Stake').catch((e: TransactionRevertedError) => {
+		await assertTxSucceeded(client, HASH, 'stake').catch((e: TransactionRevertedError) => {
 			expect(e.hash).toBe(HASH);
 		});
 		expect.assertions(1);

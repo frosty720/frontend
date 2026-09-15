@@ -6,6 +6,9 @@ import { PRESALE_ABI, FAIRLAUNCH_ABI, PRESALE_V3_ABI, FAIRLAUNCH_V3_ABI, ERC20_A
 import { isNativeToken } from '@/config/contracts'
 import { kalyFeeOverrides } from '@/config/gas';
 import { assertTxSucceeded } from '@/utils/transactions';
+import { useDict } from '@/i18n/hooks';
+import { describeError } from '@/i18n/errorText';
+import { UserError } from '@/lib/userError';
 
 /**
  * Mirrors `enum PresaleStatus` / `enum FairlaunchStatus` in the launchpad contracts:
@@ -55,6 +58,7 @@ interface UseParticipationReturn {
 }
 
 export function useParticipation(): UseParticipationReturn {
+  const dict = useDict()
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [transactionHash, setTransactionHash] = useState<string | null>(null)
@@ -79,11 +83,11 @@ export function useParticipation(): UseParticipationReturn {
     value: string = '0'
   ): Promise<string> => {
     if (!isConnected || !address) {
-      throw new Error('Wallet not connected')
+      throw new UserError('walletNotConnected')
     }
 
     if (!walletClient) {
-      throw new Error('Wallet client not available')
+      throw new UserError('walletUnavailable')
     }
 
     const hash = await walletClient.writeContract({
@@ -124,7 +128,7 @@ export function useParticipation(): UseParticipationReturn {
         // presale needs an allowance first — without it every ERC20 contribution reverts.
         // The amount is denominated in the BASE TOKEN's own decimals; parseEther() assumed
         // 18 and was off by 1e12 for a 6-decimal stablecoin.
-        if (!publicClient) throw new Error('Public client not available')
+        if (!publicClient) throw new UserError('rpcUnavailable')
 
         const decimals = await publicClient.readContract({
           address: baseToken as `0x${string}`,
@@ -149,7 +153,7 @@ export function useParticipation(): UseParticipationReturn {
             'approve',
             [contractAddress as `0x${string}`, contribution]
           )
-          await assertTxSucceeded(publicClient, approveHash, 'Approval')
+          await assertTxSucceeded(publicClient, approveHash, 'approval')
         }
 
         args = [contribution]
@@ -170,11 +174,11 @@ export function useParticipation(): UseParticipationReturn {
       
     } catch (err) {
       launchpadLogger.error('Participation failed:', err)
-      setError(err instanceof Error ? err.message : 'Participation failed')
+      setError(describeError(err, dict))
     } finally {
       setIsLoading(false)
     }
-  }, [executeContractCall, publicClient, address])
+  }, [executeContractCall, publicClient, address, dict])
 
   // Claim tokens after successful presale
   const claimTokens = useCallback(async (contractAddress: string, projectType: string) => {
@@ -196,11 +200,11 @@ export function useParticipation(): UseParticipationReturn {
       
     } catch (err) {
       launchpadLogger.error('Claim failed:', err)
-      setError(err instanceof Error ? err.message : 'Claim failed')
+      setError(describeError(err, dict))
     } finally {
       setIsLoading(false)
     }
-  }, [executeContractCall])
+  }, [executeContractCall, dict])
 
   // Claim refund for failed presale
   const claimRefund = useCallback(async (contractAddress: string, projectType: string) => {
@@ -222,11 +226,11 @@ export function useParticipation(): UseParticipationReturn {
       
     } catch (err) {
       launchpadLogger.error('Refund failed:', err)
-      setError(err instanceof Error ? err.message : 'Refund failed')
+      setError(describeError(err, dict))
     } finally {
       setIsLoading(false)
     }
-  }, [executeContractCall])
+  }, [executeContractCall, dict])
 
   // Fetch user's contribution data
   const fetchUserContribution = useCallback(async (contractAddress: string, projectType: string, isProjectFinalized: boolean = false) => {
@@ -313,7 +317,7 @@ export function useParticipation(): UseParticipationReturn {
   // Validate if user can participate with given amount
   const canParticipate = useCallback(async (amount: string, contractAddress: string): Promise<{ canParticipate: boolean; reason?: string }> => {
     if (!address || !publicClient) {
-      return { canParticipate: false, reason: 'Wallet not connected' }
+      return { canParticipate: false, reason: dict.errors.walletNotConnected }
     }
 
     try {
@@ -321,14 +325,14 @@ export function useParticipation(): UseParticipationReturn {
       // For now, return basic validation
       const numAmount = parseFloat(amount)
       if (numAmount <= 0) {
-        return { canParticipate: false, reason: 'Amount must be greater than 0' }
+        return { canParticipate: false, reason: dict.errors.invalidAmount }
       }
 
       return { canParticipate: true }
     } catch (err) {
-      return { canParticipate: false, reason: 'Validation failed' }
+      return { canParticipate: false, reason: dict.errors.generic }
     }
-  }, [address, publicClient])
+  }, [address, publicClient, dict])
 
   // Get contribution limits from contract
   const getContributionLimits = useCallback(async (contractAddress: string, projectType: string): Promise<{ min: string; max: string }> => {

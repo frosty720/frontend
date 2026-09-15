@@ -2,7 +2,34 @@ import { useCallback } from 'react'
 import { useAccount, useDisconnect, useBalance, useChainId, useSwitchChain, useSendTransaction } from 'wagmi'
 import { isSupportedChain, getChainById, type ChainId } from '@/config/chains'
 import { walletLogger } from '@/lib/logger'
-import { kalyFeeOverrides } from '@/config/gas'
+import { UserError } from '@/lib/userError'
+import { isKalyChainFamily, KALYCHAIN_MAX_FEE_WEI, KALYCHAIN_MIN_PRIORITY_FEE_WEI } from '@/config/gas'
+
+interface SuppliedFees {
+  gasPrice?: bigint
+  maxFeePerGas?: bigint
+  maxPriorityFeePerGas?: bigint
+}
+
+const maxWei = (...values: bigint[]): bigint => values.reduce((a, b) => (b > a ? b : a))
+
+// Raise whatever fees were supplied to the KalyChain floor; higher fees are kept.
+// Always EIP-1559: a legacy `gasPrice` reaches thirdweb's EIP-1193 adapter as a hex
+// string, which it ignores and re-prices from the node (a 0 tip on KalyChain) — see
+// src/connectors/__tests__/thirdwebFeePath.test.ts. A legacy price is read as both tip
+// and ceiling, which is what it means for a type-0 transaction.
+function withKalyChainFeeFloor(supplied: SuppliedFees): Required<Omit<SuppliedFees, 'gasPrice'>> {
+  const maxPriorityFeePerGas = maxWei(
+    supplied.maxPriorityFeePerGas ?? supplied.gasPrice ?? 0n,
+    KALYCHAIN_MIN_PRIORITY_FEE_WEI,
+  )
+  const maxFeePerGas = maxWei(
+    supplied.maxFeePerGas ?? supplied.gasPrice ?? 0n,
+    KALYCHAIN_MAX_FEE_WEI,
+    maxPriorityFeePerGas,
+  )
+  return { maxFeePerGas, maxPriorityFeePerGas }
+}
 
 // Utility function to convert Hyperlane transaction to wagmi format.
 // `chainId` is the chain the wallet will sign on; it decides whether the KalyChain fee
@@ -15,7 +42,7 @@ function hyperlaneToWagmiTx(tx: any, chainId?: number | null) {
 
   if (!transaction.to) {
     walletLogger.error('Transaction missing "to" field:', transaction);
-    throw new Error('No tx recipient address specified');
+    throw new UserError('noRecipient');
   }
 
   // Convert BigNumber values to bigint if needed
@@ -28,19 +55,23 @@ function hyperlaneToWagmiTx(tx: any, chainId?: number | null) {
     return BigInt(value);
   };
 
-  // Hyperlane's populated transactions carry no fee fields. If we pass them through
-  // as-is the wallet prices them from the node's suggestion, and on a quiet KalyChain
-  // that suggestion is a 0 tip: the in-app wallet then builds a ~14 wei transaction
-  // that the RPC node rejects ("Failed to sign transfer transaction" in the bridge UI).
-  // Pin the same floor every other write path uses; fees the SDK did set are kept.
-  const hasFees = Boolean(transaction.gasPrice || transaction.maxFeePerGas || transaction.maxPriorityFeePerGas);
-  const feeFields = hasFees
-    ? {
-        gasPrice: transaction.gasPrice ? convertToBigInt(transaction.gasPrice) : undefined,
-        maxFeePerGas: transaction.maxFeePerGas ? convertToBigInt(transaction.maxFeePerGas) : undefined,
-        maxPriorityFeePerGas: transaction.maxPriorityFeePerGas ? convertToBigInt(transaction.maxPriorityFeePerGas) : undefined,
-      }
-    : kalyFeeOverrides(transaction.chainId ?? chainId);
+  // Hyperlane's populated transactions usually carry no fee fields. If we pass them
+  // through as-is the wallet prices them from the node's suggestion, and on a quiet
+  // KalyChain that suggestion is a 0 tip: the in-app wallet then builds a ~14 wei
+  // transaction that the RPC node rejects ("Failed to sign transfer transaction" in the
+  // bridge UI). Fees the SDK does supply can be just as low, so on KalyChain the floor is
+  // enforced, not just defaulted. Other chains keep what the SDK set, or let the wallet
+  // estimate.
+  const suppliedFees: SuppliedFees = {
+    gasPrice: transaction.gasPrice ? convertToBigInt(transaction.gasPrice) : undefined,
+    maxFeePerGas: transaction.maxFeePerGas ? convertToBigInt(transaction.maxFeePerGas) : undefined,
+    maxPriorityFeePerGas: transaction.maxPriorityFeePerGas ? convertToBigInt(transaction.maxPriorityFeePerGas) : undefined,
+  };
+  const hasFees = Boolean(suppliedFees.gasPrice || suppliedFees.maxFeePerGas || suppliedFees.maxPriorityFeePerGas);
+  const feeChainId = transaction.chainId != null ? Number(transaction.chainId) : chainId;
+  const feeFields = isKalyChainFamily(feeChainId)
+    ? withKalyChainFeeFloor(suppliedFees)
+    : hasFees ? suppliedFees : {};
 
   const wagmiTx = {
     to: transaction.to as `0x${string}`,
@@ -172,7 +203,7 @@ export function useWallet(): WalletState & WalletActions {
   // is simply stuck — which is exactly what every holder hits at the relaunch cut-over.
   const handleSwitchChain = useCallback(async (targetChainId: ChainId) => {
     if (!isSupportedChain(targetChainId)) {
-      throw new Error(`Chain ${targetChainId} is not supported`)
+      throw new UserError('chainNotSupported', { chain: targetChainId })
     }
     if (!switchChainFn) return
 
@@ -213,7 +244,7 @@ export function useWallet(): WalletState & WalletActions {
   // Sign transaction — works for both external and Thirdweb in-app wallets
   const signTransaction = useCallback(async (transaction: any): Promise<string> => {
     if (!sendTransaction) {
-      throw new Error('Wallet not available for transaction signing')
+      throw new UserError('walletUnavailable')
     }
 
     try {
@@ -226,7 +257,7 @@ export function useWallet(): WalletState & WalletActions {
       const result = await sendTransaction(wagmiTx)
 
       if (!result) {
-        throw new Error('Transaction hash not returned from wallet')
+        throw new UserError('noTxHash')
       }
 
       const hash = typeof result === 'string' ? result : result.hash || result

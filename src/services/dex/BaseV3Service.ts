@@ -35,6 +35,7 @@ import type { PublicClient, WalletClient } from 'viem';
 import { parseUnits, formatUnits, encodeFunctionData } from 'viem';
 import { computePriceImpactFromProbe } from '@/utils/priceImpact';
 import { kalyFeeOverrides } from '@/config/gas';
+import { UserError } from '@/lib/userError';
 
 /**
  * Base class for V3 DEX services
@@ -389,6 +390,7 @@ export abstract class BaseV3Service implements IV3DexService {
                 publicClient
             ),
             route: result.quote.route,
+            gasEstimate: result.quote.gasEstimate,
         };
     }
 
@@ -685,7 +687,7 @@ export abstract class BaseV3Service implements IV3DexService {
         // The position struct already returns token0/token1 in sorted order,
         // matching the amount0/amount1 ordering expected by increaseLiquidity.
         const position = await this.getV3Position(params.tokenId, publicClient);
-        if (!position) throw new Error('Position not found');
+        if (!position) throw new UserError('positionNotFound');
 
         const [decimals0, decimals1] = await Promise.all([
             this.getTokenDecimals(position.token0, publicClient),
@@ -769,7 +771,7 @@ export abstract class BaseV3Service implements IV3DexService {
         // which would have inflated the minimum by 1e12 and reverted every withdrawal
         // the moment a non-zero minimum was passed.
         const position = await this.getV3Position(params.tokenId, publicClient);
-        if (!position) throw new Error('Position not found');
+        if (!position) throw new UserError('positionNotFound');
 
         const [decimals0, decimals1] = await Promise.all([
             this.getTokenDecimals(position.token0, publicClient),

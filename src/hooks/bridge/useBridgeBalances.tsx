@@ -6,6 +6,9 @@ import { TokenAmount } from '@hyperlane-xyz/sdk';
 import { useBridgeContext } from './useBridgeContext';
 import { useWallet } from '../useWallet';
 import { bridgeLogger } from '@/lib/logger';
+import { UserError } from '@/lib/userError';
+import { describeError } from '@/i18n/errorText';
+import { useDict } from '@/i18n/hooks';
 
 export interface BridgeBalancesParams {
   originChain: string;
@@ -21,6 +24,7 @@ export function useBridgeBalances(params: BridgeBalancesParams) {
 
   const { warpCore, multiProvider } = useBridgeContext();
   const { address: account } = useWallet();
+  const dict = useDict();
 
   useEffect(() => {
     const fetchBalances = async () => {
@@ -36,12 +40,12 @@ export function useBridgeBalances(params: BridgeBalancesParams) {
 
         const tokens = warpCore.tokens;
         if (params.tokenIndex >= tokens.length) {
-          throw new Error('Invalid token index');
+          throw new UserError('tokenNotFound');
         }
 
         const token = tokens[params.tokenIndex];
         if (!token) {
-          throw new Error('Token not found');
+          throw new UserError('tokenNotFound');
         }
 
         // Fetch origin balance
@@ -68,7 +72,7 @@ export function useBridgeBalances(params: BridgeBalancesParams) {
           setDestinationBalance(null);
         }
       } catch (err) {
-        const errorMessage = err instanceof Error ? err.message : 'Failed to fetch balances';
+        const errorMessage = describeError(err, dict);
         setError(errorMessage);
         bridgeLogger.error('Balance fetch error:', err);
       } finally {

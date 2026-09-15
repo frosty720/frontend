@@ -20,4 +20,4 @@ export { usePairMarketStats } from './usePairMarketStats';
 export { useErrorHandler, type AppError, type ErrorCategory } from './useErrorHandler';
 
 // V3 Hooks
-export { useV3Pools, useUserV3Positions, type V3Pool, type V3Position } from './v3/useV3Subgraph';
+export { useV3Pools, type V3Pool } from './v3/useV3Subgraph';

@@ -12,6 +12,7 @@ import { CHAIN_IDS } from '@/config/chains'
 import { KALYCHAIN_TOKENS } from '@/config/dex/tokens/kalychain'
 import { BSC_TOKENS } from '@/config/dex/tokens/bsc'
 import { ARBITRUM_TOKENS } from '@/config/dex/tokens/arbitrum'
+import { useDict } from '@/i18n/hooks'
 
 interface ConnectWalletProps {
   children?: React.ReactNode
@@ -33,36 +34,37 @@ const supportedTokens: Record<number, Array<{ address: string; name: string; sym
   [CHAIN_IDS.ARBITRUM]: toThirdwebTokens(ARBITRUM_TOKENS, CHAIN_IDS.ARBITRUM),
 }
 
-// Custom theme matching KalySwap's amber/dark design
+// Custom theme matching KalySwap's brand palette
 const kalyswapTheme = darkTheme({
   colors: {
-    primaryButtonBg: 'linear-gradient(to right, #f59e0b, #d97706)',
-    primaryButtonText: '#ffffff',
-    modalBg: '#0c0a09',
-    borderColor: 'rgba(255, 255, 255, 0.2)',
-    accentButtonBg: '#1c1917',
-    accentButtonText: '#fef3c7',
-    accentText: '#fbbf24',
-    separatorLine: 'rgba(255, 255, 255, 0.1)',
-    secondaryText: '#9ca3af',
-    primaryText: '#fef3c7',
-    secondaryButtonBg: 'rgba(255, 255, 255, 0.08)',
-    secondaryButtonText: '#fef3c7',
-    secondaryButtonHoverBg: 'rgba(245, 158, 11, 0.1)',
-    connectedButtonBg: '#1c1917',
-    connectedButtonBgHover: '#292524',
-    selectedTextBg: 'rgba(245, 158, 11, 0.2)',
-    selectedTextColor: '#fbbf24',
-    skeletonBg: 'rgba(255, 255, 255, 0.05)',
-    tooltipBg: '#1c1917',
-    tooltipText: '#fef3c7',
-    inputAutofillBg: '#1c1917',
-    danger: '#ef4444',
-    success: '#22c55e',
+    primaryButtonBg: 'linear-gradient(135deg, #FBBF24, #F59E0B)',
+    primaryButtonText: '#1A1206',
+    modalBg: '#141414',
+    borderColor: 'rgba(255, 255, 255, 0.08)',
+    accentButtonBg: '#212121',
+    accentButtonText: '#F5F0E6',
+    accentText: '#FBBF24',
+    separatorLine: 'rgba(255, 255, 255, 0.08)',
+    secondaryText: '#9A938A',
+    primaryText: '#F5F0E6',
+    secondaryButtonBg: '#1A1A1A',
+    secondaryButtonText: '#F5F0E6',
+    secondaryButtonHoverBg: '#212121',
+    connectedButtonBg: '#141414',
+    connectedButtonBgHover: '#1A1A1A',
+    selectedTextBg: 'rgba(245, 158, 11, 0.12)',
+    selectedTextColor: '#FBBF24',
+    skeletonBg: '#212121',
+    tooltipBg: '#1A1A1A',
+    tooltipText: '#F5F0E6',
+    inputAutofillBg: '#1A1A1A',
+    danger: '#EF4444',
+    success: '#22C55E',
   },
 })
 
 export function ConnectWallet({ children, className }: ConnectWalletProps) {
+  const dict = useDict()
   return (
     <div className={className}>
       <ConnectButton
@@ -72,16 +74,17 @@ export function ConnectWallet({ children, className }: ConnectWalletProps) {
         theme={kalyswapTheme}
         supportedTokens={supportedTokens}
         connectButton={{
-          label: children ? undefined : 'Connect Wallet',
+          label: children ? undefined : dict.shell.connect,
           className: 'kalyswap-connect-btn',
           style: {
-            background: 'linear-gradient(to right, #f59e0b, #d97706)',
-            color: 'white',
-            fontWeight: 600,
-            borderRadius: '0.5rem',
+            background: 'linear-gradient(135deg, #FBBF24, #F59E0B)',
+            color: '#1A1206',
+            fontWeight: 700,
+            borderRadius: '10px',
             border: 'none',
-            fontSize: '0.875rem',
-            padding: '0.5rem 1rem',
+            fontSize: '13px',
+            padding: '9px 14px',
+            minWidth: 0,
           },
         }}
         connectModal={{
@@ -90,11 +93,7 @@ export function ConnectWallet({ children, className }: ConnectWalletProps) {
           showThirdwebBranding: false,
         }}
         detailsButton={{
-          style: {
-            background: '#1c1917',
-            border: '1px solid rgba(255, 255, 255, 0.2)',
-            borderRadius: '0.5rem',
-          },
+          style: { background: '#141414', border: '1px solid rgba(255, 255, 255, 0.08)', borderRadius: '10px' },
         }}
       />
     </div>
@@ -103,28 +102,22 @@ export function ConnectWallet({ children, className }: ConnectWalletProps) {
 
 // Simplified version for navigation with error boundary
 export function ConnectWalletButton({ className }: { className?: string }) {
+  const dict = useDict()
   try {
     return (
       <ConnectWallet className={className}>
-        <Button
-          size="sm"
-          className="bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-white border-0 font-semibold"
-        >
-          <Wallet className="h-4 w-4 mr-2" />
-          Connect
+        <Button size="sm">
+          <Wallet />
+          {dict.shell.connect}
         </Button>
       </ConnectWallet>
     )
   } catch (error) {
     // Fallback if wallet providers are not available
     return (
-      <Button
-        size="sm"
-        className={`bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-white border-0 font-semibold ${className}`}
-        disabled
-      >
-        <Wallet className="h-4 w-4 mr-2" />
-        Connect
+      <Button size="sm" className={className} disabled>
+        <Wallet />
+        {dict.shell.connect}
       </Button>
     )
   }
@@ -153,14 +146,14 @@ export function WalletInfo() {
       </CardHeader>
       <CardContent className="space-y-3">
         <div>
-          <p className="text-xs text-gray-500 mb-1">Address</p>
+          <p className="text-xs text-muted-foreground mb-1">Address</p>
           <p className="font-mono text-sm">
             {address ? `${address.slice(0, 6)}...${address.slice(-4)}` : 'Not connected'}
           </p>
         </div>
 
         <div>
-          <p className="text-xs text-gray-500 mb-1">Network</p>
+          <p className="text-xs text-muted-foreground mb-1">Network</p>
           <p className="text-sm">
             {CHAIN_METADATA[chainId as keyof typeof CHAIN_METADATA]?.name ?? `Chain ${chainId}`}
           </p>
@@ -168,7 +161,7 @@ export function WalletInfo() {
 
         {balance && (
           <div>
-            <p className="text-xs text-gray-500 mb-1">Balance</p>
+            <p className="text-xs text-muted-foreground mb-1">Balance</p>
             <p className="text-sm font-medium">
               {parseFloat(balance.formatted).toFixed(4)} {balance.symbol}
             </p>

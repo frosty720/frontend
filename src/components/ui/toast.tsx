@@ -7,7 +7,6 @@ import React, { createContext, useContext, useState, useCallback, ReactNode } fr
 import { X, CheckCircle, AlertCircle, Info, ExternalLink } from 'lucide-react';
 import { Card, CardContent } from './card';
 import { Button } from './button';
-import { KALYCHAIN_EXPLORER_URL } from '@/config/chains';
 
 export interface Toast {
   id: string;
@@ -105,22 +104,22 @@ function ToastItem({ toast, onRemove }: { toast: Toast; onRemove: (id: string) =
   const getIcon = () => {
     switch (toast.type) {
       case 'success':
-        return <CheckCircle className="h-5 w-5 text-green-600" />;
+        return <CheckCircle className="h-5 w-5 text-success" />;
       case 'error':
-        return <AlertCircle className="h-5 w-5 text-red-600" />;
+        return <AlertCircle className="h-5 w-5 text-danger" />;
       case 'info':
-        return <Info className="h-5 w-5 text-blue-600" />;
+        return <Info className="h-5 w-5 text-info" />;
     }
   };
 
   const getBorderColor = () => {
     switch (toast.type) {
       case 'success':
-        return 'border-l-green-500';
+        return 'border-l-success';
       case 'error':
-        return 'border-l-red-500';
+        return 'border-l-danger';
       case 'info':
-        return 'border-l-blue-500';
+        return 'border-l-info';
     }
   };
 
@@ -131,18 +130,18 @@ function ToastItem({ toast, onRemove }: { toast: Toast; onRemove: (id: string) =
           {getIcon()}
           <div className="flex-1 min-w-0">
             <div className="flex items-center justify-between">
-              <h4 className="text-sm font-semibold text-gray-900">{toast.title}</h4>
+              <h4 className="text-sm font-semibold text-cream">{toast.title}</h4>
               <Button
                 variant="ghost"
                 size="sm"
                 onClick={() => onRemove(toast.id)}
-                className="h-6 w-6 p-0 hover:bg-gray-100"
+                className="h-6 w-6 p-0 hover:bg-surface-alt"
               >
                 <X className="h-4 w-4" />
               </Button>
             </div>
             {toast.message && (
-              <p className="text-sm text-gray-600 mt-1">{toast.message}</p>
+              <p className="text-sm text-muted-foreground mt-1">{toast.message}</p>
             )}
             {(toast.action || toast.link) && (
               <div className="flex items-center gap-2 mt-3">
@@ -182,68 +181,3 @@ function ToastItem({ toast, onRemove }: { toast: Toast; onRemove: (id: string) =
     </Card>
   );
 }
-
-// Helper functions for common toast patterns
-export const toastHelpers = {
-  // Transaction success toast with explorer link
-  transactionSuccess: (txHash: string, chainName: string, toast: ToastContextType) => {
-    const explorerUrls: Record<string, string> = {
-      kalychain: `${KALYCHAIN_EXPLORER_URL}/tx/`,
-      arbitrum: 'https://arbiscan.io/tx/',
-      bsc: 'https://bscscan.com/tx/',
-      polygon: 'https://polygonscan.com/tx/',
-    };
-    
-    const explorerUrl = explorerUrls[chainName];
-    const shortHash = `${txHash.slice(0, 6)}...${txHash.slice(-4)}`;
-    
-    toast.success(
-      'Transaction Confirmed!',
-      `Transaction ${shortHash} has been confirmed on the network.`,
-      {
-        duration: 8000,
-        link: explorerUrl ? {
-          label: 'View on Explorer',
-          url: `${explorerUrl}${txHash}`
-        } : undefined
-      }
-    );
-  },
-
-  // Bridge transfer success
-  bridgeSuccess: (amount: string, token: string, fromChain: string, toChain: string, toast: ToastContextType) => {
-    toast.success(
-      'Bridge Transfer Initiated!',
-      `${amount} ${token} is being transferred from ${fromChain} to ${toChain}.`,
-      { duration: 10000 }
-    );
-  },
-
-  // Bridge transfer error
-  bridgeError: (error: string, toast: ToastContextType) => {
-    toast.error(
-      'Bridge Transfer Failed',
-      error,
-      { duration: 10000 }
-    );
-  },
-
-  // Wallet connection success
-  walletConnected: (address: string, toast: ToastContextType) => {
-    const shortAddress = `${address.slice(0, 6)}...${address.slice(-4)}`;
-    toast.success(
-      'Wallet Connected',
-      `Connected to ${shortAddress}`,
-      { duration: 3000 }
-    );
-  },
-
-  // Chain switch success
-  chainSwitched: (chainName: string, toast: ToastContextType) => {
-    toast.success(
-      'Chain Switched',
-      `Switched to ${chainName}`,
-      { duration: 3000 }
-    );
-  }
-};

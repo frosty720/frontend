@@ -246,4 +246,94 @@ describe('useWallet', () => {
       expect(sent.gasPrice).toBeUndefined()
     })
   })
+
+  // Fees the SDK supplies are not trusted on KalyChain either: a low one strands the
+  // transaction exactly like a missing one. Higher fees are the caller's choice and stay.
+  describe('signTransaction fee floor on supplied fees', () => {
+    const GWEI = 1_000_000_000n
+
+    beforeEach(() => {
+      mockIsConnected = true
+    })
+
+    async function sentFor(tx: Record<string, unknown>) {
+      const { result } = renderHook(() => useWallet())
+      await result.current.signTransaction(tx)
+      expect(mockSendTransactionAsync).toHaveBeenCalledTimes(1)
+      return mockSendTransactionAsync.mock.calls[0][0]
+    }
+
+    it('raises a node-priced legacy gasPrice on 3890 to the EIP-1559 floor', async () => {
+      // 1,000 wei is what a quiet KalyChain node answers for eth_gasPrice.
+      const sent = await sentFor({ to: '0xRouter', data: '0x', gasPrice: '1000' })
+
+      expect(sent.maxPriorityFeePerGas).toBe(KALYCHAIN_MIN_PRIORITY_FEE_WEI)
+      expect(sent.maxFeePerGas).toBe(KALYCHAIN_MAX_FEE_WEI)
+      expect(sent.gasPrice).toBeUndefined()
+    })
+
+    it('raises low EIP-1559 fees (0 tip, 14 wei cap) on 3890 to the floor', async () => {
+      const sent = await sentFor({ to: '0xRouter', data: '0x', maxPriorityFeePerGas: '0', maxFeePerGas: '14' })
+
+      expect(sent.maxPriorityFeePerGas).toBe(KALYCHAIN_MIN_PRIORITY_FEE_WEI)
+      expect(sent.maxFeePerGas).toBe(KALYCHAIN_MAX_FEE_WEI)
+    })
+
+    it('reads an ethers BigNumber tip and still enforces the cap floor', async () => {
+      const sent = await sentFor({
+        to: '0xRouter',
+        data: '0x',
+        maxPriorityFeePerGas: { _hex: '0x2540be400' }, // 10 gwei
+      })
+
+      expect(sent.maxPriorityFeePerGas).toBe(KALYCHAIN_MIN_PRIORITY_FEE_WEI)
+      expect(sent.maxFeePerGas).toBe(KALYCHAIN_MAX_FEE_WEI)
+    })
+
+    it('keeps a higher legacy gasPrice as both tip and cap', async () => {
+      const sent = await sentFor({ to: '0xRouter', data: '0x', gasPrice: (50n * GWEI).toString() })
+
+      expect(sent.maxPriorityFeePerGas).toBe(50n * GWEI)
+      expect(sent.maxFeePerGas).toBe(50n * GWEI)
+      expect(sent.gasPrice).toBeUndefined()
+    })
+
+    it('lifts maxFeePerGas to a supplied tip that exceeds it', async () => {
+      const sent = await sentFor({
+        to: '0xRouter',
+        data: '0x',
+        maxPriorityFeePerGas: (30n * GWEI).toString(),
+        maxFeePerGas: (22n * GWEI).toString(),
+      })
+
+      expect(sent.maxPriorityFeePerGas).toBe(30n * GWEI)
+      expect(sent.maxFeePerGas).toBe(30n * GWEI)
+    })
+
+    it('uses the chain id on the transaction itself, hex or number', async () => {
+      mockChainId = 56
+      const sent = await sentFor({ to: '0xRouter', data: '0x', chainId: '0xf32', gasPrice: '1000' })
+
+      expect(sent.maxPriorityFeePerGas).toBe(KALYCHAIN_MIN_PRIORITY_FEE_WEI)
+      expect(sent.maxFeePerGas).toBe(KALYCHAIN_MAX_FEE_WEI)
+    })
+
+    it('leaves a low SDK gasPrice untouched on BSC', async () => {
+      mockChainId = 56
+      const sent = await sentFor({ to: '0xRouter', data: '0x', gasPrice: '1000' })
+
+      expect(sent.gasPrice).toBe(1000n)
+      expect(sent.maxFeePerGas).toBeUndefined()
+      expect(sent.maxPriorityFeePerGas).toBeUndefined()
+    })
+
+    it('leaves low SDK EIP-1559 fees untouched on BSC', async () => {
+      mockChainId = 56
+      const sent = await sentFor({ to: '0xRouter', data: '0x', maxPriorityFeePerGas: '1', maxFeePerGas: '2' })
+
+      expect(sent.maxPriorityFeePerGas).toBe(1n)
+      expect(sent.maxFeePerGas).toBe(2n)
+      expect(sent.gasPrice).toBeUndefined()
+    })
+  })
 })

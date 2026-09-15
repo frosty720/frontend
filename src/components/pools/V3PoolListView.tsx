@@ -287,7 +287,7 @@ export default function V3PoolListView() {
                   There are currently no V3 liquidity pools available. Be the first to create one!
                 </p>
                 <Button
-                  onClick={() => (window.location.href = '/pools')}
+                  onClick={() => (window.location.href = '/pools/add')}
                   className="continue-button"
                 >
                   Create First Pool

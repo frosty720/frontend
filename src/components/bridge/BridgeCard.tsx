@@ -10,7 +10,7 @@ import { BridgeForm } from './BridgeForm';
 export function BridgeCard() {
   return (
     <BridgeProvider>
-      <div className="w-100 sm:w-[31rem]">
+      <div className="w-full max-w-[31rem]">
         <BridgeForm />
       </div>
     </BridgeProvider>
