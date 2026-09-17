@@ -15,6 +15,8 @@ import {
 } from '@/components/ui/dialog';
 import { ChevronDown, Search } from 'lucide-react';
 import { useTokenLists } from '@/hooks/useTokenLists';
+import { TokenAvatar } from '@/components/primitives/TokenAvatar';
+import { resolveTokenLogo } from '@/utils/tokenLogos';
 import { getContract, isAddress } from 'viem';
 import { usePublicClient } from 'wagmi';
 import { ERC20_ABI } from '@/config/abis';
@@ -112,7 +114,8 @@ function TokenSelectorContent({
           decimals: Number(decimals),
           name: name as string,
           symbol: symbol as string,
-          logoURI: `https://raw.githubusercontent.com/KalyCoinProject/tokens/main/assets/${searchQuery}/logo.png`
+          // Same shape the token list uses; TokenAvatar falls back to initials when the repo has no asset.
+          logoURI: `https://raw.githubusercontent.com/kalycoinproject/tokens/main/assets/${chainId}/${searchQuery}/logo_24.png`
         };
 
         setCustomTokens([customToken]);
@@ -159,35 +162,11 @@ function TokenSelectorContent({
     setCustomTokenError(null);
   };
 
-  const TokenIcon = ({ token }: { token: Token }) => {
-    const [imageError, setImageError] = useState(false);
-
-    // Use KLC logo for wKLC tokens
-    const getTokenIconPath = (symbol: string) => {
-      const lowerSymbol = symbol.toLowerCase();
-      if (lowerSymbol === 'wklc') {
-        return '/tokens/klc.png';
-      }
-      return `/tokens/${lowerSymbol}.png`;
-    };
-
-    if (imageError) {
-      return (
-        <div className="w-6 h-6 rounded-full bg-surface-hi flex items-center justify-center text-xs font-bold text-cream">
-          {token.symbol.charAt(0)}
-        </div>
-      );
-    }
-
-    return (
-      <img
-        src={getTokenIconPath(token.symbol)}
-        alt={token.symbol}
-        className="w-6 h-6 rounded-full"
-        onError={() => setImageError(true)}
-      />
-    );
-  };
+  // The token list carries the logo; guessing `/tokens/{symbol}.png` from the symbol left KMT and
+  // wKMT (whose file is klc.png) showing a letter instead of the mark.
+  const TokenIcon = ({ token }: { token: Token }) => (
+    <TokenAvatar symbol={token.symbol} logoURI={resolveTokenLogo(token, tokens)} size={24} />
+  );
 
   return (
     <Dialog open={isOpen} onOpenChange={setIsOpen}>

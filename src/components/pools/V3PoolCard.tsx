@@ -11,6 +11,9 @@ import { CHAIN_METADATA, KALYCHAIN_EXPLORER_URL } from '@/config/chains';
 import { V3PoolData } from '@/hooks/useV3PoolDiscovery';
 import type { V3Position } from '@/services/dex/IV3DexService';
 import V3ManageModal from '@/components/liquidity/v3/V3ManageModal';
+import { TokenAvatar } from '@/components/primitives/TokenAvatar';
+import { resolveTokenLogo } from '@/utils/tokenLogos';
+import { getTokenList } from '@/config/dex';
 
 interface TokenIconProps {
   token: {
@@ -18,46 +21,16 @@ interface TokenIconProps {
     address: string;
   };
   size?: 'sm' | 'md' | 'lg';
+  chainId: number;
 }
 
-function TokenIcon({ token, size = 'md' }: TokenIconProps) {
-  const [imageError, setImageError] = useState(false);
+const ICON_PIXELS = { sm: 24, md: 32, lg: 40 } as const;
 
-  const sizeClasses = {
-    sm: 'w-6 h-6',
-    md: 'w-8 h-8',
-    lg: 'w-10 h-10',
-  };
-
-  if (imageError) {
-    return (
-      <div className={`${sizeClasses[size]} rounded-full bg-gray-100 flex items-center justify-center border border-gray-200`}>
-        <span className="text-xs font-medium text-gray-600">{token.symbol.slice(0, 2)}</span>
-      </div>
-    );
-  }
-
-  // KMT/KMT (and their wrapped forms) all use the KalyChain mark — the same mapping
-  // the token lists declare via logoURI. Without the KMT entries WKMT fell through to
-  // a missing /tokens/wkmt.png and rendered as a grey initials blob.
-  const getTokenIconPath = (symbol: string) => {
-    const lowerSymbol = symbol.toLowerCase();
-    if (['wklc', 'klc', 'wkmt', 'kmt'].includes(lowerSymbol)) {
-      return '/tokens/klc.png';
-    }
-    return `/tokens/${lowerSymbol}.png`;
-  };
-
-  return (
-    <div className={`${sizeClasses[size]} rounded-full bg-gray-800 flex items-center justify-center overflow-hidden border border-gray-600`}>
-      <img
-        src={getTokenIconPath(token.symbol)}
-        alt={token.symbol}
-        className="w-full h-full object-cover token-icon"
-        onError={() => setImageError(true)}
-      />
-    </div>
-  );
+// Pools come from the subgraph without logos, so resolve them against the chain's token list
+// rather than guessing `/tokens/{symbol}.png` from the symbol.
+function TokenIcon({ token, size = 'md', chainId }: TokenIconProps) {
+  const logoURI = resolveTokenLogo(token, getTokenList(chainId));
+  return <TokenAvatar symbol={token.symbol} logoURI={logoURI} size={ICON_PIXELS[size]} />;
 }
 
 interface V3PoolCardProps {
@@ -142,8 +115,8 @@ export default function V3PoolCard({ pool, onUpdate }: V3PoolCardProps) {
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center space-x-3">
             <div className="flex items-center -space-x-2">
-              <TokenIcon token={token0} size="md" />
-              <TokenIcon token={token1} size="md" />
+              <TokenIcon token={token0} size="md" chainId={chainId} />
+              <TokenIcon token={token1} size="md" chainId={chainId} />
             </div>
 
             <div>
@@ -201,7 +174,7 @@ export default function V3PoolCard({ pool, onUpdate }: V3PoolCardProps) {
           <div className="space-y-2">
             <div className="flex items-center justify-between text-sm">
               <div className="flex items-center space-x-2 flex-shrink-0">
-                <TokenIcon token={token0} size="sm" />
+                <TokenIcon token={token0} size="sm" chainId={chainId} />
                 <span className="font-medium text-white">{token0.symbol}</span>
               </div>
               <span className="text-gray-300 font-mono break-all text-right min-w-0">
@@ -210,7 +183,7 @@ export default function V3PoolCard({ pool, onUpdate }: V3PoolCardProps) {
             </div>
             <div className="flex items-center justify-between text-sm">
               <div className="flex items-center space-x-2 flex-shrink-0">
-                <TokenIcon token={token1} size="sm" />
+                <TokenIcon token={token1} size="sm" chainId={chainId} />
                 <span className="font-medium text-white">{token1.symbol}</span>
               </div>
               <span className="text-gray-300 font-mono break-all text-right min-w-0">

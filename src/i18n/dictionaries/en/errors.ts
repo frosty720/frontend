@@ -1,6 +1,8 @@
 /** User-facing error text shared by hooks, services and components (EN — source of truth for this namespace). */
 const errors = {
 	generic: 'Something went wrong. Please try again.',
+	signingFailed: 'Your wallet could not sign this transaction, so nothing was sent. {detail}',
+	genericDetail: 'Something went wrong. {detail}',
 	walletNotConnected: 'Wallet not connected',
 	walletUnavailable: 'Wallet not available for transaction signing',
 	noTxHash: 'Transaction hash not returned from wallet',
@@ -33,6 +35,7 @@ const errors = {
 	insufficientCollateral: 'Insufficient collateral on destination chain for transfer',
 	positionNotFound: 'Position not found',
 	tickRangeRequired: 'Tick range required for minting',
+	identicalTokens: 'Both tokens are the same asset (KMT and wKMT count as one). Pick another token.',
 	noVaultsToClaim: 'No vaults to claim',
 	projectNotFound: 'Project not found',
 	invalidAddress: 'Invalid contract address format',
@@ -64,6 +67,7 @@ const errors = {
 		removeLiquidity: 'Remove liquidity',
 		collect: 'Collect',
 		collectFees: 'Collect fees',
+		vaultPurchase: 'Vault purchase',
 	},
 
 	/** Bridge failures by the transfer stage they happened in (keys are `TransferStatus` values). */

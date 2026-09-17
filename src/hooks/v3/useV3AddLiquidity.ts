@@ -1,17 +1,22 @@
 import { useState, useCallback } from 'react';
 import { usePublicClient, useWalletClient, useAccount } from 'wagmi';
+import { formatUnits, parseUnits } from 'viem';
 import { getKalySwapV3Service } from '@/services/dex/KalySwapV3Service';
 import { V3AddLiquidityParams, V3IncreaseLiquidityParams } from '@/services/dex/IV3DexService';
 import { Token } from '@/config/dex/types';
 import { poolLogger } from '@/lib/logger';
 import { UserError } from '@/lib/userError';
 import { useErrorText } from '@/i18n/errorText';
+import { minimumAmount } from '@/utils/newPosition';
+import { assertTxSucceeded } from '@/utils/transactions';
 
 export interface UseV3AddLiquidityParams {
     token0: Token;
     token1: Token;
     fee: number;
     tokenId?: bigint; // If provided, we are increasing liquidity
+    /** New pools only: create and initialise the pool at this price in the same transaction. */
+    sqrtPriceX96?: bigint;
 }
 
 export interface UseV3AddLiquidityReturn {
@@ -31,7 +36,8 @@ export const useV3AddLiquidity = ({
     token0,
     token1,
     fee,
-    tokenId
+    tokenId,
+    sqrtPriceX96
 }: UseV3AddLiquidityParams): UseV3AddLiquidityReturn => {
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
@@ -41,13 +47,10 @@ export const useV3AddLiquidity = ({
     const { data: walletClient } = useWalletClient();
     const describeError = useErrorText();
 
+    // Integer maths: a float minimum can round above what the pool actually takes and revert the mint.
     const calculateMinAmount = (amount: string, slippage: number, decimals: number): string => {
         if (!amount || parseFloat(amount) === 0) return '0';
-        const amountNum = parseFloat(amount);
-        const minAmount = amountNum * (1 - slippage / 100);
-        // Fix to decimals to avoid string parsing issues, but ensure we don't return scientific notation
-        // toFixed returns fixed-point notation
-        return minAmount.toFixed(decimals);
+        return formatUnits(minimumAmount(parseUnits(amount, decimals), Math.round(slippage * 100)), decimals);
     };
 
     const addLiquidity = useCallback(async (
@@ -83,6 +86,7 @@ export const useV3AddLiquidity = ({
                 };
 
                 const txHash = await v3Service.increaseLiquidity(params, publicClient, walletClient);
+                await assertTxSucceeded(publicClient, txHash, 'addLiquidity');
                 return txHash;
             } else {
                 // Mint New Position
@@ -101,10 +105,13 @@ export const useV3AddLiquidity = ({
                     amount0Min,
                     amount1Min,
                     recipient: address,
-                    deadline: deadlineMinutes
+                    deadline: deadlineMinutes,
+                    sqrtPriceX96
                 };
 
                 const { txHash } = await v3Service.mintV3Position(params, publicClient, walletClient);
+                // A mined-but-reverted mint must not read as success.
+                await assertTxSucceeded(publicClient, txHash, 'addLiquidity');
                 return txHash;
             }
 
@@ -117,7 +124,7 @@ export const useV3AddLiquidity = ({
         } finally {
             setIsLoading(false);
         }
-    }, [address, chainId, publicClient, walletClient, token0, token1, fee, tokenId, describeError]);
+    }, [address, chainId, publicClient, walletClient, token0, token1, fee, tokenId, sqrtPriceX96, describeError]);
 
     return {
         addLiquidity,

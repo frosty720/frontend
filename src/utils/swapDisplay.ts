@@ -82,3 +82,15 @@ export function relativeTime(date: Date, now: Date, localeTag: string): string {
 	}
 	return format.format(0, 'second');
 }
+
+/**
+ * A token's symbol for a raw address, from the chain's own list.
+ *
+ * GeckoTerminal trades (every chain but KalyChain) carry addresses, not symbols, and the recent-swaps
+ * list used to print a literal "Token" for both sides of every Arbitrum and BSC swap (2026-09-17).
+ */
+export function symbolForAddress(address: string | undefined, tokens: Token[], fallback = 'Token'): string {
+	if (!address) return fallback;
+	const hit = tokens.find((token) => token.address.toLowerCase() === address.toLowerCase());
+	return hit?.symbol ?? fallback;
+}

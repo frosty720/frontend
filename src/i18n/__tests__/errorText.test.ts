@@ -42,8 +42,103 @@ describe('describeError', () => {
 		expect(describeError(new Error('Failed to estimate gas'), fr)).toBe(fr.errors.gasEstimateFailed);
 	});
 
-	it('never shows unrecognised raw text — it falls back to the generic message', () => {
-		expect(describeError(new Error('Something deep inside the SDK exploded'), fr)).toBe(fr.errors.generic);
+	it('keeps the wallet’s own words for anything unrecognised, so a failure can be reported', () => {
+		expect(describeError(new Error('Something deep inside the SDK exploded'), en)).toBe(
+			'Something went wrong. Something deep inside the SDK exploded',
+		);
 		expect(describeError(undefined, en)).toBe(en.errors.generic);
+		expect(describeError({}, fr)).toBe(fr.errors.generic);
+	});
+
+	/**
+	 * viem wraps every write failure as "The contract function … reverted with the following reason: X",
+	 * so matching "reverted" told users their transaction was rejected on-chain when the wallet had in
+	 * fact never sent it (launchpad token creation, 2026-09-17).
+	 */
+	it('does not call a wallet failure an on-chain revert, and names a signing failure', () => {
+		const wrapped = (cause: Error) =>
+			Object.assign(new Error(`The contract function "create" reverted with the following reason:\n${cause.message}`), {
+				name: 'ContractFunctionExecutionError',
+				shortMessage: 'The contract function "create" reverted with the following reason:',
+				cause,
+			});
+
+		const signing = wrapped(new Error('Failed to sign transaction - 400 Bad Request'));
+		expect(describeError(signing, en)).toBe('Your wallet could not sign this transaction, so nothing was sent. Failed to sign transaction - 400 Bad Request');
+		expect(describeError(signing, fr)).toContain('Failed to sign transaction - 400 Bad Request');
+		expect(describeError(signing, en)).not.toBe(en.errors.reverted);
+
+		const sessionGone = wrapped(new Error('No auth token found when signing transaction'));
+		expect(describeError(sessionGone, en)).toContain('No auth token found when signing transaction');
+
+		// viem's own shape for a wallet refusal (verified against viem 2.41): it raises
+		// ContractFunctionRevertedError and copies the wallet's message into `reason`, with no
+		// revert data. Only `raw` revert data (or the node's wording) proves an on-chain revert.
+		const walletRefusal = Object.assign(new Error('The contract function "create" reverted with the following reason:\nKalySwap Wallet is unavailable'), {
+			name: 'ContractFunctionExecutionError',
+			cause: Object.assign(new Error('The contract function "create" reverted with the following reason:\nKalySwap Wallet is unavailable'), {
+				name: 'ContractFunctionRevertedError',
+				reason: 'KalySwap Wallet is unavailable',
+			}),
+		});
+		expect(describeError(walletRefusal, en)).toBe('Something went wrong. KalySwap Wallet is unavailable');
+		expect(describeError(walletRefusal, en)).not.toBe(en.errors.reverted);
+
+		// viem wraps a wallet's JSON-RPC error in TransactionExecutionError, which is not a revert.
+		const walletRpcError = Object.assign(new Error('An internal error was received.'), {
+			name: 'ContractFunctionExecutionError',
+			cause: Object.assign(new Error('An internal error was received.'), {
+				name: 'TransactionExecutionError',
+				cause: Object.assign(new Error('KalySwap Wallet is unavailable: session expired'), { name: 'InternalRpcError', code: -32603 }),
+			}),
+		});
+		expect(describeError(walletRpcError, en)).toBe('Something went wrong. KalySwap Wallet is unavailable: session expired');
+		expect(describeError(walletRpcError, en)).not.toBe(en.errors.reverted);
+
+		const unknownWalletError = wrapped(new Error('Wallet provider is not available'));
+		expect(describeError(unknownWalletError, en)).toBe('Something went wrong. Wallet provider is not available');
+		expect(describeError(unknownWalletError, en)).not.toBe(en.errors.reverted);
+	});
+
+	it('still reports a real on-chain revert as one — the node returned revert data', () => {
+		// What viem builds from a node revert: the decoded reason plus the raw revert data.
+		const stringRevert = Object.assign(new Error('wrapper'), {
+			name: 'ContractFunctionExecutionError',
+			cause: Object.assign(new Error('The contract function "transferFrom" reverted with the following reason:\nSTF'), {
+				name: 'ContractFunctionRevertedError',
+				reason: 'STF',
+				raw: '0x08c379a0000000000000000000000000000000000000000000000000000000000000002000000000000000000000000000000000000000000000000000000000000000035354460000000000000000000000000000000000000000000000000000000000',
+			}),
+		});
+		expect(describeError(stringRevert, en)).toBe(en.errors.reverted);
+		// A custom error viem cannot decode still carries its selector as revert data.
+		const undecodable = Object.assign(new Error('wrapper'), {
+			name: 'ContractFunctionExecutionError',
+			cause: Object.assign(new Error('unknown'), { name: 'ContractFunctionRevertedError', raw: '0x24fe1192' }),
+		});
+		expect(describeError(undecodable, en)).toBe(en.errors.reverted);
+	});
+
+	it('does not mistake an ABI decoding failure for a network outage', () => {
+		// "AbiErrorSignatureNotFoundError" contains the letters of ENOTFOUND.
+		const abiError = Object.assign(new Error('Encoded error signature "0x24fe1192" not found on ABI.'), { name: 'AbiErrorSignatureNotFoundError' });
+		expect(describeError(abiError, en)).not.toBe(en.errors.networkUnreachable);
+	});
+
+	it('still reports a real on-chain revert as one', () => {
+		// The node's own wording, however deeply wrapped.
+		const nodeRevert = Object.assign(new Error('wrapper'), {
+			name: 'ContractFunctionExecutionError',
+			cause: Object.assign(new Error('Execution reverted with reason: STF.'), { name: 'ContractFunctionRevertedError' }),
+		});
+		expect(describeError(nodeRevert, en)).toBe(en.errors.reverted);
+		expect(describeError(new Error('execution reverted'), fr)).toBe(fr.errors.reverted);
+	});
+
+	it('shortens a long detail instead of dumping a viem stack into the UI', () => {
+		const long = `Failed to sign transaction - ${'x'.repeat(400)}`;
+		const message = describeError(new Error(long), en);
+		expect(message.length).toBeLessThan(240);
+		expect(message).toContain('…');
 	});
 });

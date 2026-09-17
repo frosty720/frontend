@@ -9,6 +9,7 @@ import cutover from './fr/cutover';
 import onramp from './fr/onramp';
 import yields from './fr/yields';
 import vaultDetails from './fr/vaultDetails';
+import vaultApp from './fr/vaultApp';
 import errors from './fr/errors';
 
 const fr: Dictionary = {
@@ -34,7 +35,7 @@ const fr: Dictionary = {
 
 	pages: {
 		dashboard: { title: 'Tableau de bord', subtitle: 'Bienvenue — votre portefeuille en un coup d’œil' },
-		swap: { title: 'Swap', subtitle: 'Échangez n’importe quel actif de l’écosystème en un clic, à moins d’un centime de frais.' },
+		swap: { title: 'Swap', subtitle: 'Échangez n’importe quel actif en un clic sur KalyChain, Arbitrum ou BSC — via les pools de chaque réseau.' },
 		bridge: { title: 'Bridge', subtitle: 'Transférez vos jetons entre KalyChain, Arbitrum, BSC et Polygon via les routes Hyperlane.' },
 		vaults: { title: 'Vaults', subtitle: 'Des NFT productifs adossés à la liquidité du protocole, qui partagent chaque récompense de bloc — un revenu passif on-chain.' },
 		kusd: { title: 'Acheter / Vendre KUSD', subtitle: 'Achetez ou vendez le stablecoin KUSD (1:1 USD) par mobile money, carte ou crypto. Règlement instantané sur KalyChain.' },
@@ -61,7 +62,8 @@ const fr: Dictionary = {
 		newBody: 'Découvrez le rendement réel sur KalyChain.',
 		newCta: 'En savoir plus →',
 		poweredBy: 'Propulsé par KalyChain',
-		crumb: 'KalySwap · KalyChain',
+		crumb: 'KalySwap · {chain}',
+		buyWithCard: 'Acheter de la crypto par carte',
 	},
 
 	common: {
@@ -179,13 +181,11 @@ const fr: Dictionary = {
 		close: 'Fermer',
 		autoDismiss: 'Fermeture automatique dans 8 s',
 		routeTitle: 'Route optimale',
-		routeVenue: 'KalySwap V3',
-		routeBody: 'Meilleur prix agrégé sur les pools KalySwap V3. Aucun pontage requis.',
+		routeBody: 'Meilleur prix sur les pools {venue} de ce réseau.',
 		routeHint: 'Saisissez un montant pour trouver la meilleure route.',
 		recentTitle: 'Swaps récents',
 		recentEmpty: 'Aucun swap pour cette paire.',
 		recentError: 'Impossible de charger les swaps récents.',
-		buyWithCard: 'Acheter de la crypto par carte',
 	},
 
 	pools: {
@@ -318,7 +318,6 @@ const fr: Dictionary = {
 		price: 'Prix {amount}',
 		mint: 'Minter un vault',
 		paused: 'Ventes en pause',
-		opensApp: 'Ouvre l’application Vaults',
 		myTitle: 'Mes Vaults',
 		myEmpty: 'Vous n’avez pas encore de vault.',
 		vaultName: 'Vault {tier} #{id}',
@@ -366,6 +365,7 @@ const fr: Dictionary = {
 	onramp,
 	yields,
 	vaultDetails,
+	vaultApp,
 	errors,
 };
 

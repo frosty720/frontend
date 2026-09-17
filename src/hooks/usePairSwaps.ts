@@ -5,6 +5,8 @@ import { getV3PoolSwaps } from '@/lib/subgraph-client';
 import { getV3Config } from '@/config/dex/v3-config';
 import { isStablecoinAddress } from '@/config/contracts';
 import { getPoolTrades } from '@/lib/geckoterminal-client';
+import { getTokenList } from '@/config/dex';
+import { symbolForAddress } from '@/utils/swapDisplay';
 import { safeApiCall, isNetworkError } from '@/utils/networkUtils';
 
 // Swap transaction interface
@@ -111,19 +113,23 @@ export function formatV3Swap(swap: V3SubgraphSwap): FormattedSwap {
 }
 
 // Helper function to format GeckoTerminal trades
-function formatGeckoTerminalTrade(trade: any, pairAddress: string): FormattedSwap {
+function formatGeckoTerminalTrade(trade: any, pairAddress: string, chainId: number): FormattedSwap {
   const attrs = trade.attributes;
 
   // Determine trade type based on kind
   const type = attrs.kind === 'buy' ? 'BUY' : 'SELL';
 
-  // Get token symbols from the trade
-  const fromToken = attrs.from_token_amount ?
-    { symbol: 'Token', amount: attrs.from_token_amount } :
-    { symbol: 'Token', amount: '0' };
-  const toToken = attrs.to_token_amount ?
-    { symbol: 'Token', amount: attrs.to_token_amount } :
-    { symbol: 'Token', amount: '0' };
+  // GeckoTerminal gives addresses, not symbols: resolve them against the chain's token list rather
+  // than printing a literal "Token" for both sides (as this did on Arbitrum and BSC until 2026-09-17).
+  const tokens = getTokenList(chainId);
+  const fromToken = {
+    symbol: symbolForAddress(attrs.from_token_address, tokens),
+    amount: attrs.from_token_amount ?? '0',
+  };
+  const toToken = {
+    symbol: symbolForAddress(attrs.to_token_address, tokens),
+    amount: attrs.to_token_amount ?? '0',
+  };
 
   return {
     id: trade.id || `gecko-${attrs.block_number}-${attrs.tx_hash}`,
@@ -175,7 +181,7 @@ export function usePairSwaps({
 
         // Format trades for UI
         const formattedSwaps = geckoTrades.map(trade =>
-          formatGeckoTerminalTrade(trade, pairAddress)
+          formatGeckoTerminalTrade(trade, pairAddress, chainId)
         );
 
         swapLogger.debug(`✅ Fetched ${formattedSwaps.length} trades from GeckoTerminal`);

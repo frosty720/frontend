@@ -13,9 +13,10 @@ import fr from '@/i18n/dictionaries/fr';
 
 // Mock dependencies
 vi.mock('@/services/dex/KalySwapV3Service');
+const waitForTransactionReceipt = vi.fn(async () => ({ status: 'success' }));
 vi.mock('wagmi', () => ({
     useAccount: () => ({ address: '0x123', chainId: 1 }),
-    usePublicClient: () => ({}),
+    usePublicClient: () => ({ waitForTransactionReceipt }),
     useWalletClient: () => ({ data: { writeContract: vi.fn() } }),
 }));
 vi.mock('@/lib/logger', () => ({
@@ -42,6 +43,7 @@ describe('useV3AddLiquidity', () => {
 
     beforeEach(() => {
         vi.clearAllMocks();
+        waitForTransactionReceipt.mockImplementation(async () => ({ status: 'success' }));
         (getKalySwapV3Service as any).mockReturnValue({
             mintV3Position: mockMintV3Position,
             increaseLiquidity: mockIncreaseLiquidity,
@@ -75,6 +77,50 @@ describe('useV3AddLiquidity', () => {
             expect.anything()
         );
         expect(result.current.error).toBeNull();
+    });
+
+    it('computes minimums in integer maths and passes the starting price for a new pool', async () => {
+        mockMintV3Position.mockResolvedValue({ txHash: '0xmint_hash', tokenId: 0n });
+        const usdt: Token = { ...token1, decimals: 6 };
+
+        const { result } = renderHook(() => useV3AddLiquidity({
+            token0,
+            token1: usdt,
+            fee,
+            sqrtPriceX96: 2n ** 96n,
+        }), { wrapper: withDict(en) });
+
+        let hash: string | null = null;
+        await act(async () => {
+            hash = await result.current.addLiquidity('0.123456789012345678', '20.000001', -60, 60);
+        });
+
+        expect(hash).toBe('0xmint_hash');
+        expect(mockMintV3Position).toHaveBeenCalledWith(
+            expect.objectContaining({
+                sqrtPriceX96: 2n ** 96n,
+                // 0.5% off, rounded down in base units
+                amount0Min: '0.122839505067283949',
+                amount1Min: '19.9',
+            }),
+            expect.anything(),
+            expect.anything()
+        );
+    });
+
+    it('reports a mined-but-reverted mint as a failure, not a success', async () => {
+        mockMintV3Position.mockResolvedValue({ txHash: '0xmint_hash', tokenId: 0n });
+        waitForTransactionReceipt.mockImplementation(async () => ({ status: 'reverted' }));
+
+        const { result } = renderHook(() => useV3AddLiquidity({ token0, token1, fee }), { wrapper: withDict(en) });
+
+        let hash: string | null = '0xnot-set';
+        await act(async () => {
+            hash = await result.current.addLiquidity('10', '10', -60, 60);
+        });
+
+        expect(hash).toBeNull();
+        expect(result.current.error).toBe('Add liquidity failed: the transaction was reverted on-chain.');
     });
 
     it('should call increaseLiquidity when tokenId is provided', async () => {
@@ -118,9 +164,9 @@ describe('useV3AddLiquidity', () => {
             await result.current.addLiquidity('10', '10', -100, 100);
         });
 
-        // Unrecognised errors fall back to the dictionary's generic message rather than
-        // leaking the raw (English) Error#message to the UI.
-        expect(result.current.error).toBe(en.errors.generic);
+        // Unrecognised errors keep the wallet's own words after the translated lead-in, so a
+        // failure can be reported; the message itself is never shown bare.
+        expect(result.current.error).toBe('Something went wrong. Mint failed');
         expect(result.current.isLoading).toBe(false);
     });
 

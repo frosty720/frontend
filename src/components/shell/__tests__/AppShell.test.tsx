@@ -27,6 +27,11 @@ vi.mock('next/image', () => ({
 vi.mock('@/components/wallet/ClientOnlyConnectWallet', () => ({
 	ClientOnlyConnectWallet: () => <button>connect-stub</button>,
 }));
+vi.mock('@/components/onramp', () => ({
+	AlchemyPayWidget: ({ defaultCrypto, defaultNetwork }: { defaultCrypto: string; defaultNetwork: string }) => (
+		<div data-testid="onramp-widget">{`${defaultCrypto}@${defaultNetwork}`}</div>
+	),
+}));
 
 import { AppShell } from '../AppShell';
 
@@ -87,14 +92,54 @@ describe('AppShell', () => {
 		expect(screen.getByRole('heading', { level: 1 }).textContent).toBe(fr.pages.swap.title);
 	});
 
-	it('flags a wrong network only when connected elsewhere', () => {
+	it('names the connected network, and only warns where the page cannot be used on it', () => {
 		mockAccount = { isConnected: true };
+
+		// An unknown chain is wrong everywhere.
 		mockChainId = 1;
 		renderShell();
 		expect(screen.getByText(en.shell.chainWrong)).toBeTruthy();
 		cleanup();
+
 		mockChainId = CHAIN_IDS.KALYCHAIN;
 		renderShell();
-		expect(screen.getByText(en.shell.chainOk)).toBeTruthy();
+		expect(screen.getByText('KalyChain')).toBeTruthy();
+		cleanup();
+
+		// Arbitrum is what the bridge is for, and swaps run there too — not a wrong network.
+		mockChainId = CHAIN_IDS.ARBITRUM;
+		renderShell('en', '/bridge');
+		expect(screen.getByText('Arbitrum One')).toBeTruthy();
+		expect(screen.queryByText(en.shell.chainWrong)).toBeNull();
+		cleanup();
+
+		renderShell('en', '/swaps');
+		expect(screen.getByText('Arbitrum One')).toBeTruthy();
+		cleanup();
+
+		// The vaults read KalyChain contracts, so there it is wrong.
+		renderShell('en', '/vaults');
+		expect(screen.getByText(en.shell.chainWrong)).toBeTruthy();
+	});
+
+	it('says nothing about the network before a wallet connects', () => {
+		mockAccount = { isConnected: false };
+		mockChainId = CHAIN_IDS.ARBITRUM;
+		renderShell('en', '/vaults');
+		expect(screen.queryByText(en.shell.chainWrong)).toBeNull();
+	});
+
+	it('opens the card on-ramp for KMT on KalyChain from the top bar', () => {
+		renderShell('en', '/pools');
+		const header = screen.getByRole('banner');
+		expect(screen.queryByTestId('onramp-widget')).toBeNull();
+		fireEvent.click(within(header).getByRole('button', { name: en.shell.buyWithCard }));
+		expect(screen.getByRole('dialog')).toBeTruthy();
+		expect(screen.getByTestId('onramp-widget').textContent).toBe('KMT@KALYCHAIN');
+	});
+
+	it('labels the on-ramp button in FR', () => {
+		renderShell('fr', '/swaps');
+		expect(within(screen.getByRole('banner')).getByRole('button', { name: fr.shell.buyWithCard })).toBeTruthy();
 	});
 });

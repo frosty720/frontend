@@ -6,6 +6,9 @@
 import { CHAIN_IDS } from '@/config/chains';
 import { DexConfig } from './types';
 import { KALYCHAIN_TOKENS } from './tokens/kalychain';
+import { ARBITRUM_TOKENS } from './tokens/arbitrum';
+import { BSC_TOKENS } from './tokens/bsc';
+import { PANCAKE_V3_SWAP_ROUTER_ABI } from '../abis/v3/PancakeV3SwapRouter';
 import { V3_DEFAULT_FEE_TIER, V3_FEE_TIERS } from './v3-constants';
 import {
     V3SwapRouter02ABI,
@@ -55,6 +58,12 @@ export interface V3DexConfig extends DexConfig {
     protocolVersion: 'v3';
     defaultFeeTier: number;
     feeTiers: typeof V3_FEE_TIERS;
+    /**
+     * Which router interface this DEX ships. Uniswap's SwapRouter02 keeps the deadline out of the
+     * swap struct and takes `multicall(deadline, bytes[])`; the original SwapRouter (which
+     * PancakeSwap V3 forked) puts the deadline in the struct and only has `multicall(bytes[])`.
+     */
+    routerKind: 'swapRouter02' | 'swapRouter';
 }
 
 // KalySwap V3 on KalyChain (3890)
@@ -83,11 +92,83 @@ export const KALYSWAP_V3_CONFIG: V3DexConfig = {
     protocolVersion: 'v3',
     defaultFeeTier: V3_DEFAULT_FEE_TIER,
     feeTiers: V3_FEE_TIERS,
+    routerKind: 'swapRouter02',
+};
+
+/**
+ * Uniswap V3 on Arbitrum. Every address verified on-chain on 2026-09-17 with this repo's own ABIs:
+ * the factory has pools at all four tiers for WETH/USDC, the quoter answers with the QuoterV2 ABI
+ * (1 WETH ≈ 2,449 USDC), and the router is SwapRouter02.
+ *
+ * No subgraph: the hosted service that served Uniswap's Arbitrum subgraph is gone, so the stats,
+ * chart and history panels read `subgraphUrl` as empty and skip — quoting and swapping are on-chain
+ * and unaffected. There are no farms here, hence no staker.
+ */
+export const UNISWAP_V3_ARBITRUM_CONFIG: V3DexConfig = {
+    name: 'Uniswap V3',
+    factory: '0x1F98431c8aD98523631AE4a59f267346ea31F984',
+    router: '0x68b3465833fb72A70ecDF485E0e4C7bD8665Fc45',
+    quoter: '0x61fFE014bA17989E743c5F6cB21bF9697530B21e',
+    positionManager: '0xC36442b4a4522E871399CD717aBDD847Ab11FE88',
+    tickLens: '0xbfd8137f7d1516D3ea5cA83523914859ec47F573',
+    staker: '',
+    subgraphUrl: '',
+    tokens: ARBITRUM_TOKENS,
+    routerABI: V3SwapRouter02ABI,
+    factoryABI: V3CoreFactoryABI,
+    quoterABI: V3QuoterV2ABI,
+    poolABI: V3PoolABI,
+    positionManagerABI: V3NonfungiblePositionManagerABI,
+    stakerABI: V3StakerABI,
+    wethAddress: '0x82aF49447D8a07e3bd95BD0d56f35241523fBab1', // WETH
+    nativeToken: { symbol: 'ETH', name: 'Ether', decimals: 18 },
+    protocolVersion: 'v3',
+    defaultFeeTier: V3_FEE_TIERS.LOW,
+    feeTiers: V3_FEE_TIERS,
+    routerKind: 'swapRouter02',
+};
+
+/**
+ * PancakeSwap V3 on BSC. Verified on-chain on 2026-09-17: pools exist at 100/500/2500/10000 for
+ * WBNB/USDT and the quoter answers with the QuoterV2 ABI (1 WBNB ≈ 732 USDT).
+ *
+ * Two things differ from Uniswap: the medium tier is 2500 (not 3000), and the router is the original
+ * SwapRouter shape — SwapRouter02's selectors are genuinely absent from its bytecode.
+ */
+export const PANCAKESWAP_V3_BSC_CONFIG: V3DexConfig = {
+    name: 'PancakeSwap V3',
+    factory: '0x0BFbCF9fa4f9C56B0F40a671Ad40E0805A091865',
+    router: '0x1b81D678ffb9C0263b24A97847620C99d213eB14',
+    quoter: '0xB048Bbc1Ee6b733FFfCFb9e9CeF7375518e25997',
+    positionManager: '0x46A15B0b27311cedF172AB29E4f4766fbE7F4364',
+    tickLens: '0x9a489505a00cE272eAa5e07Dba6491314CaE3796',
+    staker: '',
+    subgraphUrl: '',
+    tokens: BSC_TOKENS,
+    routerABI: PANCAKE_V3_SWAP_ROUTER_ABI,
+    factoryABI: V3CoreFactoryABI,
+    quoterABI: V3QuoterV2ABI,
+    poolABI: V3PoolABI,
+    positionManagerABI: V3NonfungiblePositionManagerABI,
+    stakerABI: V3StakerABI,
+    wethAddress: '0xbb4CdB9CBd36B01bD1cBaEBF2De08d9173bc095c', // WBNB
+    nativeToken: { symbol: 'BNB', name: 'BNB', decimals: 18 },
+    protocolVersion: 'v3',
+    defaultFeeTier: 500,
+    // PancakeSwap's tiers: 0.01% / 0.05% / 0.25% / 1%. There is no 0.3% pool on BSC.
+    feeTiers: { LOWEST: 100, LOW: 500, MEDIUM: 2500, HIGH: 10000 } as unknown as typeof V3_FEE_TIERS,
+    routerKind: 'swapRouter',
+};
+
+const V3_CONFIGS: Record<number, V3DexConfig> = {
+    [CHAIN_IDS.KALYCHAIN]: KALYSWAP_V3_CONFIG,
+    [CHAIN_IDS.ARBITRUM]: UNISWAP_V3_ARBITRUM_CONFIG,
+    [CHAIN_IDS.BSC]: PANCAKESWAP_V3_BSC_CONFIG,
 };
 
 // Get V3 config for a given chain ID (returns null for unsupported chains)
 export function getV3Config(chainId: number): V3DexConfig | null {
-    return chainId === CHAIN_IDS.KALYCHAIN ? KALYSWAP_V3_CONFIG : null;
+    return V3_CONFIGS[chainId] ?? null;
 }
 
 // Check if V3 is available on a given chain

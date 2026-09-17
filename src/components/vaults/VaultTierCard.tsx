@@ -2,7 +2,6 @@
 
 import { Plus, Vault } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { VAULTS_APP_URL } from '@/config/vaults';
 import type { VaultTier } from '@/hooks/vaults/useVaultStats';
 import { useDict, useFormat } from '@/i18n/hooks';
 import { interpolate } from '@/i18n/interpolate';
@@ -21,10 +20,12 @@ interface VaultTierCardProps {
 	paused: boolean;
 	/** Live vaults in this tier (vault subgraph + on-chain tierOf); null while unknown. */
 	minted?: number | null;
+	/** Opens the in-app buy dialog for this tier. */
+	onMint: (tier: VaultTier) => void;
 }
 
-/** One vault pack: APR, price, minted count, ROI cap, and Mint (on the dedicated Vaults app). */
-export default function VaultTierCard({ tier, paused, minted = null }: VaultTierCardProps) {
+/** One vault pack: APR, price, minted count, ROI cap, and Mint (opens the in-app buy dialog). */
+export default function VaultTierCard({ tier, paused, minted = null, onMint }: VaultTierCardProps) {
 	const dict = useDict();
 	const fmt = useFormat();
 	const v = dict.vaults;
@@ -56,11 +57,9 @@ export default function VaultTierCard({ tier, paused, minted = null }: VaultTier
 						{v.paused}
 					</Button>
 				) : (
-					<Button asChild variant="secondary" className="mt-4 w-full">
-						<a href={VAULTS_APP_URL} target="_blank" rel="noopener noreferrer" title={v.opensApp}>
-							<Plus />
-							{v.mint}
-						</a>
+					<Button variant="secondary" className="mt-4 w-full" onClick={() => onMint(tier)}>
+						<Plus />
+						{v.mint}
 					</Button>
 				)}
 			</div>

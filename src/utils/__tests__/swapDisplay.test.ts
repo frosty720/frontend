@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { routeHops, swapDirection, relativeTime, pairBaseToken, pairOrder } from '../swapDisplay';
+import { pairBaseToken, pairOrder, relativeTime, routeHops, swapDirection, symbolForAddress } from '../swapDisplay';
 import { getEffectiveAddress } from '@/utils/tokens';
 import { CHAIN_IDS } from '@/config/chains';
 import type { Token } from '@/config/dex/types';
@@ -130,5 +130,23 @@ describe('pairOrder', () => {
 	it('returns null until both tokens are picked', () => {
 		expect(pairOrder(KMT, null)).toBeNull();
 		expect(pairOrder(null, USDT)).toBeNull();
+	});
+});
+
+describe('symbolForAddress', () => {
+	const tokens = [
+		{ chainId: 42161, address: '0x82aF49447D8a07e3bd95BD0d56f35241523fBab1', symbol: 'WETH', name: 'Wrapped Ether', decimals: 18, logoURI: '' },
+		{ chainId: 42161, address: '0xaf88d065e77c8cC2239327C5EDb3A432268e5831', symbol: 'USDC', name: 'USD Coin', decimals: 6, logoURI: '' },
+	];
+
+	it('resolves a GeckoTerminal trade address to its symbol, whatever the case', () => {
+		expect(symbolForAddress('0xaf88d065e77c8cc2239327c5edb3a432268e5831', tokens)).toBe('USDC');
+		expect(symbolForAddress('0x82AF49447D8A07E3BD95BD0D56F35241523FBAB1', tokens)).toBe('WETH');
+	});
+
+	it('falls back rather than inventing a symbol', () => {
+		expect(symbolForAddress('0x0000000000000000000000000000000000000dead', tokens)).toBe('Token');
+		expect(symbolForAddress(undefined, tokens)).toBe('Token');
+		expect(symbolForAddress('0xaf88d065e77c8cC2239327C5EDb3A432268e5831', [])).toBe('Token');
 	});
 });
