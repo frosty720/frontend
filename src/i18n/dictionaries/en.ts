@@ -8,6 +8,7 @@ import cutover from './en/cutover';
 import onramp from './en/onramp';
 import yields from './en/yields';
 import vaultDetails from './en/vaultDetails';
+import vaultApp from './en/vaultApp';
 import errors from './en/errors';
 
 /**
@@ -37,7 +38,7 @@ const en = {
 
 	pages: {
 		dashboard: { title: 'Dashboard', subtitle: 'Welcome — your portfolio at a glance' },
-		swap: { title: 'Swap', subtitle: 'Swap any asset in the KalyChain ecosystem in one click, for less than a cent in fees.' },
+		swap: { title: 'Swap', subtitle: 'Swap any asset in one click on KalyChain, Arbitrum or BSC — routed through each network’s own pools.' },
 		bridge: { title: 'Bridge', subtitle: 'Move tokens between KalyChain, Arbitrum, BSC and Polygon with Hyperlane warp routes.' },
 		vaults: { title: 'Vaults', subtitle: 'Productive NFTs backed by protocol-owned liquidity that share every block reward — passive income on-chain.' },
 		kusd: { title: 'Buy / Sell KUSD', subtitle: 'Buy or sell the KUSD stablecoin (1:1 USD) with mobile money, card or crypto. Instant settlement on KalyChain.' },
@@ -64,7 +65,8 @@ const en = {
 		newBody: 'Discover real yield on KalyChain.',
 		newCta: 'Learn more →',
 		poweredBy: 'Powered by KalyChain',
-		crumb: 'KalySwap · KalyChain',
+		crumb: 'KalySwap · {chain}',
+		buyWithCard: 'Buy crypto with card',
 	},
 
 	common: {
@@ -182,13 +184,11 @@ const en = {
 		close: 'Close',
 		autoDismiss: 'Closes automatically in 8s',
 		routeTitle: 'Optimal route',
-		routeVenue: 'KalySwap V3',
-		routeBody: 'Best price across KalySwap V3 pools. No bridging needed.',
+		routeBody: 'Best price across {venue} pools on this network.',
 		routeHint: 'Enter an amount to find the best route.',
 		recentTitle: 'Recent swaps',
 		recentEmpty: 'No swaps yet for this pair.',
 		recentError: 'Could not load recent swaps.',
-		buyWithCard: 'Buy crypto with card',
 	},
 
 	pools: {
@@ -321,7 +321,6 @@ const en = {
 		price: 'Price {amount}',
 		mint: 'Mint vault',
 		paused: 'Sales paused',
-		opensApp: 'Opens the Vaults app',
 		myTitle: 'My vaults',
 		myEmpty: 'You don’t own a vault yet.',
 		vaultName: 'Vault {tier} #{id}',
@@ -369,6 +368,7 @@ const en = {
 	onramp,
 	yields,
 	vaultDetails,
+	vaultApp,
 	errors,
 };
 

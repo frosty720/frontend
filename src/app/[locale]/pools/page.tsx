@@ -3,7 +3,7 @@
 import { useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAccount } from 'wagmi';
-import { RefreshCw, Search } from 'lucide-react';
+import { Plus, RefreshCw, Search } from 'lucide-react';
 import PoolPositionsDialog from '@/components/pools/PoolPositionsDialog';
 import PoolsTable from '@/components/pools/PoolsTable';
 import { PageHeader } from '@/components/primitives/PageHeader';
@@ -22,8 +22,8 @@ import { useDict, useFormat, useLocaleHref } from '@/i18n/hooks';
 import { interpolate } from '@/i18n/interpolate';
 import { cn } from '@/lib/utils';
 import { filterPoolsByOwnership, servicePositionUsd, type PoolFilterMode } from '@/utils/pools';
+import { resolveTokenLogo } from '@/utils/tokenLogos';
 
-const KMT_FAMILY = ['kmt', 'wkmt', 'klc', 'wklc'];
 
 /** Pools page, laid out like the reference: three stat cards, then the pool table. */
 export default function PoolsPage() {
@@ -54,11 +54,7 @@ export default function PoolsPage() {
 	const prices = useTokenUsdPrices(poolTokens, CHAIN_IDS.KALYCHAIN);
 	const { data: stats24h = {} } = usePool24hStats(CHAIN_IDS.KALYCHAIN);
 
-	const logoFor = (address: string, symbol: string): string | undefined => {
-		const listed = tokens.find((token) => token.address.toLowerCase() === address.toLowerCase());
-		if (listed?.logoURI) return listed.logoURI;
-		return KMT_FAMILY.includes(symbol.toLowerCase()) ? '/tokens/klc.png' : undefined;
-	};
+	const logoFor = (address: string, symbol: string): string | undefined => resolveTokenLogo({ address, symbol }, tokens);
 
 	const tvl = allPools.reduce((sum, pool) => sum + (Number(pool.totalValueLockedUSD) || 0), 0);
 	const volume = Object.values(stats24h).reduce((sum, stat) => sum + stat.volumeUsd, 0);
@@ -120,7 +116,16 @@ export default function PoolsPage() {
 
 	return (
 		<>
-			<PageHeader title={dict.pages.pools.title} subtitle={dict.pages.pools.subtitle} />
+			<PageHeader
+				title={dict.pages.pools.title}
+				subtitle={dict.pages.pools.subtitle}
+				actions={
+					<Button onClick={() => router.push(href('/pools/add'))}>
+						<Plus />
+						{l.addPage.newPosition}
+					</Button>
+				}
+			/>
 			<div className="mb-5 grid gap-4 md:grid-cols-3">
 				<StatCard label={p.statTvl} value={fmt.usd(tvl, { compact: tvl >= 100_000 })} />
 				<StatCard label={p.statVolume} value={fmt.usd(volume, { compact: volume >= 100_000 })} />

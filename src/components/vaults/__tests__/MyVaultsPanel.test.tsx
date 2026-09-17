@@ -24,7 +24,7 @@ vi.mock('@/hooks/vaults/useClaimVaults', () => ({ useClaimVaults: () => claimVau
 
 import MyVaultsPanel from '../MyVaultsPanel';
 
-const vault = (id: bigint, earnedKmt: number): MyVault => ({
+const vault = (id: bigint, earnedKmt: number, maturity: { pct?: number; matured?: boolean } = {}): MyVault => ({
 	id,
 	tier: 1,
 	tierName: 'Basic',
@@ -32,7 +32,9 @@ const vault = (id: bigint, earnedKmt: number): MyVault => ({
 	aprPct: 30,
 	claimableKmt: earnedKmt,
 	earnedWei: BigInt(earnedKmt) * 10n ** 18n,
-	matured: false,
+	matured: maturity.matured ?? false,
+	maturityPct: maturity.pct ?? 0,
+	weight: 1n,
 });
 
 function renderPanel(connected = true, dict = en, locale: 'en' | 'fr' = 'en') {
@@ -86,6 +88,16 @@ describe('MyVaultsPanel', () => {
 		);
 		expect(toast.success).not.toHaveBeenCalled();
 		expect((screen.getByRole('button', { name: en.vaults.claim }) as HTMLButtonElement).disabled).toBe(false);
+	});
+
+	it('shows live maturity per vault, capped at a full bar, and flags matured vaults', () => {
+		vaults = [vault(3n, 10, { pct: 42.5 }), vault(4n, 0, { pct: 100, matured: true })];
+		renderPanel();
+		const bars = screen.getAllByRole('progressbar');
+		expect(bars.map((bar) => bar.getAttribute('aria-valuenow'))).toEqual(['42.5', '100']);
+		expect(screen.getByText('42.5%')).toBeTruthy();
+		expect(screen.getAllByText(en.vaultApp.matured)).toHaveLength(1);
+		expect(screen.getAllByText(en.vaultApp.buyAgain)).toHaveLength(1);
 	});
 
 	it('asks to connect when there is no wallet', () => {

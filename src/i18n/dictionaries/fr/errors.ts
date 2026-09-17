@@ -3,6 +3,8 @@ import type en from '../en/errors';
 /** User-facing error text shared by hooks, services and components (FR). */
 const errors: typeof en = {
 	generic: 'Une erreur s’est produite. Veuillez réessayer.',
+	signingFailed: 'Votre wallet n’a pas pu signer cette transaction : rien n’a été envoyé. {detail}',
+	genericDetail: 'Une erreur est survenue. {detail}',
 	walletNotConnected: 'Wallet non connecté',
 	walletUnavailable: 'Wallet indisponible pour signer la transaction',
 	noTxHash: 'Le wallet n’a renvoyé aucun hash de transaction',
@@ -35,6 +37,7 @@ const errors: typeof en = {
 	insufficientCollateral: 'Collatéral insuffisant sur la chaîne de destination pour ce transfert',
 	positionNotFound: 'Position introuvable',
 	tickRangeRequired: 'Choisissez une fourchette de prix pour créer la position',
+	identicalTokens: 'Les deux jetons sont le même actif (KMT et wKMT comptent pour un). Choisissez un autre jeton.',
 	noVaultsToClaim: 'Aucun vault à réclamer',
 	projectNotFound: 'Projet introuvable',
 	invalidAddress: 'Format d’adresse de contrat invalide',
@@ -65,6 +68,7 @@ const errors: typeof en = {
 		removeLiquidity: 'Retrait de liquidité',
 		collect: 'Collecte',
 		collectFees: 'Collecte des frais',
+		vaultPurchase: 'Achat de vault',
 	},
 
 	bridgeStages: {

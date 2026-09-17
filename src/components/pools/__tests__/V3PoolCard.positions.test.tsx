@@ -128,4 +128,20 @@ describe('V3PoolCard — multiple positions', () => {
 		expect(screen.queryByRole('button', { name: 'Manage' })).toBeNull();
 		expect(screen.queryByRole('button', { name: 'Collect' })).toBeNull();
 	});
+
+	it('draws both token logos from the token list, not from the symbol', () => {
+		// wKMT's file is klc.png; guessing /tokens/wkmt.png is what left it as a letter.
+		// The pair is drawn in the header and again on each position row.
+		render(<V3PoolCard pool={makePool([makePosition(2n)])} />);
+		for (const img of screen.getAllByAltText('USDT')) expect(img.getAttribute('src')).toBe('/tokens/usdt.png');
+		for (const img of screen.getAllByAltText('wKMT')) expect(img.getAttribute('src')).toBe('/tokens/klc.png');
+	});
+
+	it('falls back to initials for a token with no logo anywhere', () => {
+		const pool = makePool([]);
+		pool.token0 = { id: '0x0000000000000000000000000000000000000abc', symbol: 'PEPE', name: 'Pepe', decimals: '18' } as V3PoolData['token0'];
+		render(<V3PoolCard pool={pool} />);
+		expect(screen.queryByAltText('PEPE')).toBeNull();
+		for (const initials of screen.getAllByLabelText('PEPE')) expect(initials.textContent).toBe('PE');
+	});
 });

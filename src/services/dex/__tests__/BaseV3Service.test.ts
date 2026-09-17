@@ -52,30 +52,6 @@ describe('BaseV3Service Unit Tests', () => {
         };
     });
 
-    it('should apply manual gas limit (3,000,000) to mintV3Position', async () => {
-        const params = {
-            token0: MOCK_TOKEN_A,
-            token1: MOCK_TOKEN_B,
-            fee: 3000,
-            tickLower: -887220,
-            tickUpper: 887220,
-            amount0Desired: '10',
-            amount1Desired: '10',
-            amount0Min: '9',
-            amount1Min: '9',
-            recipient: '0xUser',
-            deadline: 1234567890
-        };
-
-        mockWalletClient.writeContract.mockResolvedValue('0xTxHash');
-
-        await service.mintV3Position(params, mockPublicClient as PublicClient, mockWalletClient as WalletClient);
-
-        expect(mockWalletClient.writeContract).toHaveBeenCalledWith(expect.objectContaining({
-            gas: 3000000n
-        }));
-    });
-
     it('should interact with Quoter for getV3Quote', async () => {
         // Mock successful quote return
         mockPublicClient.readContract.mockResolvedValue([

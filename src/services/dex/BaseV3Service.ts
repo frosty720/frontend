@@ -32,10 +32,14 @@ import {
 import { V3DexConfig } from '@/config/dex/v3-config';
 import { V3_FEE_TIERS, V3_TICK_SPACING, getTickSpacing, Q96 } from '@/config/dex/v3-constants';
 import type { PublicClient, WalletClient } from 'viem';
-import { parseUnits, formatUnits, encodeFunctionData } from 'viem';
+import { parseUnits, formatUnits, encodeFunctionData, parseAbi } from 'viem';
 import { computePriceImpactFromProbe } from '@/utils/priceImpact';
 import { kalyFeeOverrides } from '@/config/gas';
+import { resolveGasLimit, V3_CREATE_AND_MINT_GAS, V3_MINT_GAS } from '@/utils/gasLimit';
 import { UserError } from '@/lib/userError';
+
+/** PeripheryPayments.refundETH — on the position manager, but missing from its bundled ABI JSON. */
+const REFUND_ETH_ABI = parseAbi(['function refundETH() payable']);
 
 /**
  * Base class for V3 DEX services
@@ -115,7 +119,8 @@ export abstract class BaseV3Service implements IV3DexService {
     }
 
     getFeeTiers(): number[] {
-        return Object.values(V3_FEE_TIERS);
+        // Per-DEX: PancakeSwap V3's middle tier is 0.25%, not Uniswap's 0.3%.
+        return Object.values(this.config.feeTiers ?? V3_FEE_TIERS);
     }
 
     getTickSpacing(fee: number): number {
@@ -440,46 +445,39 @@ export abstract class BaseV3Service implements IV3DexService {
             const isNativeIn = params.tokenIn.isNative;
             const isNativeOut = params.tokenOut.isNative;
 
-            // Build swap params
+            // The original SwapRouter (PancakeSwap V3) carries the deadline inside the swap struct,
+            // takes a recipient on unwrapWETH9 and only has multicall(bytes[]). SwapRouter02
+            // (Uniswap, KalySwap) keeps the deadline on the multicall instead. Sending one shape to
+            // the other router reverts: the selectors genuinely differ.
+            const withDeadlineInParams = this.config.routerKind === 'swapRouter';
+            const recipient = isNativeOut ? routerAddress : params.recipient; // native out unwraps at the router
+
             const swapParams = {
                 tokenIn: isNativeIn ? this.getWethAddress() : params.tokenIn.address,
                 tokenOut: isNativeOut ? this.getWethAddress() : params.tokenOut.address,
                 fee: params.fee,
-                recipient: isNativeOut ? routerAddress : params.recipient, // If native out, send to router first
+                recipient,
+                ...(withDeadlineInParams ? { deadline } : {}),
                 amountIn,
                 amountOutMinimum,
                 sqrtPriceLimitX96: params.sqrtPriceLimitX96 || BigInt(0),
             };
 
-            // Encode the swap call
             const swapData = encodeFunctionData({
                 abi: this.config.routerABI,
                 functionName: 'exactInputSingle',
                 args: [swapParams],
             });
 
-            // If native out, we need to unwrap WETH after
-            let calldata: `0x${string}`;
+            const calls = [swapData];
             if (isNativeOut) {
-                const unwrapData = encodeFunctionData({
-                    abi: this.config.routerABI,
-                    functionName: 'unwrapWETH9',
-                    args: [amountOutMinimum],
-                });
-
-                // Multicall: swap + unwrap
-                calldata = encodeFunctionData({
-                    abi: this.config.routerABI,
-                    functionName: 'multicall',
-                    args: [deadline, [swapData, unwrapData]],
-                });
-            } else {
-                // Single swap with deadline
-                calldata = encodeFunctionData({
-                    abi: this.config.routerABI,
-                    functionName: 'multicall',
-                    args: [deadline, [swapData]],
-                });
+                calls.push(
+                    encodeFunctionData({
+                        abi: this.config.routerABI,
+                        functionName: 'unwrapWETH9',
+                        args: withDeadlineInParams ? [amountOutMinimum, params.recipient] : [amountOutMinimum],
+                    }),
+                );
             }
 
             // eslint-disable-next-line @typescript-eslint/no-explicit-any -- dynamic ABI from config
@@ -490,11 +488,7 @@ export abstract class BaseV3Service implements IV3DexService {
                 address: routerAddress as `0x${string}`,
                 abi: this.config.routerABI,
                 functionName: 'multicall',
-                args: [deadline, isNativeOut ? [swapData, encodeFunctionData({
-                    abi: this.config.routerABI,
-                    functionName: 'unwrapWETH9',
-                    args: [amountOutMinimum],
-                })] : [swapData]],
+                args: withDeadlineInParams ? [calls] : [deadline, calls],
                 value: isNativeIn ? amountIn : BigInt(0),
                 gas: 300000n, // Explicit gas limit for swap
             } as any);
@@ -605,46 +599,82 @@ export abstract class BaseV3Service implements IV3DexService {
         walletClient: WalletClient
     ): Promise<{ tokenId: bigint; txHash: string }> {
         try {
-            const positionManagerAddress = this.getPositionManagerAddress();
+            const positionManagerAddress = this.getPositionManagerAddress() as `0x${string}`;
             const deadline = BigInt(Math.floor(Date.now() / 1000) + params.deadline * 60);
 
-            // Sort tokens
-            const [token0, token1] = params.token0.address.toLowerCase() < params.token1.address.toLowerCase()
-                ? [params.token0, params.token1]
-                : [params.token1, params.token0];
+            // Keep each amount with its own token (and decimals) while sorting into pool order;
+            // sorting the tokens alone would hand one token's amount to the other.
+            const sides = [
+                { token: params.token0, desired: params.amount0Desired, min: params.amount0Min },
+                { token: params.token1, desired: params.amount1Desired, min: params.amount1Min },
+            ].map((side) => ({
+                ...side,
+                address: this.getEffectiveTokenAddress(side.token) as `0x${string}`,
+                native: this.isNativeToken(side.token),
+                desiredWei: parseUnits(side.desired || '0', side.token.decimals),
+                minWei: parseUnits(side.min || '0', side.token.decimals),
+            }));
+            if (sides[0].address.toLowerCase() === sides[1].address.toLowerCase()) {
+                throw new UserError('identicalTokens');
+            }
+            const [first, second] = sides[0].address.toLowerCase() < sides[1].address.toLowerCase() ? sides : [sides[1], sides[0]];
 
-            const amount0Desired = parseUnits(params.amount0Desired, token0.decimals);
-            const amount1Desired = parseUnits(params.amount1Desired, token1.decimals);
-            const amount0Min = parseUnits(params.amount0Min, token0.decimals);
-            const amount1Min = parseUnits(params.amount1Min, token1.decimals);
+            // Native KMT: the position manager wraps msg.value into WKMT when it pays the pool, and
+            // refundETH returns whatever the mint did not use.
+            const value = sides.reduce((sum, side) => (side.native ? sum + side.desiredWei : sum), 0n);
+            const abi = this.config.positionManagerABI;
+            const calls: `0x${string}`[] = [];
+            if (params.sqrtPriceX96) {
+                calls.push(encodeFunctionData({
+                    abi,
+                    functionName: 'createAndInitializePoolIfNecessary',
+                    args: [first.address, second.address, params.fee, params.sqrtPriceX96],
+                }));
+            }
+            calls.push(encodeFunctionData({
+                abi,
+                functionName: 'mint',
+                args: [{
+                    token0: first.address,
+                    token1: second.address,
+                    fee: params.fee,
+                    tickLower: params.tickLower,
+                    tickUpper: params.tickUpper,
+                    amount0Desired: first.desiredWei,
+                    amount1Desired: second.desiredWei,
+                    amount0Min: first.minWei,
+                    amount1Min: second.minWei,
+                    recipient: params.recipient as `0x${string}`,
+                    deadline,
+                }],
+            }));
+            if (value > 0n) {
+                calls.push(encodeFunctionData({ abi: REFUND_ETH_ABI, functionName: 'refundETH' }));
+            }
+
+            const account = (walletClient.account?.address ?? params.recipient) as `0x${string}`;
+            const gas = await resolveGasLimit(
+                () => publicClient.estimateContractGas({ address: positionManagerAddress, abi, functionName: 'multicall', args: [calls], value, account }),
+                params.sqrtPriceX96 ? V3_CREATE_AND_MINT_GAS : V3_MINT_GAS,
+            );
 
             // eslint-disable-next-line @typescript-eslint/no-explicit-any -- dynamic ABI from config
             const txHash = await walletClient.writeContract({
                 // KalyChain advertises a ~0 priority fee; without this the wallet builds
                 // the tx below the 21 gwei inclusion floor. No-op on other chains.
                 ...kalyFeeOverrides(walletClient.chain?.id),
-                address: positionManagerAddress as `0x${string}`,
-                abi: this.config.positionManagerABI,
-                functionName: 'mint',
-                args: [{
-                    token0: token0.address as `0x${string}`,
-                    token1: token1.address as `0x${string}`,
-                    fee: params.fee,
-                    tickLower: params.tickLower,
-                    tickUpper: params.tickUpper,
-                    amount0Desired,
-                    amount1Desired,
-                    amount0Min,
-                    amount1Min,
-                    recipient: params.recipient as `0x${string}`,
-                    deadline,
-                }],
-                gas: 3000000n, // Explicit gas limit for minting
+                address: positionManagerAddress,
+                abi,
+                functionName: 'multicall',
+                args: [calls],
+                value,
+                gas,
             } as any);
 
-            // For now, return 0n as tokenId - in production, parse from tx logs
+            // The token id is in the receipt's Transfer log; callers only need the hash.
             return { tokenId: 0n, txHash };
         } catch (error) {
+            if (error instanceof UserError) throw error;
             logger.error('Error minting V3 position:', error);
             throw new DexError(
                 `Failed to mint V3 position: ${error instanceof Error ? error.message : 'Unknown error'}`,
@@ -652,6 +682,11 @@ export abstract class BaseV3Service implements IV3DexService {
                 this.getName()
             );
         }
+    }
+
+    /** Native KMT (flagged, or the zero address) rather than an ERC-20. */
+    isNativeToken(token: Token): boolean {
+        return Boolean(token.isNative) || token.address === '0x0000000000000000000000000000000000000000';
     }
 
     // Read an ERC20 token's decimals on-chain
@@ -928,11 +963,11 @@ export abstract class BaseV3Service implements IV3DexService {
 
     async getPairAddress(tokenA: Token, tokenB: Token, publicClient: PublicClient): Promise<string | null> {
         // Return the best pool (0.3% fee tier by default)
-        return this.getV3PoolAddress(tokenA, tokenB, V3_FEE_TIERS.MEDIUM, publicClient);
+        return this.getV3PoolAddress(tokenA, tokenB, this.config.defaultFeeTier ?? V3_FEE_TIERS.MEDIUM, publicClient);
     }
 
     async getPairInfo(tokenA: Token, tokenB: Token, publicClient: PublicClient): Promise<PairInfo | null> {
-        const poolInfo = await this.getV3PoolInfo(tokenA, tokenB, V3_FEE_TIERS.MEDIUM, publicClient);
+        const poolInfo = await this.getV3PoolInfo(tokenA, tokenB, this.config.defaultFeeTier ?? V3_FEE_TIERS.MEDIUM, publicClient);
         if (!poolInfo) return null;
 
         // Sort tokens to match pool's token0/token1 order
@@ -1517,7 +1552,7 @@ export abstract class BaseV3Service implements IV3DexService {
     ): Promise<{ amountB: string; isNewPair: boolean }> {
         // For V3, this depends on tick range
         // Simplified: return 1:1 ratio based on current price
-        const poolInfo = await this.getV3PoolInfo(tokenA, tokenB, V3_FEE_TIERS.MEDIUM, publicClient);
+        const poolInfo = await this.getV3PoolInfo(tokenA, tokenB, this.config.defaultFeeTier ?? V3_FEE_TIERS.MEDIUM, publicClient);
         if (!poolInfo) {
             return { amountB: amountA, isNewPair: true };
         }

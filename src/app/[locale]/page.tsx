@@ -14,7 +14,6 @@ import PortfolioPanel from '@/components/dashboard/PortfolioPanel';
 import { CHAIN_IDS } from '@/config/chains';
 import { STAKING_CONTRACT } from '@/config/contracts/staking';
 import type { Token } from '@/config/dex/types';
-import { VAULTS_APP_URL } from '@/config/vaults';
 import { useMultichainTokenBalance } from '@/hooks/useMultichainTokenBalance';
 import { useToken24hChanges } from '@/hooks/useToken24hChanges';
 import { useTokenLists } from '@/hooks/useTokenLists';
@@ -168,7 +167,7 @@ export default function DashboardPage() {
 			subtitle: interpolate(d.yieldInvested, { amount: fmt.usd(vault.priceUsd, { decimals: 0 }) }),
 			badge: interpolate(d.yieldApr, { apr: fmt.pct(vault.aprPct, 0) }),
 			value: interpolate(d.yieldClaimable, { amount: `${fmt.number(vault.claimableKmt, { maximumFractionDigits: 2 })} KMT` }),
-			href: VAULTS_APP_URL,
+			href: '/vaults?tab=my',
 		})),
 		...(stakedKmt > 0
 			? [{

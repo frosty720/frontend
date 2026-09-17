@@ -11,12 +11,23 @@ import TokenSelector from '@/components/pools/TokenSelector';
 import V3AddLiquidity from '@/components/liquidity/v3/V3AddLiquidity';
 import { Token } from '@/config/dex/types';
 import { findTokenByAddress } from '@/config/dex';
+import { V3_DEFAULT_FEE_TIER, V3_FEE_TIERS } from '@/config/dex/v3-constants';
 import { useResolvedChainId } from '@/hooks/useResolvedChainId';
-import { useDict, useLocaleHref } from '@/i18n/hooks';
+import { useV3ExistingFeeTiers } from '@/hooks/v3/useV3PoolState';
+import { useDict, useFormat, useLocaleHref } from '@/i18n/hooks';
 import { cn } from '@/lib/utils';
+
+const FEE_TIERS: number[] = Object.values(V3_FEE_TIERS);
+
+/** The URL's fee tier when it is one the factory supports, else the default. */
+function initialFeeTier(param: string | null): number {
+  const fee = Number(param);
+  return FEE_TIERS.includes(fee) ? fee : V3_DEFAULT_FEE_TIER;
+}
 
 function PoolsAddPageInner() {
   const dict = useDict();
+  const fmt = useFormat();
   const l = dict.liquidity.addPage;
 
   const [currentStep, setCurrentStep] = useState(1);
@@ -25,7 +36,8 @@ function PoolsAddPageInner() {
 
   const searchParams = useSearchParams();
   // Pool cards deep-link with the tier they were created at.
-  const selectedFeeTier = Number(searchParams.get('fee')) || 3000;
+  const [selectedFeeTier, setSelectedFeeTier] = useState(() => initialFeeTier(searchParams.get('fee')));
+  const existingTiers = useV3ExistingFeeTiers(selectedTokenA, selectedTokenB);
   const router = useRouter();
   const href = useLocaleHref();
 
@@ -175,14 +187,41 @@ function PoolsAddPageInner() {
                 </div>
               </div>
 
-              {/* Fee Tier Info */}
-              <div className="rounded-xl border border-info/25 bg-info/10 p-4">
-                <div className="flex items-start gap-3">
+              {/* Fee Tier */}
+              <div className="space-y-3">
+                <div className="flex items-start gap-3 rounded-xl border border-info/25 bg-info/10 p-4">
                   <Info className="h-5 w-5 mt-0.5 flex-shrink-0 text-info" aria-hidden />
                   <div>
                     <h4 className="text-sm font-medium text-cream mb-1">{l.feeTierTitle}</h4>
                     <p className="text-sm text-muted-foreground">{l.feeTierBody}</p>
                   </div>
+                </div>
+                <div role="radiogroup" aria-label={l.feeTierTitle} className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                  {FEE_TIERS.map((fee) => {
+                    const selected = fee === selectedFeeTier;
+                    const exists = existingTiers.data?.has(fee);
+                    return (
+                      <button
+                        key={fee}
+                        type="button"
+                        role="radio"
+                        aria-checked={selected}
+                        onClick={() => setSelectedFeeTier(fee)}
+                        className={cn(
+                          'rounded-xl border p-3 text-left transition-colors',
+                          selected ? 'border-gold bg-gold-soft' : 'border-line bg-surface-alt hover:border-line-strong',
+                        )}
+                      >
+                        <span className={cn('block font-semibold', selected ? 'text-gold' : 'text-cream')}>{fmt.pct(fee / 10_000, 2)}</span>
+                        <span className="block text-xs text-muted-foreground">{l.feeHints[fee as keyof typeof l.feeHints]}</span>
+                        {existingTiers.data && (
+                          <span className={cn('mt-1 block text-[11px] font-semibold', exists ? 'text-success' : 'text-muted-deep')}>
+                            {exists ? l.feeExists : l.feeNew}
+                          </span>
+                        )}
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
 

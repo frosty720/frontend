@@ -133,6 +133,24 @@
 		@apply border-border outline-ring/50;
 	}
 
+	/*
+	 * Browsers give <button> the arrow cursor and Tailwind's preflight keeps it, so every control in
+	 * the app read as unclickable — the pools "Add" button is what surfaced it (2026-09-17). Covers
+	 * the custom tab/filter buttons too, not just the shared Button component.
+	 */
+	button:not(:disabled),
+	[role='button']:not([aria-disabled='true']),
+	[role='tab']:not([aria-disabled='true']),
+	[role='radio']:not([aria-disabled='true']),
+	summary {
+		cursor: pointer;
+	}
+
+	button:disabled,
+	[aria-disabled='true'] {
+		cursor: not-allowed;
+	}
+
 	html {
 		scroll-behavior: smooth;
 		color-scheme: dark;

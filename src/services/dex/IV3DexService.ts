@@ -54,6 +54,10 @@ export interface V3SwapParams {
     deadline: number;
 }
 
+/**
+ * A new position. `token0`/`token1` and their amounts are in the caller's order (not necessarily the
+ * pool's): each amount belongs to the token with the same index. Native KMT is deposited as WKMT.
+ */
 export interface V3AddLiquidityParams {
     token0: Token;
     token1: Token;
@@ -66,6 +70,8 @@ export interface V3AddLiquidityParams {
     amount1Min: string;
     recipient: string;
     deadline: number;
+    /** When set, the pool is created and initialised at this price in the same transaction (if it isn't already). */
+    sqrtPriceX96?: bigint;
 }
 
 export interface V3IncreaseLiquidityParams {

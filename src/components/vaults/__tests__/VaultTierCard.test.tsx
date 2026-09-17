@@ -1,28 +1,32 @@
 /**
  * @vitest-environment jsdom
  */
-import { render, screen, cleanup } from '@testing-library/react';
+import { render, screen, cleanup, fireEvent } from '@testing-library/react';
 import React from 'react';
-import { describe, it, expect, afterEach } from 'vitest';
+import { vi, describe, it, expect, afterEach } from 'vitest';
 import { DictionaryProvider } from '@/i18n/DictionaryProvider';
 import en from '@/i18n/dictionaries/en';
 import fr from '@/i18n/dictionaries/fr';
-import { VAULTS_APP_URL } from '@/config/vaults';
 import type { VaultTier } from '@/hooks/vaults/useVaultStats';
 import VaultTierCard from '../VaultTierCard';
 
 const WHALE: VaultTier = { index: 7, name: 'Whale 100K', priceUsd: 100_000, aprPct: 140, capBps: 70_000, active: true };
 
+const onMint = vi.fn();
+
 function renderCard(paused: boolean, locale: 'en' | 'fr' = 'en', tier: VaultTier = WHALE, minted: number | null = 12) {
 	render(
 		<DictionaryProvider dict={locale === 'fr' ? fr : en} locale={locale}>
-			<VaultTierCard tier={tier} paused={paused} minted={minted} />
+			<VaultTierCard tier={tier} paused={paused} minted={minted} onMint={onMint} />
 		</DictionaryProvider>,
 	);
 }
 
 describe('VaultTierCard', () => {
-	afterEach(cleanup);
+	afterEach(() => {
+		cleanup();
+		onMint.mockClear();
+	});
 
 	it('shows the on-chain tier name, APR and price', () => {
 		renderCard(false);
@@ -48,17 +52,22 @@ describe('VaultTierCard', () => {
 		expect(screen.getByText(en.vaults.mint)).toBeTruthy();
 	});
 
-	it('mints on the dedicated Vaults app, in a new tab', () => {
-		renderCard(false);
-		const link = screen.getByText(en.vaults.mint).closest('a');
-		expect(link?.getAttribute('href')).toBe(VAULTS_APP_URL);
-		expect(link?.getAttribute('target')).toBe('_blank');
-		expect(link?.getAttribute('rel')).toContain('noopener');
+	it('mints in-app: the button hands its own tier to the buy dialog, with no external link', () => {
+		const { container } = render(
+			<DictionaryProvider dict={en} locale="en">
+				<VaultTierCard tier={WHALE} paused={false} minted={12} onMint={onMint} />
+			</DictionaryProvider>,
+		);
+		expect(container.querySelector('a')).toBeNull();
+		fireEvent.click(screen.getByRole('button', { name: en.vaults.mint }));
+		expect(onMint).toHaveBeenCalledWith(WHALE);
 	});
 
-	it('offers no mint link while sales are paused', () => {
+	it('offers no mint while sales are paused', () => {
 		renderCard(true);
 		expect(screen.queryByText(en.vaults.mint)).toBeNull();
+		fireEvent.click(screen.getByRole('button', { name: en.vaults.paused }));
+		expect(onMint).not.toHaveBeenCalled();
 		expect((screen.getByRole('button', { name: en.vaults.paused }) as HTMLButtonElement).disabled).toBe(true);
 	});
 
