@@ -1,11 +1,9 @@
 'use client';
 
-import { useEffect } from 'react';
 import { Plus, Sprout } from 'lucide-react';
 import { formatUnits } from 'viem';
 import { Pill, type PillTone } from '@/components/primitives/Pill';
 import { Button } from '@/components/ui/button';
-import { useV3IncentiveAPR } from '@/hooks/v3/useV3IncentiveAPR';
 import type { V3Incentive } from '@/services/dex/v3-staking-types';
 import { useDict, useFormat } from '@/i18n/hooks';
 import { interpolate } from '@/i18n/interpolate';
@@ -15,8 +13,8 @@ const STATUS_TONE: Record<IncentiveStatus, PillTone> = { active: 'success', upco
 
 interface FarmCardProps {
 	incentive: V3Incentive;
-	/** The wallet's claimable amount of this farm's reward token (the staker keeps claims per token). */
-	pendingReward: bigint;
+	/** Estimated APR of the farm's in-range staked liquidity; null when it can't be estimated. */
+	apr: number | null;
 	/** USD price of the reward token; null when the subgraph has none. */
 	rewardPriceUsd: number | null;
 	/** USD staked in this farm, overall and by the wallet. */
@@ -24,12 +22,10 @@ interface FarmCardProps {
 	isConnected: boolean;
 	onStake: () => void;
 	onManage: () => void;
-	/** Reports this farm's estimated APR so the page can average it. */
-	onApr: (incentiveId: string, apr: number | null) => void;
 }
 
 /** The reference's farm card: pair + fee tier + APR, Staked / Rewards boxes, Stake LP / Harvest. */
-export default function FarmCard({ incentive, pendingReward, rewardPriceUsd, staked, isConnected, onStake, onManage, onApr }: FarmCardProps) {
+export default function FarmCard({ incentive, apr, rewardPriceUsd, staked, isConnected, onStake, onManage }: FarmCardProps) {
 	const dict = useDict();
 	const fmt = useFormat();
 	const f = dict.farm;
@@ -38,15 +34,12 @@ export default function FarmCard({ incentive, pendingReward, rewardPriceUsd, sta
 	const pair = `${incentive.poolToken0Symbol || '?'} / ${incentive.poolToken1Symbol || '?'}`;
 	const rewardSymbol = incentive.rewardTokenSymbol || '';
 	const decimals = incentive.rewardTokenDecimals || 18;
-	const { apr, isEstimate } = useV3IncentiveAPR(incentive, rewardPriceUsd ?? 0, staked.totalUsd ?? 0, decimals);
 
-	useEffect(() => {
-		onApr(incentive.incentiveId, apr);
-	}, [onApr, incentive.incentiveId, apr]);
-
-	const hasPending = pendingReward > 0n;
-	const hasStake = staked.userTokenIds.length > 0 || hasPending;
-	const pendingAmount = Number(formatUnits(pendingReward, decimals));
+	// Only what this farm's staked positions have accrued. The claimable `rewards()` balance is kept per
+	// reward TOKEN, not per farm, so it is shown once on the page (with Claim) instead of on every card.
+	const hasPending = staked.userAccrued > 0n;
+	const hasStake = staked.userTokenIds.length > 0;
+	const pendingAmount = Number(formatUnits(staked.userAccrued, decimals));
 	const tokens = (amount: number) => `${fmt.number(amount, { maximumFractionDigits: 4 })} ${rewardSymbol}`.trim();
 	const timeLeft = formatDuration(incentive.timeRemaining, { day: f.dayUnit, hour: f.hourUnit, minute: f.minuteUnit });
 	const stakedText = isConnected && staked.userUsd !== null ? fmt.usd(staked.userUsd) : '—';
@@ -66,7 +59,7 @@ export default function FarmCard({ incentive, pendingReward, rewardPriceUsd, sta
 				</div>
 				<div className="shrink-0 text-right">
 					<div className="font-display text-xl font-bold leading-none tabular-nums text-success">{apr !== null ? fmt.pct(apr) : '—'}</div>
-					<div className="mt-1 text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-deep">{isEstimate ? c.aprEstimate : c.apr}</div>
+					<div className="mt-1 text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-deep">{c.aprEstimate}</div>
 				</div>
 			</header>
 

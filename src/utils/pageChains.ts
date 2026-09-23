@@ -12,7 +12,7 @@ import type { NavKey } from '@/components/shell/nav';
 export const BRIDGE_CHAINS: readonly number[] = [CHAIN_IDS.KALYCHAIN, CHAIN_IDS.ARBITRUM, CHAIN_IDS.BSC, CHAIN_IDS.POLYGON];
 
 /** Chains with a DEX the swap page can quote and route on. */
-export const SWAP_CHAINS: readonly number[] = [CHAIN_IDS.KALYCHAIN, CHAIN_IDS.ARBITRUM, CHAIN_IDS.BSC];
+export const SWAP_CHAINS: readonly number[] = [CHAIN_IDS.KALYCHAIN, CHAIN_IDS.ARBITRUM, CHAIN_IDS.BSC, CHAIN_IDS.POLYGON];
 
 /**
  * The chains this page works on. Everything not listed here is KalyChain-only: vaults, pools, farm,

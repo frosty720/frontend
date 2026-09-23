@@ -23,7 +23,7 @@ import { farmingLogger } from '@/lib/logger';
 import type { V3Incentive } from '@/services/dex/v3-staking-types';
 import { incentiveStatus, rewardTotals, totalUsd, weightedAverageApr, type IncentiveStakeValue, type TokenTotal } from '@/utils/farm';
 
-const UNKNOWN_STAKE: IncentiveStakeValue = { totalUsd: null, userUsd: null, userTokenIds: [] };
+const UNKNOWN_STAKE: IncentiveStakeValue = { totalUsd: null, userUsd: null, userTokenIds: [], userAccrued: 0n };
 
 /** Farm page, laid out like the reference: three stat cards, then a two-column grid of farms. */
 export default function FarmPage() {
@@ -38,7 +38,6 @@ export default function FarmPage() {
 	const [staking, setStaking] = useState<V3Incentive | null>(null);
 	const [managing, setManaging] = useState<V3Incentive | null>(null);
 	const [claiming, setClaiming] = useState(false);
-	const [aprs, setAprs] = useState<Record<string, number | null>>({});
 
 	const decimalsOf = useCallback(
 		(token: string) => incentives.find((i) => i.key.rewardToken.toLowerCase() === token.toLowerCase())?.rewardTokenDecimals ?? 18,
@@ -59,19 +58,21 @@ export default function FarmPage() {
 	const prices = useTokenUsdPrices(rewardTokens, CHAIN_IDS.KALYCHAIN);
 
 	const now = Math.floor(Date.now() / 1000);
+	const stakeOf = (incentive: V3Incentive) => staked.byIncentive[incentive.incentiveId.toLowerCase()] ?? UNKNOWN_STAKE;
+	const aprOf = (incentive: V3Incentive) => staked.aprByIncentive[incentive.incentiveId.toLowerCase()] ?? null;
+	const rewardEntry = (token: string, raw: bigint) => ({ token, raw, decimals: decimalsOf(token), symbol: rewardTokenSymbols[token.toLowerCase()] ?? '' });
+	// Claimable balances plus rewards still accruing in staked positions (paid out on unstake).
 	const pending = rewardTotals(
-		Object.entries(pendingRewards).map(([token, raw]) => ({ token, raw, decimals: decimalsOf(token), symbol: rewardTokenSymbols[token.toLowerCase()] ?? '' })),
+		[
+			...Object.entries(pendingRewards).map(([token, raw]) => rewardEntry(token, raw)),
+			...incentives.map((incentive) => rewardEntry(incentive.key.rewardToken, stakeOf(incentive).userAccrued)),
+		],
 		prices,
 	);
+	const hasClaimable = Object.values(pendingRewards).some((raw) => raw > 0n);
 	const activeCount = incentives.filter((i) => incentiveStatus(i, now) === 'active').length;
 
-	const stakeOf = (incentive: V3Incentive) => staked.byIncentive[incentive.incentiveId.toLowerCase()] ?? UNKNOWN_STAKE;
-	const reportApr = useCallback((incentiveId: string, apr: number | null) => {
-		setAprs((current) => (current[incentiveId] === apr ? current : { ...current, [incentiveId]: apr }));
-	}, []);
-	const averageApr = weightedAverageApr(
-		incentives.map((incentive) => ({ apr: aprs[incentive.incentiveId] ?? null, stakedUsd: stakeOf(incentive).totalUsd })),
-	);
+	const averageApr = weightedAverageApr(incentives.map((incentive) => ({ apr: aprOf(incentive), stakedUsd: stakeOf(incentive).totalUsd })));
 
 	const totalText = (totals: TokenTotal[]) => {
 		if (totals.length === 0) return fmt.usd(0);
@@ -128,20 +129,17 @@ export default function FarmPage() {
 					<FarmCard
 						key={incentive.incentiveId}
 						incentive={incentive}
-						pendingReward={pendingRewards[incentive.key.rewardToken] ?? 0n}
+						apr={aprOf(incentive)}
 						rewardPriceUsd={prices[incentive.key.rewardToken.toLowerCase()] ?? null}
 						staked={stakeOf(incentive)}
 						isConnected={isConnected}
 						onStake={() => setStaking(incentive)}
 						onManage={() => setManaging(incentive)}
-						onApr={reportApr}
 					/>
 				))}
 			</div>
 		);
 	}
-
-	const hasPending = pending.length > 0;
 
 	return (
 		<>
@@ -152,7 +150,7 @@ export default function FarmPage() {
 					value={isConnected ? totalText(pending) : '—'}
 					tone="success"
 					hint={
-						isConnected && hasPending ? (
+						isConnected && hasClaimable ? (
 							<Button size="sm" onClick={claimAll} disabled={claiming}>
 								{claiming ? f.claiming : f.claim}
 							</Button>

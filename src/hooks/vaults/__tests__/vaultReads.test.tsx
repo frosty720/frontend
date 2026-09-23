@@ -63,7 +63,13 @@ describe('usePolStats', () => {
 
 describe('useMyVaults', () => {
 	it('reads maturity per vault from its checkpoint, unclaimed KMT and the contract KMT price', async () => {
-		querySubgraph.mockResolvedValue({ vaults: [{ tokenId: '7' }, { tokenId: '8' }] });
+		// 8 was minted later than 7, so it lists first.
+		querySubgraph.mockResolvedValue({
+			vaults: [
+				{ tokenId: '7', createdAtTimestamp: '1789000000' },
+				{ tokenId: '8', createdAtTimestamp: '1789500000' },
+			],
+		});
 		const perVault: Record<string, Record<string, unknown>> = {
 			// $30 checkpointed + 100 KMT at $0.20 of a $200 cap → 25%.
 			'7': { tierOf: 1, earned: 100n * E18, isMatured: false, earnedUsdOf: 30n * E18, capUsdOf: 200n * E18 },
@@ -78,9 +84,9 @@ describe('useMyVaults', () => {
 
 		const { result } = renderHook(() => useMyVaults('0xAbC0000000000000000000000000000000000001'), { wrapper });
 		await waitFor(() => expect(result.current.data).toBeDefined());
-		const [seven, eight] = result.current.data!;
-		expect(seven).toMatchObject({ id: 7n, tierName: 'Basic', priceUsd: 100, aprPct: 40, maturityPct: 25, matured: false, weight: 10n, claimableKmt: 100 });
-		expect(eight).toMatchObject({ id: 8n, maturityPct: 100, matured: true, weight: 150n });
+		const [eight, seven] = result.current.data!;
+		expect(seven).toMatchObject({ id: 7n, tierName: 'Basic', priceUsd: 100, aprPct: 40, maturityPct: 25, matured: false, weight: 10n, claimableKmt: 100, purchasedAt: 1789000000 });
+		expect(eight).toMatchObject({ id: 8n, maturityPct: 100, matured: true, weight: 150n, purchasedAt: 1789500000 });
 		expect(querySubgraph.mock.calls[0][1]).toContain('0xabc0000000000000000000000000000000000001');
 	});
 });

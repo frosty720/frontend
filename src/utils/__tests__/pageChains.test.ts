@@ -7,11 +7,12 @@ describe('chainsForPage', () => {
 		expect([...chainsForPage('bridge')].sort()).toEqual([CHAIN_IDS.BSC, CHAIN_IDS.POLYGON, CHAIN_IDS.KALYCHAIN, CHAIN_IDS.ARBITRUM].sort());
 	});
 
-	it('lets swaps run on the chains with a DEX, but not Polygon', () => {
+	it('lets swaps run on every chain with a DEX, Polygon included', () => {
 		expect(isChainOkForPage('swap', CHAIN_IDS.ARBITRUM)).toBe(true);
 		expect(isChainOkForPage('swap', CHAIN_IDS.BSC)).toBe(true);
 		expect(isChainOkForPage('swap', CHAIN_IDS.KALYCHAIN)).toBe(true);
-		expect(isChainOkForPage('swap', CHAIN_IDS.POLYGON)).toBe(false);
+		expect(isChainOkForPage('swap', CHAIN_IDS.POLYGON)).toBe(true);
+		expect(isChainOkForPage('swap', 1)).toBe(false);
 	});
 
 	it('keeps every KalyChain-contract page on KalyChain', () => {

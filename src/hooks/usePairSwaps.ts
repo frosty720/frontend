@@ -164,9 +164,9 @@ export function usePairSwaps({
     setError(null);
 
     try {
-      // For BSC and Arbitrum, use GeckoTerminal for recent trades only
+      // For BSC, Arbitrum and Polygon, use GeckoTerminal for recent trades only
       // User trades are not supported (will show explorer link instead)
-      if ((chainId === 56 || chainId === 42161) && !userAddress) {
+      if ((chainId === 56 || chainId === 42161 || chainId === 137) && !userAddress) {
         swapLogger.debug('Fetching swaps from GeckoTerminal...', { chainId, pairAddress, limit });
 
         if (!pairAddress) {

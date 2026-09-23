@@ -15,6 +15,8 @@ export function getExplorerUrl(chainId: number): string {
       return 'https://bscscan.com';
     case 42161:
       return 'https://arbiscan.io';
+    case 137:
+      return 'https://polygonscan.com';
     default:
       return '';
   }
@@ -31,6 +33,8 @@ export function getExplorerName(chainId: number): string {
       return 'BSCScan';
     case 42161:
       return 'Arbiscan';
+    case 137:
+      return 'PolygonScan';
     default:
       return 'Explorer';
   }

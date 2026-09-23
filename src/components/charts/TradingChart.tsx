@@ -582,6 +582,7 @@ export default function TradingChart({
         case CHAIN_IDS.KALYCHAIN: return 'KalyChain';
         case 56: return 'BSC';
         case 42161: return 'Arbitrum';
+        case 137: return 'Polygon';
         default: return 'Unknown';
       }
     };

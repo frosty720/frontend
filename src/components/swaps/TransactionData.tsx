@@ -233,8 +233,8 @@ export default function TransactionData({ selectedPair, userAddress }: Transacti
                 <div className="text-center py-8 text-gray-500">
                   <p>Connect your wallet to view your transaction history</p>
                 </div>
-              ) : (chainId === 56 || chainId === 42161) ? (
-                // For BSC and Arbitrum, show explorer link instead
+              ) : (chainId === 56 || chainId === 42161 || chainId === 137) ? (
+                // For BSC, Arbitrum and Polygon, show explorer link instead
                 <div className="text-center py-8">
                   <p className="text-gray-400 mb-4">
                     View your complete transaction history on {getExplorerName(chainId)}

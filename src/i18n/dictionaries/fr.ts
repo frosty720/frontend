@@ -35,7 +35,7 @@ const fr: Dictionary = {
 
 	pages: {
 		dashboard: { title: 'Tableau de bord', subtitle: 'Bienvenue — votre portefeuille en un coup d’œil' },
-		swap: { title: 'Swap', subtitle: 'Échangez n’importe quel actif en un clic sur KalyChain, Arbitrum ou BSC — via les pools de chaque réseau.' },
+		swap: { title: 'Swap', subtitle: 'Échangez n’importe quel actif en un clic sur KalyChain, Arbitrum, BSC ou Polygon — via les pools de chaque réseau.' },
 		bridge: { title: 'Bridge', subtitle: 'Transférez vos jetons entre KalyChain, Arbitrum, BSC et Polygon via les routes Hyperlane.' },
 		vaults: { title: 'Vaults', subtitle: 'Des NFT productifs adossés à la liquidité du protocole, qui partagent chaque récompense de bloc — un revenu passif on-chain.' },
 		kusd: { title: 'Acheter / Vendre KUSD', subtitle: 'Achetez ou vendez le stablecoin KUSD (1:1 USD) par mobile money, carte ou crypto. Règlement instantané sur KalyChain.' },
@@ -169,7 +169,7 @@ const fr: Dictionary = {
 		loadingTokens: 'Chargement des jetons…',
 		tokensFailed: 'Échec du chargement des jetons : {error}',
 		unsupportedTitle: 'Ce réseau n’est pas pris en charge pour les swaps',
-		unsupportedBody: 'Passez sur KalyChain, BSC ou Arbitrum.',
+		unsupportedBody: 'Passez sur KalyChain, BSC, Arbitrum ou Polygon.',
 		wrongNetworkTitle: 'Mauvais réseau dans votre wallet',
 		wrongNetworkBody: 'Votre wallet est sur {wallet}. Passez-le sur {network} pour terminer ce swap.',
 		switchTo: 'Passer sur {network}',
@@ -322,6 +322,7 @@ const fr: Dictionary = {
 		myEmpty: 'Vous n’avez pas encore de vault.',
 		vaultName: 'Vault {tier} #{id}',
 		invested: 'Investi {amount} · {apr} APR',
+		purchasedOn: 'Acheté le {date}',
 		claimable: '+{amount} à réclamer',
 		claim: 'Réclamer',
 	},

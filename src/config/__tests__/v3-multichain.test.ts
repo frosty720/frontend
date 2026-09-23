@@ -8,13 +8,13 @@ import { CHAIN_IDS } from '@/config/chains';
 import { getV3Config, isV3Available } from '@/config/dex/v3-config';
 
 describe('V3 config per chain', () => {
-	it('serves KalyChain, Arbitrum and BSC, and nothing else', () => {
+	it('serves KalyChain, Arbitrum, BSC and Polygon, and nothing else', () => {
 		expect(getV3Config(CHAIN_IDS.KALYCHAIN)?.name).toBe('KalySwap V3');
 		expect(getV3Config(CHAIN_IDS.ARBITRUM)?.name).toBe('Uniswap V3');
 		expect(getV3Config(CHAIN_IDS.BSC)?.name).toBe('PancakeSwap V3');
-		expect(getV3Config(CHAIN_IDS.POLYGON)).toBeNull();
+		expect(getV3Config(CHAIN_IDS.POLYGON)?.name).toBe('Uniswap V3');
 		expect(getV3Config(1)).toBeNull();
-		for (const chainId of [CHAIN_IDS.KALYCHAIN, CHAIN_IDS.ARBITRUM, CHAIN_IDS.BSC]) {
+		for (const chainId of [CHAIN_IDS.KALYCHAIN, CHAIN_IDS.ARBITRUM, CHAIN_IDS.BSC, CHAIN_IDS.POLYGON]) {
 			expect(isV3Available(chainId)).toBe(true);
 		}
 	});
@@ -41,11 +41,22 @@ describe('V3 config per chain', () => {
 		expect(config.routerKind).toBe('swapRouter');
 	});
 
+	it('carries the verified Polygon Uniswap V3 addresses, with WPOL as the wrapped native', () => {
+		const config = getV3Config(CHAIN_IDS.POLYGON)!;
+		expect(config.factory).toBe('0x1F98431c8aD98523631AE4a59f267346ea31F984');
+		expect(config.quoter).toBe('0x61fFE014bA17989E743c5F6cB21bF9697530B21e');
+		expect(config.router).toBe('0x68b3465833fb72A70ecDF485E0e4C7bD8665Fc45');
+		expect(config.wethAddress).toBe('0x0d500B1d8E8eF31E21C99d1Db9A6444d3ADf1270');
+		expect(config.routerKind).toBe('swapRouter02');
+		expect(Object.values(config.feeTiers)).toEqual([100, 500, 3000, 10000]);
+	});
+
 	it('gives every chain its own tokens and native currency', () => {
 		expect(getV3Config(CHAIN_IDS.ARBITRUM)!.nativeToken.symbol).toBe('ETH');
 		expect(getV3Config(CHAIN_IDS.BSC)!.nativeToken.symbol).toBe('BNB');
 		expect(getV3Config(CHAIN_IDS.KALYCHAIN)!.nativeToken.symbol).toBe('KMT');
-		for (const chainId of [CHAIN_IDS.ARBITRUM, CHAIN_IDS.BSC]) {
+		expect(getV3Config(CHAIN_IDS.POLYGON)!.nativeToken.symbol).toBe('POL');
+		for (const chainId of [CHAIN_IDS.ARBITRUM, CHAIN_IDS.BSC, CHAIN_IDS.POLYGON]) {
 			const config = getV3Config(chainId)!;
 			expect(config.tokens.length).toBeGreaterThan(2);
 			expect(config.tokens.every((token) => token.chainId === chainId)).toBe(true);
@@ -53,7 +64,7 @@ describe('V3 config per chain', () => {
 	});
 
 	it('leaves the subgraph and staker empty off KalyChain, so those panels skip instead of guessing', () => {
-		for (const chainId of [CHAIN_IDS.ARBITRUM, CHAIN_IDS.BSC]) {
+		for (const chainId of [CHAIN_IDS.ARBITRUM, CHAIN_IDS.BSC, CHAIN_IDS.POLYGON]) {
 			expect(getV3Config(chainId)!.subgraphUrl).toBe('');
 			expect(getV3Config(chainId)!.staker).toBe('');
 		}

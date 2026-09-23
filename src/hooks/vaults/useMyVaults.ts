@@ -7,7 +7,7 @@ import { CHAIN_IDS } from '@/config/chains';
 import { rewardsPoolAbi, vaultManagerAbi } from '@/config/abis/vaults';
 import { REWARDS_POOL_ADDRESS, VAULT_MANAGER_ADDRESS, VAULT_SUBGRAPH_URL, vaultTierName } from '@/config/vaults';
 import { isLowercaseAddress, querySubgraph } from '@/lib/subgraph-query';
-import { vaultMaturity } from '@/utils/vaults';
+import { newestFirst, vaultMaturity, vaultPurchasedAt } from '@/utils/vaults';
 
 export interface MyVault {
 	id: bigint;
@@ -26,20 +26,31 @@ export interface MyVault {
 	maturityPct: number;
 	/** Reward weight (VaultManager.tiers().weight). */
 	weight: bigint;
+	/** Purchase time, unix seconds (the 3888 purchase for vaults migrated at cutover). */
+	purchasedAt: number;
 }
 
-/** Vault token ids currently owned by `owner`, from the vault subgraph (no log scan). */
-export async function fetchOwnedVaultIds(subgraphUrl: string, owner: string): Promise<bigint[]> {
+interface OwnedVault {
+	id: bigint;
+	/** Mint time on this chain, unix seconds. */
+	mintedAt: number;
+}
+
+/** Vaults currently owned by `owner` with their mint time, from the vault subgraph (no log scan). */
+export async function fetchOwnedVaults(subgraphUrl: string, owner: string): Promise<OwnedVault[]> {
 	const address = owner.toLowerCase();
 	if (!isLowercaseAddress(address)) return [];
-	const data = await querySubgraph<{ vaults: { tokenId: string }[] }>(
+	const data = await querySubgraph<{ vaults: { tokenId: string; createdAtTimestamp: string }[] }>(
 		subgraphUrl,
-		`{ vaults(first: 1000, where: { owner: "${address}" }, orderBy: tokenId) { tokenId } }`,
+		`{ vaults(first: 1000, where: { owner: "${address}" }, orderBy: tokenId) { tokenId createdAtTimestamp } }`,
 	);
-	return data.vaults.map((vault) => BigInt(vault.tokenId));
+	return data.vaults.map((vault) => ({ id: BigInt(vault.tokenId), mintedAt: Number(vault.createdAtTimestamp) }));
 }
 
-/** The connected wallet's vaults: ownership from the subgraph; tier, claimable KMT, weight and maturity live from the contracts. */
+/**
+ * The connected wallet's vaults, most recently bought first: ownership and mint time from the subgraph;
+ * tier, claimable KMT, weight and maturity live from the contracts.
+ */
 export function useMyVaults(owner: string | undefined) {
 	const client = usePublicClient({ chainId: CHAIN_IDS.KALYCHAIN });
 	return useQuery({
@@ -48,12 +59,12 @@ export function useMyVaults(owner: string | undefined) {
 		staleTime: 30_000,
 		refetchInterval: 60_000,
 		queryFn: async (): Promise<MyVault[]> => {
-			const ids = await fetchOwnedVaultIds(VAULT_SUBGRAPH_URL, owner as string);
+			const owned = await fetchOwnedVaults(VAULT_SUBGRAPH_URL, owner as string);
 			const pool = { address: REWARDS_POOL_ADDRESS, abi: rewardsPoolAbi } as const;
 			const [klcUsdPrice, perVault] = await Promise.all([
 				client!.readContract({ address: VAULT_MANAGER_ADDRESS, abi: vaultManagerAbi, functionName: 'klcUsdPrice' }),
 				Promise.all(
-					ids.map(async (id) => {
+					owned.map(async ({ id, mintedAt }) => {
 						const [tier, earned, matured, earnedUsd, capUsd] = await Promise.all([
 							client!.readContract({ address: VAULT_MANAGER_ADDRESS, abi: vaultManagerAbi, functionName: 'tierOf', args: [id] }),
 							client!.readContract({ ...pool, functionName: 'earned', args: [id] }),
@@ -61,7 +72,7 @@ export function useMyVaults(owner: string | undefined) {
 							client!.readContract({ ...pool, functionName: 'earnedUsdOf', args: [id] }),
 							client!.readContract({ ...pool, functionName: 'capUsdOf', args: [id] }),
 						]);
-						return { id, tier: Number(tier), earned, matured, earnedUsd, capUsd };
+						return { id, mintedAt, tier: Number(tier), earned, matured, earnedUsd, capUsd };
 					}),
 				),
 			]);
@@ -79,7 +90,7 @@ export function useMyVaults(owner: string | undefined) {
 					}),
 				),
 			);
-			return perVault.map((vault) => {
+			const mine = perVault.map((vault): MyVault => {
 				const maturity = vaultMaturity({
 					earnedUsd: vault.earnedUsd,
 					earnedKmtWei: vault.earned,
@@ -98,8 +109,10 @@ export function useMyVaults(owner: string | undefined) {
 					matured: maturity.matured,
 					maturityPct: maturity.pct,
 					weight: tierData.get(vault.tier)?.weight ?? 0n,
+					purchasedAt: vaultPurchasedAt(vault.id, vault.mintedAt),
 				};
 			});
+			return newestFirst(mine);
 		},
 	});
 }

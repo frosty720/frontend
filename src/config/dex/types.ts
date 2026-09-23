@@ -114,6 +114,7 @@ export const SUPPORTED_DEX_CHAINS = [
   CHAIN_IDS.KALYCHAIN, // 3890 — V3 only, no V2 DEX
   56,
   42161,
+  137,
 ] as const;
 export type SupportedDexChainId = typeof SUPPORTED_DEX_CHAINS[number];
 

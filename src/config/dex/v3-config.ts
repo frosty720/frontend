@@ -8,6 +8,7 @@ import { DexConfig } from './types';
 import { KALYCHAIN_TOKENS } from './tokens/kalychain';
 import { ARBITRUM_TOKENS } from './tokens/arbitrum';
 import { BSC_TOKENS } from './tokens/bsc';
+import { POLYGON_TOKENS } from './tokens/polygon';
 import { PANCAKE_V3_SWAP_ROUTER_ABI } from '../abis/v3/PancakeV3SwapRouter';
 import { V3_DEFAULT_FEE_TIER, V3_FEE_TIERS } from './v3-constants';
 import {
@@ -160,10 +161,40 @@ export const PANCAKESWAP_V3_BSC_CONFIG: V3DexConfig = {
     routerKind: 'swapRouter',
 };
 
+/**
+ * Uniswap V3 on Polygon PoS — the same canonical addresses as Arbitrum. Verified on-chain on
+ * 2026-09-23: every contract has code, and QuoterV2 prices 1 WETH ≈ 2,668 USDC and 100 WPOL ≈ 10.04
+ * USDT at the 0.05% tier. No subgraph (stats come from GeckoTerminal) and no farms.
+ */
+export const UNISWAP_V3_POLYGON_CONFIG: V3DexConfig = {
+    name: 'Uniswap V3',
+    factory: '0x1F98431c8aD98523631AE4a59f267346ea31F984',
+    router: '0x68b3465833fb72A70ecDF485E0e4C7bD8665Fc45',
+    quoter: '0x61fFE014bA17989E743c5F6cB21bF9697530B21e',
+    positionManager: '0xC36442b4a4522E871399CD717aBDD847Ab11FE88',
+    tickLens: '0xbfd8137f7d1516D3ea5cA83523914859ec47F573',
+    staker: '',
+    subgraphUrl: '',
+    tokens: POLYGON_TOKENS,
+    routerABI: V3SwapRouter02ABI,
+    factoryABI: V3CoreFactoryABI,
+    quoterABI: V3QuoterV2ABI,
+    poolABI: V3PoolABI,
+    positionManagerABI: V3NonfungiblePositionManagerABI,
+    stakerABI: V3StakerABI,
+    wethAddress: '0x0d500B1d8E8eF31E21C99d1Db9A6444d3ADf1270', // WPOL
+    nativeToken: { symbol: 'POL', name: 'Polygon Ecosystem Token', decimals: 18 },
+    protocolVersion: 'v3',
+    defaultFeeTier: V3_FEE_TIERS.LOW,
+    feeTiers: V3_FEE_TIERS,
+    routerKind: 'swapRouter02',
+};
+
 const V3_CONFIGS: Record<number, V3DexConfig> = {
     [CHAIN_IDS.KALYCHAIN]: KALYSWAP_V3_CONFIG,
     [CHAIN_IDS.ARBITRUM]: UNISWAP_V3_ARBITRUM_CONFIG,
     [CHAIN_IDS.BSC]: PANCAKESWAP_V3_BSC_CONFIG,
+    [CHAIN_IDS.POLYGON]: UNISWAP_V3_POLYGON_CONFIG,
 };
 
 // Get V3 config for a given chain ID (returns null for unsupported chains)

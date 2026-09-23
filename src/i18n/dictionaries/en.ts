@@ -38,7 +38,7 @@ const en = {
 
 	pages: {
 		dashboard: { title: 'Dashboard', subtitle: 'Welcome — your portfolio at a glance' },
-		swap: { title: 'Swap', subtitle: 'Swap any asset in one click on KalyChain, Arbitrum or BSC — routed through each network’s own pools.' },
+		swap: { title: 'Swap', subtitle: 'Swap any asset in one click on KalyChain, Arbitrum, BSC or Polygon — routed through each network’s own pools.' },
 		bridge: { title: 'Bridge', subtitle: 'Move tokens between KalyChain, Arbitrum, BSC and Polygon with Hyperlane warp routes.' },
 		vaults: { title: 'Vaults', subtitle: 'Productive NFTs backed by protocol-owned liquidity that share every block reward — passive income on-chain.' },
 		kusd: { title: 'Buy / Sell KUSD', subtitle: 'Buy or sell the KUSD stablecoin (1:1 USD) with mobile money, card or crypto. Instant settlement on KalyChain.' },
@@ -172,7 +172,7 @@ const en = {
 		loadingTokens: 'Loading tokens…',
 		tokensFailed: 'Failed to load tokens: {error}',
 		unsupportedTitle: 'This network is not supported for swapping',
-		unsupportedBody: 'Switch to KalyChain, BSC or Arbitrum.',
+		unsupportedBody: 'Switch to KalyChain, BSC, Arbitrum or Polygon.',
 		wrongNetworkTitle: 'Wrong network in your wallet',
 		wrongNetworkBody: 'Your wallet is on {wallet}. Switch it to {network} to complete this swap.',
 		switchTo: 'Switch to {network}',
@@ -325,6 +325,7 @@ const en = {
 		myEmpty: 'You don’t own a vault yet.',
 		vaultName: 'Vault {tier} #{id}',
 		invested: 'Invested {amount} · {apr} APR',
+		purchasedOn: 'Purchased {date}',
 		claimable: '+{amount} claimable',
 		claim: 'Claim',
 	},

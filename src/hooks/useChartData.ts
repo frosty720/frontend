@@ -8,6 +8,7 @@ import { useMemo } from 'react';
 import { getPairAddress } from '@/utils/priceImpact';
 import {
   isChainSupported as isGeckoTerminalSupported,
+  geckoIdAddress,
   findPoolAddress,
   getGeckoTerminalOHLC,
   convertGeckoTerminalToChartData,
@@ -204,8 +205,8 @@ async function fetchGeckoTerminalData(
 
   // Determine if we need to invert prices
   const userTokenAAddr = tokenA.address.toLowerCase();
-  const poolBaseToken = poolInfo.relationships?.base_token?.data?.id?.split('_')[1]?.toLowerCase();
-  const poolQuoteToken = poolInfo.relationships?.quote_token?.data?.id?.split('_')[1]?.toLowerCase();
+  const poolBaseToken = geckoIdAddress(poolInfo.relationships?.base_token?.data?.id)?.toLowerCase();
+  const poolQuoteToken = geckoIdAddress(poolInfo.relationships?.quote_token?.data?.id)?.toLowerCase();
 
   if (!poolBaseToken || !poolQuoteToken) {
     throw new Error('Could not extract token information from pool data');

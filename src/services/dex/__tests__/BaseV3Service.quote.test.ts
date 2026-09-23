@@ -370,3 +370,73 @@ describe('getQuoteExactOutput insufficient liquidity', () => {
 			.rejects.toThrow(/pair not found/i);
 	});
 });
+
+describe('findBestRoute candidate search', () => {
+	const service = new KalySwapV3Service(CHAIN_IDS.KALYCHAIN);
+	const EMPTY_POOL = '0x1111111111111111111111111111111111111111';
+	const pairKey = (x: string, y: string) => [x.toLowerCase(), y.toLowerCase()].sort().join('/');
+
+	it('never quotes through a pool with no active liquidity (those revert in the quoter)', async () => {
+		const { client, calls } = stubPublicClient((call) => {
+			if (call.functionName === 'getPool') {
+				const [t0, t1, fee] = call.args;
+				if (pairKey(t0, t1) !== pairKey(WKMT, USDT)) return ZERO;
+				if (fee === 3000) return POOL;
+				if (fee === 500) return EMPTY_POOL;
+				return ZERO;
+			}
+			if (call.functionName === 'liquidity') return call.address === EMPTY_POOL ? 0n : 10n ** 18n;
+			if (call.functionName === 'quoteExactInputSingle') return [2500000n, 0n, 1, 100000n];
+			throw new Error(`unexpected call ${call.functionName}`);
+		});
+
+		const result = await service.findBestRoute(nativeKMT, usdt, '1000', client);
+
+		expect(result!.route.fees).toEqual([3000]);
+		const quotedFees = calls.filter((c) => c.functionName === 'quoteExactInputSingle').map((c) => c.args[0].fee);
+		expect(quotedFees).toEqual([3000]);
+	});
+
+	it('looks every pool up before quoting anything, and each distinct leg only once', async () => {
+		const { client, calls } = stubPublicClient((call) => {
+			if (call.functionName === 'getPool') {
+				const [t0, t1, fee] = call.args;
+				return pairKey(t0, t1) === pairKey(WKMT, USDT) && fee === 3000 ? POOL : ZERO;
+			}
+			if (call.functionName === 'liquidity') return 1n;
+			if (call.functionName === 'quoteExactInputSingle') return [2500000n, 0n, 1, 100000n];
+			throw new Error(`unexpected call ${call.functionName}`);
+		});
+
+		await service.findBestRoute(nativeKMT, usdt, '1000', client);
+
+		const lastLookup = calls.map((c) => c.functionName).lastIndexOf('getPool');
+		const firstQuote = calls.findIndex((c) => c.functionName.startsWith('quote'));
+		expect(lastLookup).toBeLessThan(firstQuote);
+		const lookups = calls.filter((c) => c.functionName === 'getPool').map((c) => `${pairKey(c.args[0], c.args[1])}/${c.args[2]}`);
+		expect(new Set(lookups).size).toBe(lookups.length);
+	});
+
+	it('picks the 2-hop route when it pays more than the direct pool', async () => {
+		const { client } = stubPublicClient((call) => {
+			if (call.functionName === 'getPool') {
+				const [t0, t1, fee] = call.args;
+				if (fee !== 3000) return ZERO;
+				const pair = pairKey(t0, t1);
+				if (pair === pairKey(WKMT, DAI)) return POOL;
+				if (pair === pairKey(WKMT, USDT) || pair === pairKey(USDT, DAI)) return POOL2;
+				return ZERO;
+			}
+			if (call.functionName === 'liquidity') return 1n;
+			if (call.functionName === 'quoteExactInputSingle') return [5n * 10n ** 18n, 0n, 1, 100000n];
+			if (call.functionName === 'quoteExactInput') return [7n * 10n ** 18n, [], [], 100000n];
+			throw new Error(`unexpected call ${call.functionName}`);
+		});
+
+		const dai: Token = { ...usdt, address: DAI, symbol: 'DAI', decimals: 18 };
+		const result = await service.findBestRoute(nativeKMT, dai, '1000', client);
+
+		expect(result!.quote.amountOut).toBe('7');
+		expect(result!.route.tokenPath.map((a) => a.toLowerCase())).toEqual([WKMT.toLowerCase(), USDT.toLowerCase(), DAI.toLowerCase()]);
+	});
+});

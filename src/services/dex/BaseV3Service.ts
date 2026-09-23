@@ -1089,9 +1089,77 @@ export abstract class BaseV3Service implements IV3DexService {
     }
 
     /**
-     * Find the best multi-hop route for a token pair.
-     * Tries direct pools first, then 2-hop routes through intermediate tokens.
-     * Returns the best route with quote, or null if no route is found.
+     * Whether a pool has liquidity active at its current price. Empty pools are what make the quoter
+     * revert, so they are skipped before quoting. A failed read keeps the pool — the quote decides.
+     */
+    private async hasActiveLiquidity(pool: string, publicClient: PublicClient): Promise<boolean> {
+        try {
+            const liquidity = await publicClient.readContract({
+                address: pool as `0x${string}`,
+                abi: this.config.poolABI,
+                functionName: 'liquidity',
+                args: [],
+            }) as unknown as bigint;
+            return liquidity > 0n;
+        } catch {
+            return true;
+        }
+    }
+
+    /**
+     * Every direct and 2-hop route (via getIntermediateTokens) whose pools exist and hold active
+     * liquidity. All pool lookups run at once — the batching transport sends them as one request —
+     * instead of one round trip per fee-tier combination.
+     */
+    async findCandidateRoutes(
+        tokenIn: Token,
+        tokenOut: Token,
+        publicClient: PublicClient
+    ): Promise<Array<{ tokenPath: string[]; fees: number[] }>> {
+        const feeTiers = this.getFeeTiers();
+        const effectiveIn = this.getEffectiveTokenAddress(tokenIn);
+        const effectiveOut = this.getEffectiveTokenAddress(tokenOut);
+        const intermediates = this.getIntermediateTokens().filter(
+            (mid) => mid.toLowerCase() !== effectiveIn.toLowerCase() && mid.toLowerCase() !== effectiveOut.toLowerCase()
+        );
+
+        const legKey = (a: string, b: string, fee: number) => `${[a.toLowerCase(), b.toLowerCase()].sort().join('/')}/${fee}`;
+        const legs = new Map<string, { a: string; b: string; fee: number }>();
+        const addLeg = (a: string, b: string, fee: number) => legs.set(legKey(a, b, fee), { a, b, fee });
+        for (const fee of feeTiers) {
+            addLeg(effectiveIn, effectiveOut, fee);
+            for (const mid of intermediates) {
+                addLeg(effectiveIn, mid, fee);
+                addLeg(mid, effectiveOut, fee);
+            }
+        }
+
+        const live = new Set<string>();
+        await Promise.all(
+            Array.from(legs, async ([key, leg]) => {
+                const pool = await this.getV3PoolAddress({ address: leg.a } as Token, { address: leg.b } as Token, leg.fee, publicClient);
+                if (pool && (await this.hasActiveLiquidity(pool, publicClient))) live.add(key);
+            })
+        );
+
+        const routes: Array<{ tokenPath: string[]; fees: number[] }> = [];
+        for (const fee of feeTiers) {
+            if (live.has(legKey(effectiveIn, effectiveOut, fee))) routes.push({ tokenPath: [effectiveIn, effectiveOut], fees: [fee] });
+        }
+        for (const mid of intermediates) {
+            for (const fee1 of feeTiers) {
+                if (!live.has(legKey(effectiveIn, mid, fee1))) continue;
+                for (const fee2 of feeTiers) {
+                    if (live.has(legKey(mid, effectiveOut, fee2))) routes.push({ tokenPath: [effectiveIn, mid, effectiveOut], fees: [fee1, fee2] });
+                }
+            }
+        }
+        return routes;
+    }
+
+    /**
+     * Find the best route for a token pair: every candidate from findCandidateRoutes is quoted in
+     * parallel and the largest output wins. Returns null if no route can be quoted.
      */
     async findBestRoute(
         tokenIn: Token,
@@ -1099,101 +1167,28 @@ export abstract class BaseV3Service implements IV3DexService {
         amountIn: string,
         publicClient: PublicClient
     ): Promise<{ route: V3Route; quote: V3QuoteResult } | null> {
-        const feeTiers = this.getFeeTiers();
+        const candidates = await this.findCandidateRoutes(tokenIn, tokenOut, publicClient);
+
+        const results = await Promise.all(
+            candidates.map(async ({ tokenPath, fees }) => {
+                const route: V3Route = { tokenPath, fees, encodedPath: this.encodePath(tokenPath, fees) };
+                try {
+                    const quote = tokenPath.length === 2
+                        ? await this.getV3Quote(tokenIn, tokenOut, amountIn, fees[0], publicClient)
+                        : await this.getMultiHopQuote(tokenIn, tokenOut, amountIn, route, publicClient);
+                    return { route, quote };
+                } catch {
+                    return null;
+                }
+            })
+        );
+
         let bestResult: { route: V3Route; quote: V3QuoteResult } | null = null;
-
-        // Native tokens must be wrapped for routing/quoting (execution handles wrap/unwrap)
-        const effectiveIn = this.getEffectiveTokenAddress(tokenIn);
-        const effectiveOut = this.getEffectiveTokenAddress(tokenOut);
-
-        // 1. Try all direct pools (single-hop)
-        for (const fee of feeTiers) {
-            try {
-                const pool = await this.getV3PoolAddress(tokenIn, tokenOut, fee, publicClient);
-                if (!pool) continue;
-
-                const route: V3Route = {
-                    tokenPath: [effectiveIn, effectiveOut],
-                    fees: [fee],
-                    encodedPath: this.encodePath([effectiveIn, effectiveOut], [fee]),
-                };
-
-                const quote = await this.getV3Quote(tokenIn, tokenOut, amountIn, fee, publicClient);
-
-                if (!bestResult || parseFloat(quote.amountOut) > parseFloat(bestResult.quote.amountOut)) {
-                    bestResult = { route, quote };
-                }
-            } catch {
-                continue;
+        for (const result of results) {
+            if (result && (!bestResult || parseFloat(result.quote.amountOut) > parseFloat(bestResult.quote.amountOut))) {
+                bestResult = result;
             }
         }
-
-        // 2. Try 2-hop routes through intermediate tokens
-        const intermediateTokens = this.getIntermediateTokens();
-        const addressIn = effectiveIn.toLowerCase();
-        const addressOut = effectiveOut.toLowerCase();
-
-        for (const intermediate of intermediateTokens) {
-            // Skip if intermediate is the same as input or output
-            if (intermediate.toLowerCase() === addressIn || intermediate.toLowerCase() === addressOut) {
-                continue;
-            }
-
-            // Try all combinations of fee tiers for both hops
-            for (const fee1 of feeTiers) {
-                for (const fee2 of feeTiers) {
-                    try {
-                        // Check both legs have pools
-                        const [pool1, pool2] = await Promise.all([
-                            this.getV3PoolAddress(
-                                tokenIn,
-                                { address: intermediate } as Token,
-                                fee1,
-                                publicClient
-                            ),
-                            this.getV3PoolAddress(
-                                { address: intermediate } as Token,
-                                tokenOut,
-                                fee2,
-                                publicClient
-                            ),
-                        ]);
-
-                        if (!pool1 || !pool2) continue;
-
-                        const route: V3Route = {
-                            tokenPath: [effectiveIn, intermediate, effectiveOut],
-                            fees: [fee1, fee2],
-                            encodedPath: this.encodePath(
-                                [effectiveIn, intermediate, effectiveOut],
-                                [fee1, fee2]
-                            ),
-                        };
-
-                        const quote = await this.getMultiHopQuote(
-                            tokenIn,
-                            tokenOut,
-                            amountIn,
-                            route,
-                            publicClient
-                        );
-
-                        if (!bestResult || parseFloat(quote.amountOut) > parseFloat(bestResult.quote.amountOut)) {
-                            bestResult = { route, quote };
-                            logger.debug('Found better multi-hop route:', {
-                                path: route.tokenPath,
-                                fees: route.fees,
-                                amountOut: quote.amountOut,
-                            });
-                        }
-                    } catch {
-                        // This fee-tier combination doesn't work, continue
-                        continue;
-                    }
-                }
-            }
-        }
-
         return bestResult;
     }
 
@@ -1261,80 +1256,28 @@ export abstract class BaseV3Service implements IV3DexService {
         amountOut: string,
         publicClient: PublicClient
     ): Promise<{ route: V3Route; amountInWei: bigint } | null> {
-        const feeTiers = this.getFeeTiers();
-        const effectiveIn = this.getEffectiveTokenAddress(tokenIn);
-        const effectiveOut = this.getEffectiveTokenAddress(tokenOut);
-        let best: { route: V3Route; amountInWei: bigint } | null = null;
+        const candidates = await this.findCandidateRoutes(tokenIn, tokenOut, publicClient);
 
-        // 1. Direct pools (single-hop)
-        for (const fee of feeTiers) {
-            try {
-                const pool = await this.getV3PoolAddress(tokenIn, tokenOut, fee, publicClient);
-                if (!pool) continue;
-
+        const results = await Promise.all(
+            candidates.map(async ({ tokenPath, fees }) => {
                 const route: V3Route = {
-                    tokenPath: [effectiveIn, effectiveOut],
-                    fees: [fee],
-                    // reverse order for exact-output quoting
-                    encodedPath: this.encodePath([effectiveOut, effectiveIn], [fee]),
+                    tokenPath,
+                    fees,
+                    // reverse order for exact-output quoting: out → (mid →) in
+                    encodedPath: this.encodePath([...tokenPath].reverse(), [...fees].reverse()),
                 };
-
-                const amountInWei = await this.quoteExactOutputForRoute(
-                    tokenIn, tokenOut, amountOut, route, publicClient
-                );
-
-                if (!best || amountInWei < best.amountInWei) {
-                    best = { route, amountInWei };
+                try {
+                    return { route, amountInWei: await this.quoteExactOutputForRoute(tokenIn, tokenOut, amountOut, route, publicClient) };
+                } catch {
+                    return null;
                 }
-            } catch {
-                continue;
-            }
+            })
+        );
+
+        let best: { route: V3Route; amountInWei: bigint } | null = null;
+        for (const result of results) {
+            if (result && (!best || result.amountInWei < best.amountInWei)) best = result;
         }
-
-        // 2. 2-hop routes through intermediate tokens
-        const intermediateTokens = this.getIntermediateTokens();
-        const addressIn = effectiveIn.toLowerCase();
-        const addressOut = effectiveOut.toLowerCase();
-
-        for (const intermediate of intermediateTokens) {
-            if (intermediate.toLowerCase() === addressIn || intermediate.toLowerCase() === addressOut) {
-                continue;
-            }
-
-            for (const fee1 of feeTiers) {
-                for (const fee2 of feeTiers) {
-                    try {
-                        const [pool1, pool2] = await Promise.all([
-                            this.getV3PoolAddress(tokenIn, { address: intermediate } as Token, fee1, publicClient),
-                            this.getV3PoolAddress({ address: intermediate } as Token, tokenOut, fee2, publicClient),
-                        ]);
-
-                        if (!pool1 || !pool2) continue;
-
-                        const route: V3Route = {
-                            tokenPath: [effectiveIn, intermediate, effectiveOut],
-                            fees: [fee1, fee2],
-                            // reverse order for exact-output quoting: out → mid → in
-                            encodedPath: this.encodePath(
-                                [effectiveOut, intermediate, effectiveIn],
-                                [fee2, fee1]
-                            ),
-                        };
-
-                        const amountInWei = await this.quoteExactOutputForRoute(
-                            tokenIn, tokenOut, amountOut, route, publicClient
-                        );
-
-                        if (!best || amountInWei < best.amountInWei) {
-                            best = { route, amountInWei };
-                        }
-                    } catch {
-                        continue;
-                    }
-                }
-            }
-        }
-
         return best;
     }
 

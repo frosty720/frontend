@@ -2,7 +2,7 @@ import { formatUnits } from 'viem';
 import type { V3Incentive } from '@/services/dex/v3-staking-types';
 import type { UsdPriceMap } from '@/hooks/useTokenUsdPrices';
 import { amountsUsd } from '@/utils/dashboard';
-import { getPositionTokenAmounts } from '@/utils/v3-math';
+import { getPositionTokenAmounts, MAX_TICK, MIN_TICK } from '@/utils/v3-math';
 
 export type IncentiveStatus = 'upcoming' | 'active' | 'ended';
 
@@ -124,15 +124,19 @@ export interface StakedPosition {
 	liquidity: bigint;
 	tickLower: number;
 	tickUpper: number;
+	/** Reward accrued in this incentive and not yet moved to `rewards()` (it moves there on unstake). */
+	accruedReward: bigint;
 }
 
 /**
  * The candidates the staker still holds: `stakes(tokenId, incentiveId)` liquidity is non-zero and the
- * deposit has an owner. `liquidities[i]` answers `candidates[i]`; `poolOf` maps incentive id → pool.
+ * deposit has an owner. `liquidities[i]` and `rewards[i]` (`getRewardInfo`) answer `candidates[i]`;
+ * `poolOf` maps incentive id → pool.
  */
 export function confirmStakedPositions(
 	candidates: StakeCandidate[],
 	liquidities: bigint[],
+	rewards: bigint[],
 	deposits: Map<bigint, DepositRead>,
 	poolOf: Record<string, string>,
 ): StakedPosition[] {
@@ -150,6 +154,7 @@ export function confirmStakedPositions(
 			liquidity,
 			tickLower: deposit.tickLower,
 			tickUpper: deposit.tickUpper,
+			accruedReward: rewards[index] ?? 0n,
 		});
 	});
 	return positions;
@@ -164,6 +169,9 @@ export interface FarmPoolToken {
 export interface FarmPool {
 	id: string;
 	sqrtPrice: bigint;
+	/** Liquidity active at the current tick — what staked liquidity shares the reward with. */
+	liquidity: bigint;
+	tick: number | null;
 	token0: FarmPoolToken;
 	token1: FarmPoolToken;
 }
@@ -172,6 +180,8 @@ export interface FarmPool {
 export interface SubgraphFarmPoolRow {
 	id: string;
 	sqrtPrice: string;
+	liquidity: string;
+	tick: string | null;
 	token0: { id: string; symbol: string; decimals: string };
 	token1: { id: string; symbol: string; decimals: string };
 }
@@ -187,7 +197,14 @@ export function toFarmPools(rows: SubgraphFarmPoolRow[]): Record<string, FarmPoo
 	const pools: Record<string, FarmPool> = {};
 	for (const row of rows) {
 		const id = row.id.toLowerCase();
-		pools[id] = { id, sqrtPrice: BigInt(row.sqrtPrice), token0: toPoolToken(row.token0), token1: toPoolToken(row.token1) };
+		pools[id] = {
+			id,
+			sqrtPrice: BigInt(row.sqrtPrice),
+			liquidity: BigInt(row.liquidity),
+			tick: row.tick === null ? null : Number(row.tick),
+			token0: toPoolToken(row.token0),
+			token1: toPoolToken(row.token1),
+		};
 	}
 	return pools;
 }
@@ -215,6 +232,8 @@ export interface IncentiveStakeValue {
 	userUsd: number | null;
 	/** Token IDs of the owner's positions staked in the farm. */
 	userTokenIds: bigint[];
+	/** Reward the owner's staked positions have accrued in the farm (raw reward-token units). */
+	userAccrued: bigint;
 }
 
 /**
@@ -234,11 +253,11 @@ export function stakeValuesByIncentive(
 	for (const incentive of incentives) {
 		const id = incentive.incentiveId.toLowerCase();
 		if (incentive.numberOfStakes === 0) {
-			values[id] = { totalUsd: 0, userUsd: 0, userTokenIds: [] };
+			values[id] = { totalUsd: 0, userUsd: 0, userTokenIds: [], userAccrued: 0n };
 			continue;
 		}
 		if (positions === null) {
-			values[id] = { totalUsd: null, userUsd: null, userTokenIds: [] };
+			values[id] = { totalUsd: null, userUsd: null, userTokenIds: [], userAccrued: 0n };
 			continue;
 		}
 		const staked = positions.filter((position) => position.incentiveId === id);
@@ -249,6 +268,7 @@ export function stakeValuesByIncentive(
 			totalUsd: staked.length === incentive.numberOfStakes ? sum(staked) : null,
 			userUsd: sum(mine),
 			userTokenIds: mine.map((position) => position.tokenId),
+			userAccrued: mine.reduce((total, position) => total + position.accruedReward, 0n),
 		};
 	}
 	return values;
@@ -299,4 +319,61 @@ export function weightedAverageApr(farms: Array<{ apr: number | null; stakedUsd:
 		weighted += farm.apr * farm.stakedUsd;
 	}
 	return weight > 0 ? weighted / weight : null;
+}
+
+const SECONDS_PER_YEAR = 365.25 * 24 * 60 * 60;
+const Q128 = 1n << 128n;
+
+/** Uniswap V3's in-range rule: a position earns while tickLower <= tick < tickUpper. */
+function isInRange(position: StakedPosition, tick: number): boolean {
+	return position.tickLower <= tick && tick < position.tickUpper;
+}
+
+/**
+ * Estimated APR of the farm's in-range staked positions, following the staker's own payout rule: an
+ * in-range position earns `totalRewardUnclaimed / totalSecondsUnclaimed` per second, times its share of
+ * the pool's active liquidity. Unstaked liquidity dilutes stakers (its share is refunded at the end),
+ * so this is NOT remaining rewards over staked value.
+ *
+ * With nothing staked in range yet (a new farm), it estimates what a new full-range stake would earn:
+ * per dollar, that stake's share is one over the pool's active liquidity valued as a full-range
+ * position. Null unless the farm is active and the pool and reward are priced.
+ */
+export function farmApr(
+	incentive: Pick<V3Incentive, 'key' | 'incentiveId' | 'totalRewardUnclaimed' | 'totalSecondsClaimedX128' | 'rewardTokenDecimals'>,
+	positions: StakedPosition[],
+	pools: Record<string, FarmPool>,
+	prices: UsdPriceMap,
+	nowSeconds: number,
+): number | null {
+	if (incentiveStatus(incentive, nowSeconds) !== 'active') return null;
+	const pool = pools[incentive.key.pool.toLowerCase()];
+	const rewardPrice = prices[incentive.key.rewardToken.toLowerCase()];
+	if (!pool || pool.tick === null || pool.liquidity === 0n || !rewardPrice) return null;
+
+	const elapsed = BigInt(Math.max(Number(incentive.key.endTime), nowSeconds)) - incentive.key.startTime;
+	const secondsUnclaimed = Number(((elapsed * Q128) - incentive.totalSecondsClaimedX128) / Q128);
+	if (secondsUnclaimed <= 0) return null;
+	const rewardPerSecond = Number(formatUnits(incentive.totalRewardUnclaimed, incentive.rewardTokenDecimals ?? 18)) / secondsUnclaimed;
+
+	const id = incentive.incentiveId.toLowerCase();
+	let yearlyUsd = 0;
+	let stakedUsd = 0;
+	for (const position of positions) {
+		if (position.incentiveId !== id || !isInRange(position, pool.tick)) continue;
+		const value = stakedPositionUsd(position, pool, prices);
+		if (value === null) return null;
+		const share = Math.min(1, Number(position.liquidity) / Number(pool.liquidity));
+		stakedUsd += value;
+		yearlyUsd += rewardPerSecond * share * SECONDS_PER_YEAR * rewardPrice;
+	}
+	if (stakedUsd > 0) return (yearlyUsd / stakedUsd) * 100;
+
+	const poolAsFullRange = stakedPositionUsd(
+		{ tokenId: 0n, incentiveId: id, pool: pool.id, owner: '', liquidity: pool.liquidity, tickLower: MIN_TICK, tickUpper: MAX_TICK, accruedReward: 0n },
+		pool,
+		prices,
+	);
+	if (!poolAsFullRange || poolAsFullRange <= 0) return null;
+	return ((rewardPerSecond * SECONDS_PER_YEAR * rewardPrice) / poolAsFullRange) * 100;
 }
