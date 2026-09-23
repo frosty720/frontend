@@ -2,7 +2,7 @@
 
 import { CHAIN_IDS, KALYCHAIN_EXPLORER_URL } from '@/config/chains';
 
-import React, { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { ArrowDown, ArrowLeftRight, Settings, AlertTriangle, CheckCircle, ChevronDown, X, ExternalLink } from 'lucide-react';
@@ -28,32 +28,11 @@ import { useV3Swap } from '@/hooks/useV3Swap';
 import { useTokenUsdPrices, usdPriceOf } from '@/hooks/useTokenUsdPrices';
 import { useDict, useFormat } from '@/i18n/hooks';
 import { interpolate } from '@/i18n/interpolate';
+import { TokenAvatar } from '@/components/primitives/TokenAvatar';
 import { describeError } from '@/i18n/errorText';
 
 // Price impact utilities
 import { formatPriceImpact, getPriceImpactColor } from '@/utils/multichainPriceImpact';
-
-// Token logo with a monogram fallback when the image fails to load
-function TokenIcon({ token }: { token: Token }) {
-  const [imageError, setImageError] = React.useState(false);
-
-  if (imageError || !token.logoURI) {
-    return (
-      <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-gold text-[11px] font-bold text-on-gold">
-        {token.symbol.charAt(0)}
-      </span>
-    );
-  }
-
-  return (
-    <img
-      src={token.logoURI}
-      alt={token.symbol}
-      className="size-6 shrink-0 rounded-full"
-      onError={() => setImageError(true)}
-    />
-  );
-}
 
 export interface MultichainSwapInterfaceProps {
   fromToken?: Token | null;
@@ -96,6 +75,7 @@ export default function MultichainSwapInterface({
       case CHAIN_IDS.KALYCHAIN: return 'KalyChain';
       case 56: return 'BNB Smart Chain';
       case 42161: return 'Arbitrum One';
+      case 137: return 'Polygon';
       default: return id ? `chain ${id}` : 'an unsupported network';
     }
   };
@@ -312,6 +292,7 @@ export default function MultichainSwapInterface({
       case CHAIN_IDS.KALYCHAIN: return `${KALYCHAIN_EXPLORER_URL}/tx/${txHash}`;
       case 56: return `https://bscscan.com/tx/${txHash}`;
       case 42161: return `https://arbiscan.io/tx/${txHash}`;
+      case 137: return `https://polygonscan.com/tx/${txHash}`;
       default: return '';
     }
   };
@@ -758,7 +739,7 @@ export default function MultichainSwapInterface({
             >
               {swapState.fromToken ? (
                 <>
-                  <TokenIcon token={swapState.fromToken} />
+                  <TokenAvatar symbol={swapState.fromToken.symbol} logoURI={swapState.fromToken.logoURI} size={24} />
                   <span>{swapState.fromToken.symbol}</span>
                 </>
               ) : (
@@ -836,7 +817,7 @@ export default function MultichainSwapInterface({
             >
               {swapState.toToken ? (
                 <>
-                  <TokenIcon token={swapState.toToken} />
+                  <TokenAvatar symbol={swapState.toToken.symbol} logoURI={swapState.toToken.logoURI} size={24} />
                   <span>{swapState.toToken.symbol}</span>
                 </>
               ) : (

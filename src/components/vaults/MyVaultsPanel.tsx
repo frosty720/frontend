@@ -64,9 +64,12 @@ export default function MyVaultsPanel({ address, kmtPrice }: { address: string |
 										<Vault className="size-5" aria-hidden />
 									</span>
 									<span className="min-w-0">
-										<span className="flex items-center gap-2 font-semibold text-cream">
+										<span className="flex flex-wrap items-center gap-x-2 gap-y-0.5 font-semibold text-cream">
 											<span className="truncate">{interpolate(v.vaultName, { tier: vault.tierName, id: key })}</span>
 											{vault.matured && <Pill tone="muted">{va.matured}</Pill>}
+											<span className="text-[12px] font-normal text-muted-deep">
+												{interpolate(v.purchasedOn, { date: fmt.date(vault.purchasedAt * 1000) })}
+											</span>
 										</span>
 										<span className="block truncate text-[12.5px] text-muted-foreground">
 											{interpolate(v.invested, { amount: fmt.usd(vault.priceUsd, { decimals: 0 }), apr: fmt.pct(vault.aprPct, 0) })}

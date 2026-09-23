@@ -14,6 +14,7 @@ import { Token } from '@/config/dex/types';
 import { KALYCHAIN_TOKENS } from '@/config/dex/tokens/kalychain';
 import { BSC_TOKENS } from '@/config/dex/tokens/bsc';
 import { ARBITRUM_TOKENS } from '@/config/dex/tokens/arbitrum';
+import { POLYGON_TOKENS } from '@/config/dex/tokens/polygon';
 
 import { logger } from '@/lib/logger';
 
@@ -51,6 +52,8 @@ export interface UseTokenListsOptions {
 function getBundledTokens(chainId: number): Token[] {
   if (chainId === 56) return BSC_TOKENS.filter(t => t.chainId === 56);
   if (chainId === 42161) return ARBITRUM_TOKENS.filter(t => t.chainId === 42161);
+  // Polygon has no remote list configured: the verified bundled list is the list.
+  if (chainId === 137) return POLYGON_TOKENS;
   // KMT (3890) has no remote token list published yet, so the bundled list IS the list.
   if (chainId === CHAIN_IDS.KALYCHAIN) return KALYCHAIN_TOKENS.filter((t: Token) => t.chainId === CHAIN_IDS.KALYCHAIN);
   return [];

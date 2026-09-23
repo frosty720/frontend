@@ -35,6 +35,7 @@ const vault = (id: bigint, earnedKmt: number, maturity: { pct?: number; matured?
 	matured: maturity.matured ?? false,
 	maturityPct: maturity.pct ?? 0,
 	weight: 1n,
+	purchasedAt: 1782823273, // 2026-06-30 12:41 UTC
 });
 
 function renderPanel(connected = true, dict = en, locale: 'en' | 'fr' = 'en') {
@@ -98,6 +99,15 @@ describe('MyVaultsPanel', () => {
 		expect(screen.getByText('42.5%')).toBeTruthy();
 		expect(screen.getAllByText(en.vaultApp.matured)).toHaveLength(1);
 		expect(screen.getAllByText(en.vaultApp.buyAgain)).toHaveLength(1);
+	});
+
+	it('shows each vault\'s purchase date in the reader\'s locale', () => {
+		vaults = [vault(1n, 0)];
+		renderPanel();
+		expect(screen.getByText('Purchased Jun 30, 2026')).toBeTruthy();
+		cleanup();
+		renderPanel(true, fr, 'fr');
+		expect(screen.getByText('Acheté le 30 juin 2026')).toBeTruthy();
 	});
 
 	it('asks to connect when there is no wallet', () => {

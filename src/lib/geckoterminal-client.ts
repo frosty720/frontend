@@ -23,6 +23,7 @@ const CACHE_TTL = 60 * 1000; // 1 minute cache
 const NETWORK_IDS: Record<number, string> = {
   56: 'bsc', // Binance Smart Chain
   42161: 'arbitrum', // Arbitrum One
+  137: 'polygon_pos', // Polygon PoS
 };
 
 /**
@@ -93,6 +94,14 @@ async function rateLimitedFetch(url: string): Promise<any> {
 }
 
 /**
+ * The address in a GeckoTerminal id ("<network>_<address>"). Network ids can contain underscores
+ * ("polygon_pos"), so the address is what follows the LAST one — split('_')[1] returned "pos".
+ */
+export function geckoIdAddress(id: string | undefined): string | undefined {
+  return id ? id.slice(id.lastIndexOf('_') + 1) : undefined;
+}
+
+/**
  * Get network ID for GeckoTerminal API
  */
 function getNetworkId(chainId: number): string | null {
@@ -124,6 +133,8 @@ export async function findPoolAddress(
           return '0xbb4cdb9cbd36b01bd1cbaebf2de08d9173bc095c'; // WBNB
         } else if (chainId === 42161) {
           return '0x82af49447d8a07e3bd95bd0d56f35241523fbab1'; // WETH
+        } else if (chainId === 137) {
+          return '0x0d500b1d8e8ef31e21c99d1db9a6444d3adf1270'; // WPOL
         }
       }
       return token.address;
@@ -152,14 +163,14 @@ export async function findPoolAddress(
 
       // Find a pool that contains both tokens
       for (const pool of response.data) {
-        const baseToken = pool.relationships?.base_token?.data?.id?.split('_')[1]?.toLowerCase();
-        const quoteToken = pool.relationships?.quote_token?.data?.id?.split('_')[1]?.toLowerCase();
+        const baseToken = geckoIdAddress(pool.relationships?.base_token?.data?.id)?.toLowerCase();
+        const quoteToken = geckoIdAddress(pool.relationships?.quote_token?.data?.id)?.toLowerCase();
 
         if (
           (baseToken === tokenAddr && quoteToken === otherTokenAddr) ||
           (baseToken === otherTokenAddr && quoteToken === tokenAddr)
         ) {
-          const poolAddress = pool.id?.split('_')[1];
+          const poolAddress = geckoIdAddress(pool.id);
           if (poolAddress) {
             subgraphLogger.debug(`✅ GeckoTerminal: Found pool ${poolAddress} for ${tokenA.symbol}/${tokenB.symbol}`);
             return poolAddress;
@@ -265,8 +276,8 @@ export async function getPoolInfo(
     }
 
     // Extract token addresses for logging
-    const baseToken = response.data.relationships?.base_token?.data?.id?.split('_')[1]?.toLowerCase();
-    const quoteToken = response.data.relationships?.quote_token?.data?.id?.split('_')[1]?.toLowerCase();
+    const baseToken = geckoIdAddress(response.data.relationships?.base_token?.data?.id)?.toLowerCase();
+    const quoteToken = geckoIdAddress(response.data.relationships?.quote_token?.data?.id)?.toLowerCase();
 
     subgraphLogger.debug(`✅ GeckoTerminal: Pool ${poolAddress} - Base: ${baseToken}, Quote: ${quoteToken}`);
 

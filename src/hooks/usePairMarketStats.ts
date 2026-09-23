@@ -114,8 +114,8 @@ export function usePairMarketStats(tokenA?: Token, tokenB?: Token): PairMarketSt
 
       logger.debug(`📊 Fetching pair stats for ${normalizedTokenA.symbol}/${normalizedTokenB.symbol} on chain ${chainId}`);
 
-      // For BSC and Arbitrum, use GeckoTerminal API
-      if (chainId === 56 || chainId === 42161) {
+      // For BSC, Arbitrum and Polygon, use GeckoTerminal API
+      if (chainId === 56 || chainId === 42161 || chainId === 137) {
         return fetchGeckoTerminalStats(chainId, normalizedTokenA, normalizedTokenB);
       }
 

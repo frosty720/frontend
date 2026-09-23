@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { countByTier, DEFAULT_FEE_SPLIT, purchaseAmount, splitPurchase, sumDeposited, vaultMaturity } from '../vaults';
+import { countByTier, DEFAULT_FEE_SPLIT, newestFirst, purchaseAmount, splitPurchase, sumDeposited, vaultMaturity, vaultPurchasedAt } from '../vaults';
+import { MIGRATED_VAULT_PURCHASED_AT } from '@/config/vaultMigratedPurchaseDates';
 
 describe('countByTier / sumDeposited', () => {
 	it('counts live vaults per tier', () => {
@@ -66,5 +67,40 @@ describe('vaultMaturity', () => {
 	it('keeps two decimals of progress', () => {
 		const m = vaultMaturity({ earnedUsd: 1n * E18, earnedKmtWei: 0n, klcUsdPrice: E18, capUsd: 3n * E18, maturedFlag: false });
 		expect(m.pct).toBe(33.33);
+	});
+});
+
+describe('vaultPurchasedAt', () => {
+	const CUTOVER = 1788808000; // 2026-09-07, when the migration re-minted the 3888 vaults on 3890
+
+	it('uses the 3888 purchase time for a migrated vault, not its cutover-day mint', () => {
+		// Vault #1 was bought on 3888 at 2026-06-30 12:41 UTC.
+		expect(vaultPurchasedAt(1n, CUTOVER)).toBe(1782823273);
+	});
+
+	it('uses the 3890 mint time for a vault bought after the cutover', () => {
+		expect(vaultPurchasedAt(249n, 1790193599)).toBe(1790193599);
+	});
+
+	it('covers exactly the 104 migrated vaults, all bought before the cutover', () => {
+		const times = Object.values(MIGRATED_VAULT_PURCHASED_AT);
+		expect(times).toHaveLength(104);
+		expect(times.every((t) => t > 0 && t < CUTOVER)).toBe(true);
+	});
+});
+
+describe('newestFirst', () => {
+	it('orders by purchase time, most recent first, not by token id', () => {
+		const list = [
+			{ id: 1n, purchasedAt: 100 },
+			{ id: 250n, purchasedAt: 300 },
+			{ id: 2n, purchasedAt: 200 },
+		];
+		expect(newestFirst(list).map((v) => v.id)).toEqual([250n, 2n, 1n]);
+		expect(list.map((v) => v.id)).toEqual([1n, 250n, 2n]); // input untouched
+	});
+
+	it('breaks a same-time tie (one tx, several vaults) by the higher id', () => {
+		expect(newestFirst([{ id: 7n, purchasedAt: 5 }, { id: 9n, purchasedAt: 5 }]).map((v) => v.id)).toEqual([9n, 7n]);
 	});
 });

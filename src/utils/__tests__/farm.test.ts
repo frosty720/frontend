@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
 	confirmStakedPositions,
+	farmApr,
 	formatDuration,
 	incentiveStatus,
 	rewardTotals,
@@ -81,6 +82,8 @@ const POOLS = toFarmPools([
 	{
 		id: '0xA9AC6D3C75A883CC5D6EFE7EBB973C68174BA61F',
 		sqrtPrice: SQRT_PRICE.toString(),
+		liquidity: '58793695638772906',
+		tick: '292503',
 		token0: { id: USDT, symbol: 'USDT', decimals: '6' },
 		token1: { id: KMT.toUpperCase().replace('0X', '0x'), symbol: 'WKMT', decimals: '18' },
 	},
@@ -95,6 +98,7 @@ const position = (overrides: Partial<StakedPosition>): StakedPosition => ({
 	liquidity: LIQUIDITY,
 	tickLower: -887220,
 	tickUpper: 887220,
+	accruedReward: 0n,
 	...overrides,
 });
 const valueOf = (p: StakedPosition) => stakedPositionUsd(p, POOLS[POOL], PRICES) as number;
@@ -124,14 +128,16 @@ describe('confirmStakedPositions', () => {
 			[1n, { owner: OWNER.toUpperCase().replace('0X', '0x'), tickLower: -60, tickUpper: 60 }],
 			[2n, { owner: OWNER, tickLower: -60, tickUpper: 60 }],
 		]);
-		const confirmed = confirmStakedPositions(candidates, [500n, 0n, 900n], deposits, { [INC_A]: POOL, [INC_B]: POOL });
+		const confirmed = confirmStakedPositions(candidates, [500n, 0n, 900n], [7n, 0n, 9n], deposits, { [INC_A]: POOL, [INC_B]: POOL });
 		// 2 was unstaked (liquidity 0); 3 has no deposit read.
-		expect(confirmed).toEqual([{ tokenId: 1n, incentiveId: INC_A, pool: POOL, owner: OWNER, liquidity: 500n, tickLower: -60, tickUpper: 60 }]);
+		expect(confirmed).toEqual([
+			{ tokenId: 1n, incentiveId: INC_A, pool: POOL, owner: OWNER, liquidity: 500n, tickLower: -60, tickUpper: 60, accruedReward: 7n },
+		]);
 	});
 
 	it('drops a withdrawn deposit even if a stale liquidity comes back', () => {
 		const deposits = new Map([[1n, { owner: ZERO, tickLower: -60, tickUpper: 60 }]]);
-		expect(confirmStakedPositions([{ tokenId: 1n, incentiveId: INC_A }], [500n], deposits, { [INC_A]: POOL })).toEqual([]);
+		expect(confirmStakedPositions([{ tokenId: 1n, incentiveId: INC_A }], [500n], [1n], deposits, { [INC_A]: POOL })).toEqual([]);
 	});
 });
 
@@ -160,19 +166,21 @@ describe('stakeValuesByIncentive', () => {
 		{ incentiveId: INC_A, numberOfStakes: 2 },
 		{ incentiveId: INC_B, numberOfStakes: 0 },
 	];
-	const mine = position({ tokenId: 1n, owner: OWNER });
-	const theirs = position({ tokenId: 2n, owner: OTHER, liquidity: 3n * LIQUIDITY });
+	const mine = position({ tokenId: 1n, owner: OWNER, accruedReward: 30n });
+	const theirs = position({ tokenId: 2n, owner: OTHER, liquidity: 3n * LIQUIDITY, accruedReward: 4n });
 
 	it('sums every staked position per farm and splits out the owner (case-insensitive)', () => {
 		const values = stakeValuesByIncentive(incentives, [mine, theirs], POOLS, PRICES, OWNER.toUpperCase().replace('0X', '0x'));
 		expect(values[INC_A].totalUsd).toBeCloseTo(valueOf(mine) + valueOf(theirs), 6);
 		expect(values[INC_A].userUsd).toBeCloseTo(valueOf(mine), 6);
 		expect(values[INC_A].userTokenIds).toEqual([1n]);
-		expect(values[INC_B]).toEqual({ totalUsd: 0, userUsd: 0, userTokenIds: [] });
+		// Only the owner's accrued reward, never another staker's.
+		expect(values[INC_A].userAccrued).toBe(30n);
+		expect(values[INC_B]).toEqual({ totalUsd: 0, userUsd: 0, userTokenIds: [], userAccrued: 0n });
 	});
 
 	it('shows no total while unknown, incomplete or unpriced', () => {
-		expect(stakeValuesByIncentive(incentives, null, POOLS, PRICES, OWNER)[INC_A]).toEqual({ totalUsd: null, userUsd: null, userTokenIds: [] });
+		expect(stakeValuesByIncentive(incentives, null, POOLS, PRICES, OWNER)[INC_A]).toEqual({ totalUsd: null, userUsd: null, userTokenIds: [], userAccrued: 0n });
 
 		// The staker counts 2 stakes but only 1 was found: no understated total, the owner's own value still shows.
 		const partial = stakeValuesByIncentive(incentives, [mine], POOLS, PRICES, OWNER)[INC_A];
@@ -188,6 +196,7 @@ describe('stakeValuesByIncentive', () => {
 		const values = stakeValuesByIncentive(incentives, [mine, theirs], POOLS, PRICES);
 		expect(values[INC_A].userUsd).toBe(0);
 		expect(values[INC_A].userTokenIds).toEqual([]);
+		expect(values[INC_A].userAccrued).toBe(0n);
 	});
 });
 
@@ -219,7 +228,7 @@ describe('totalStakedUsd', () => {
 	it('is null when any farm total is unknown, 0 when nothing is staked', () => {
 		const byIncentive = stakeValuesByIncentive([{ incentiveId: INC_A, numberOfStakes: 1 }], null, POOLS, PRICES);
 		expect(totalStakedUsd(byIncentive, [], POOLS, PRICES)).toBeNull();
-		expect(totalStakedUsd({ [INC_A]: { totalUsd: 0, userUsd: 0, userTokenIds: [] } }, [], POOLS, PRICES)).toBe(0);
+		expect(totalStakedUsd({ [INC_A]: { totalUsd: 0, userUsd: 0, userTokenIds: [], userAccrued: 0n } }, [], POOLS, PRICES)).toBe(0);
 	});
 });
 
@@ -239,5 +248,68 @@ describe('weightedAverageApr', () => {
 	it('is null when no farm has an APR', () => {
 		expect(weightedAverageApr([{ apr: null, stakedUsd: 10 }])).toBeNull();
 		expect(weightedAverageApr([])).toBeNull();
+	});
+});
+
+describe('farmApr', () => {
+	const Q128 = 1n << 128n;
+	const START = 1_000_000;
+	const END = START + 30 * 86_400;
+	const NOW = START + 10 * 86_400;
+	const YEAR = 365.25 * 86_400;
+	const POOL_LIQUIDITY = 58793695638772906n;
+	const incentive = (overrides: Record<string, unknown> = {}) => ({
+		incentiveId: INC_A,
+		key: { rewardToken: KMT, pool: POOL, startTime: BigInt(START), endTime: BigInt(END), refundee: OWNER },
+		totalRewardUnclaimed: 1_000n * 10n ** 18n,
+		totalSecondsClaimedX128: 0n,
+		rewardTokenDecimals: 18,
+		...overrides,
+	});
+	const staked = position({ liquidity: LIQUIDITY });
+	// RewardMath: unclaimed reward / (max(end, now) − start − claimed seconds) per second, × the liquidity share.
+	const expectedApr = (secondsUnclaimed: number, poolLiquidity: bigint) =>
+		(((1_000 / secondsUnclaimed) * (Number(LIQUIDITY) / Number(poolLiquidity)) * YEAR * 0.2) / valueOf(staked)) * 100;
+
+	it('pays in-range stakers their share of the active liquidity, not the whole reward', () => {
+		const apr = farmApr(incentive(), [staked], POOLS, PRICES, NOW) as number;
+		expect(apr).toBeCloseTo(expectedApr(END - START, POOL_LIQUIDITY), 6);
+		// Twice the unstaked liquidity in range halves what stakers earn.
+		const diluted = { [POOL]: { ...POOLS[POOL], liquidity: 2n * POOL_LIQUIDITY } };
+		expect(farmApr(incentive(), [staked], diluted, PRICES, NOW)).toBeCloseTo(apr / 2, 6);
+	});
+
+	it('takes already-claimed seconds out of the denominator, as the staker does', () => {
+		const claimed = incentive({ totalSecondsClaimedX128: BigInt(86_400) * Q128 });
+		expect(farmApr(claimed, [staked], POOLS, PRICES, NOW)).toBeCloseTo(expectedApr(END - START - 86_400, POOL_LIQUIDITY), 6);
+	});
+
+	it('ignores out-of-range positions and other farms', () => {
+		const outOfRange = position({ tokenId: 9n, tickLower: 300_000, tickUpper: 300_060 });
+		const otherFarm = position({ tokenId: 8n, incentiveId: INC_B, liquidity: 10n * LIQUIDITY });
+		expect(farmApr(incentive(), [staked, outOfRange, otherFarm], POOLS, PRICES, NOW)).toBeCloseTo(
+			expectedApr(END - START, POOL_LIQUIDITY),
+			6,
+		);
+	});
+
+	it('estimates a new full-range stake for a farm with nothing staked in range', () => {
+		const fullRangePoolUsd = valueOf(position({ liquidity: POOL_LIQUIDITY, tickLower: -887272, tickUpper: 887272 }));
+		const expected = (((1_000 / (END - START)) * YEAR * 0.2) / fullRangePoolUsd) * 100;
+		const outOfRange = position({ tokenId: 9n, tickLower: 300_000, tickUpper: 300_060 });
+		expect(farmApr(incentive(), [], POOLS, PRICES, NOW)).toBeCloseTo(expected, 6);
+		expect(farmApr(incentive(), [outOfRange], POOLS, PRICES, NOW)).toBeCloseTo(expected, 6);
+		// A full-range staker's measured APR agrees with the estimate — same payout rule, same pool.
+		expect(farmApr(incentive(), [staked], POOLS, PRICES, NOW)).toBeCloseTo(expected, 6);
+		// More active liquidity to share with → a lower estimate.
+		const deeper = { [POOL]: { ...POOLS[POOL], liquidity: 2n * POOL_LIQUIDITY } };
+		expect(farmApr(incentive(), [], deeper, PRICES, NOW)).toBeCloseTo(expected / 2, 6);
+	});
+
+	it('is null before start, after end, or without a reward price or pool', () => {
+		expect(farmApr(incentive(), [staked], POOLS, PRICES, START - 1)).toBeNull();
+		expect(farmApr(incentive(), [staked], POOLS, PRICES, END)).toBeNull();
+		expect(farmApr(incentive(), [staked], POOLS, { [USDT]: 1 }, NOW)).toBeNull();
+		expect(farmApr(incentive(), [staked], {}, PRICES, NOW)).toBeNull();
 	});
 });

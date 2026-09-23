@@ -1,3 +1,5 @@
+import { MIGRATED_VAULT_PURCHASED_AT } from '@/config/vaultMigratedPurchaseDates';
+
 /** How many live vaults sit in each tier. */
 export function countByTier(tiers: number[]): Map<number, number> {
 	const counts = new Map<number, number>();
@@ -77,4 +79,17 @@ export function vaultMaturity(args: { earnedUsd: bigint; earnedKmtWei: bigint; k
 	if (capUsd > 0n && live > capUsd) live = capUsd;
 	const pct = capUsd > 0n ? Number((live * 10_000n) / capUsd) / 100 : 0;
 	return { pct, matured: maturedFlag || (capUsd > 0n && live >= capUsd) };
+}
+
+/**
+ * When a vault was bought (unix seconds). Vaults migrated from 3888 were re-minted on cutover day, so
+ * their mint time on 3890 is not the purchase — the frozen 3888 purchase time is used for those.
+ */
+export function vaultPurchasedAt(id: bigint, mintedAt: number): number {
+	return MIGRATED_VAULT_PURCHASED_AT[Number(id)] ?? mintedAt;
+}
+
+/** Most recent purchase first; ties (one tx buying several) by the higher token id. */
+export function newestFirst<T extends { id: bigint; purchasedAt: number }>(vaults: T[]): T[] {
+	return [...vaults].sort((a, b) => b.purchasedAt - a.purchasedAt || (b.id > a.id ? 1 : b.id < a.id ? -1 : 0));
 }
