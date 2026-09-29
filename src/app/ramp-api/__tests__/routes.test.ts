@@ -98,7 +98,34 @@ describe('create deposit', () => {
 		const [url, init] = lastCall();
 		expect(url).toBe(`${KEEPER}/api/deposits`);
 		expect(init.method).toBe('POST');
-		expect(JSON.parse(String(init.body))).toEqual(body);
+		expect(JSON.parse(String(init.body))).toEqual({ ...body, redirectUrl: 'https://app.kalyswap.io/kusd' });
+	});
+
+	// Yellow Card's hosted payments (Wave etc.) must bring KalySwap buyers back to KalySwap, in
+	// their language — not to kusd.kalychain.io, the keeper's default.
+	const sentRedirect = () => JSON.parse(String(lastCall()[1].body)).redirectUrl;
+	const base = { userWallet: WALLET, localAmount: '5000' };
+	it('returns buyers to this site\'s KUSD page in their language', async () => {
+		await post(JSON.stringify({ ...base, locale: 'fr' }));
+		expect(sentRedirect()).toBe('https://app.kalyswap.io/fr/kusd');
+		expect(JSON.parse(String(lastCall()[1].body))).not.toHaveProperty('locale');
+		await post(JSON.stringify({ ...base, locale: 'en' }));
+		expect(sentRedirect()).toBe('https://app.kalyswap.io/kusd');
+		await post(JSON.stringify({ ...base, locale: 'xx' }));
+		expect(sentRedirect()).toBe('https://app.kalyswap.io/kusd');
+	});
+	it('never lets the browser choose the return page', async () => {
+		await post(JSON.stringify({ ...base, redirectUrl: 'https://evil.example/kusd' }));
+		expect(sentRedirect()).toBe('https://app.kalyswap.io/kusd');
+	});
+	it('takes the site origin from RAMP_SITE_URL', async () => {
+		process.env.RAMP_SITE_URL = 'https://kalyswap.localhost/';
+		try {
+			await post(JSON.stringify({ ...base, locale: 'fr' }));
+			expect(sentRedirect()).toBe('https://kalyswap.localhost/fr/kusd');
+		} finally {
+			delete process.env.RAMP_SITE_URL;
+		}
 	});
 });
 

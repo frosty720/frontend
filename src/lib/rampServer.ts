@@ -6,9 +6,24 @@
  * Env:
  *   RAMP_KEEPER_URL      keeper base URL (the keeper runs on the kusd host behind nginx)
  *   RAMP_KEEPER_API_KEY  keeper bearer token (KEEPER_API_KEY in the keeper's .env)
+ *   RAMP_SITE_URL        this site's public origin, for Yellow Card's post-payment return link
  */
 
+import { DEFAULT_LOCALE, isLocale } from '@/i18n/config';
+import { withLocale } from '@/i18n/locale-path';
+
 const DEFAULT_KEEPER_URL = 'https://ramp.kalychain.io';
+const DEFAULT_SITE_URL = 'https://app.kalyswap.io';
+
+/**
+ * Where Yellow Card sends a customer after a hosted payment (Wave etc.): this site's KUSD page in
+ * their language, which resumes the deposit from ?deposit=<id>. The keeper only honours it if the
+ * URL is in its YC_EXTRA_REDIRECT_URLS, so both lists must name the same pages.
+ */
+export function rampReturnUrl(locale: unknown): string {
+	const site = (process.env.RAMP_SITE_URL || DEFAULT_SITE_URL).replace(/\/+$/, '');
+	return site + withLocale(typeof locale === 'string' && isLocale(locale) ? locale : DEFAULT_LOCALE, '/kusd');
+}
 
 /** Error key for a keeper call whose outcome is unknown (lib/ramp.ts reads the same value). */
 export const KEEPER_UNREACHABLE = 'keeper_unreachable';

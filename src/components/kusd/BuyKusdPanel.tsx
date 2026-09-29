@@ -198,6 +198,7 @@ export default function BuyKusdPanel({ initialDepositId }: { initialDepositId?: 
 				customer: { ...customer, phone: contactPhone },
 				source: buildDepositSource(corridor.channelType, { phone: payerPhone, networkId: momoNetworkId }),
 				reason: 'other',
+				locale,
 			});
 			idemKeyRef.current = null; // consumed — the next purchase gets a fresh key
 			setDeposit(d);
@@ -209,7 +210,7 @@ export default function BuyKusdPanel({ initialDepositId }: { initialDepositId?: 
 		} finally {
 			setSubmitting(false);
 		}
-	}, [corridor, customer, localAmount, userWallet, momoPhone, momoNetworkId, limitsMessage, b, dict]);
+	}, [corridor, customer, localAmount, userWallet, momoPhone, momoNetworkId, limitsMessage, b, dict, locale]);
 
 	// Poll the deposit while on the pay screen.
 	useEffect(() => {

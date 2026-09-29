@@ -75,6 +75,8 @@ export interface CreateRampDepositInput {
 		networkId?: string;
 	};
 	reason?: string;
+	/** The buyer's UI language — picks which KUSD page Yellow Card returns them to. */
+	locale?: string;
 }
 
 // ── Corridors (fetched live from the keeper via /ramp-api/channels) ─────────

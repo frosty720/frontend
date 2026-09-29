@@ -128,6 +128,14 @@ describe('BuyKusdPanel', () => {
 		expect(body.channelId).toBe('bf-momo');
 	});
 
+	it('sends the buyer\'s language, which picks the page Yellow Card returns them to', async () => {
+		renderPanel({}, en, 'fr');
+		await fillForm();
+		submit();
+		await screen.findByText(en.kusd.buy.pay.titleMomo);
+		expect((deposits[0] as { locale?: string }).locale).toBe('fr');
+	});
+
 	it('REUSES the idempotency key after an unknown outcome (keeper unreachable) so a retry cannot pay twice', async () => {
 		onDeposit = () => json({ error: 'keeper_unreachable' }, 504);
 		renderPanel();

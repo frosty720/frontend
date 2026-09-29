@@ -1,6 +1,6 @@
 import { type NextRequest, NextResponse } from 'next/server';
 import { isEvmAddress, isValidLocalAmount } from '@/lib/ramp';
-import { keeperFetch } from '@/lib/rampServer';
+import { keeperFetch, rampReturnUrl } from '@/lib/rampServer';
 
 export const dynamic = 'force-dynamic';
 
@@ -27,6 +27,8 @@ export async function POST(req: NextRequest) {
 	if (typeof fields.localAmount !== 'string' || !isValidLocalAmount(fields.localAmount)) {
 		return NextResponse.json({ error: 'invalid localAmount' }, { status: 400 });
 	}
-	const r = await keeperFetch('/api/deposits', { method: 'POST', body: fields });
+	// The return page is chosen here from the buyer's locale, never taken from the browser.
+	const { locale, ...deposit } = fields;
+	const r = await keeperFetch('/api/deposits', { method: 'POST', body: { ...deposit, redirectUrl: rampReturnUrl(locale) } });
 	return NextResponse.json(r.body, { status: r.status });
 }
