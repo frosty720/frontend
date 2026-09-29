@@ -14,8 +14,8 @@ describe('NAV', () => {
 		]);
 	});
 
-	it('marks exactly the three Coming Soon pages', () => {
-		expect(NAV.filter((i) => i.soon).map((i) => i.key)).toEqual(['kusd', 'lend', 'card']);
+	it('marks exactly the Coming Soon pages', () => {
+		expect(NAV.filter((i) => i.soon).map((i) => i.key)).toEqual(['card']);
 	});
 
 	it('has unique keys and hrefs', () => {

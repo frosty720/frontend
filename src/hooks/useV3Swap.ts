@@ -31,6 +31,7 @@ interface UseV3SwapReturn {
     // Standard swap operations
     getQuote: (tokenIn: Token, tokenOut: Token, amountIn: string) => Promise<QuoteResult>;
     getQuoteExactOutput: (tokenIn: Token, tokenOut: Token, amountOut: string) => Promise<ExactOutputQuoteResult>;
+    /** Resolves with the hash only once the transaction is mined and succeeded; throws TransactionRevertedError if it reverted. */
     executeSwap: (params: SwapParams) => Promise<string>;
     checkApproval: (token: Token, amount: string) => Promise<boolean>;
     approveToken: (token: Token, amount?: string) => Promise<string>;
@@ -257,12 +258,6 @@ export function useV3Swap(chainId: number = CHAIN_IDS.KALYCHAIN): UseV3SwapRetur
 
             const routerAddress = service.getRouterAddress();
 
-            const tokenContract = getContract({
-                address: token.address as `0x${string}`,
-                abi: ERC20_ABI,
-                client: walletClient,
-            });
-
             // Use max uint256 for unlimited approval if no amount specified
             const approvalAmount = amount
                 ? parseUnits(amount, token.decimals)
@@ -270,10 +265,16 @@ export function useV3Swap(chainId: number = CHAIN_IDS.KALYCHAIN): UseV3SwapRetur
 
             logger.debug(`V3: Approving ${token.symbol} for SwapRouter02...`);
 
-            const txHash = await tokenContract.write.approve([
-                routerAddress as `0x${string}`,
-                approvalAmount
-            ]) as string;
+            const txHash = await walletClient.writeContract({
+                // KalyChain advertises a tip below the 21 gwei inclusion floor; without this,
+                // MetaMask signs the approval underpriced and the swap behind it never starts.
+                // No-op on other chains.
+                ...kalyFeeOverrides(walletClient.chain?.id),
+                address: token.address as `0x${string}`,
+                abi: ERC20_ABI,
+                functionName: 'approve',
+                args: [routerAddress as `0x${string}`, approvalAmount],
+            });
 
             logger.debug(`V3 Approval transaction sent: ${txHash}`);
 
@@ -316,7 +317,7 @@ export function useV3Swap(chainId: number = CHAIN_IDS.KALYCHAIN): UseV3SwapRetur
 
                 if (params.tokenIn.isNative) {
                     // Deposit (Wrap)
-                    return await walletClient.writeContract({
+                    const wrapHash = await walletClient.writeContract({
                       // KalyChain advertises a ~0 priority fee; without this the wallet builds
                       // the tx below the 21 gwei inclusion floor. No-op on other chains.
                       ...kalyFeeOverrides(walletClient.chain?.id),
@@ -327,9 +328,11 @@ export function useV3Swap(chainId: number = CHAIN_IDS.KALYCHAIN): UseV3SwapRetur
                         value: amountWei,
                         gas: 100000n,
                     });
+                    await assertTxSucceeded(publicClient, wrapHash, 'swap');
+                    return wrapHash;
                 } else {
                     // Withdraw (Unwrap)
-                    return await walletClient.writeContract({
+                    const unwrapHash = await walletClient.writeContract({
                       // KalyChain advertises a ~0 priority fee; without this the wallet builds
                       // the tx below the 21 gwei inclusion floor. No-op on other chains.
                       ...kalyFeeOverrides(walletClient.chain?.id),
@@ -339,6 +342,8 @@ export function useV3Swap(chainId: number = CHAIN_IDS.KALYCHAIN): UseV3SwapRetur
                         args: [amountWei],
                         gas: 100000n,
                     });
+                    await assertTxSucceeded(publicClient, unwrapHash, 'swap');
+                    return unwrapHash;
                 }
             }
 
@@ -355,6 +360,10 @@ export function useV3Swap(chainId: number = CHAIN_IDS.KALYCHAIN): UseV3SwapRetur
 
             // Execute the swap
             const txHash = await service.executeSwap(params, walletClient);
+
+            // The router call returns as soon as the wallet sends it. Success (and the balance
+            // refresh that follows) must wait for the receipt, or a reverted swap reads as done.
+            await assertTxSucceeded(publicClient, txHash, 'swap');
 
             logger.debug(`✅ V3 Swap successful: ${txHash}`);
 

@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { splitLocale, withLocale, resolveLocalePath } from '../locale-path';
+import { config } from '@/middleware';
 
 describe('splitLocale', () => {
 	it('treats an unprefixed path as the default locale', () => {
@@ -44,16 +45,24 @@ describe('resolveLocalePath (middleware)', () => {
 });
 
 describe('middleware matcher', () => {
-	// Next's matcher is path-to-regexp; the negative lookahead inside is a plain regex,
-	// so the derived form below is what actually decides which paths reach the middleware.
-	const matcher = /^\/(?!api|subgraphs|_next|.*\..*).*$/;
-	it('skips API, subgraph proxy, Next internals and files', () => {
-		for (const p of ['/api/graphql', '/subgraphs/name/v3-subgraph-kmt', '/_next/static/x.js', '/favicon.ico', '/icons/KalySwapLogo.png']) {
+	// Next's matcher is path-to-regexp; the negative lookahead inside is a plain regex, so the
+	// middleware's own pattern, anchored, is what actually decides which paths reach it.
+	const matcher = new RegExp(`^${config.matcher[0]}$`);
+	it('skips API, the fiat-ramp proxy, subgraph proxy, Next internals and files', () => {
+		for (const p of [
+			'/api/graphql',
+			'/ramp-api/channels',
+			'/ramp-api/deposits/0f1e2d3c-aaaa',
+			'/subgraphs/name/v3-subgraph-kmt',
+			'/_next/static/x.js',
+			'/favicon.ico',
+			'/icons/KalySwapLogo.png',
+		]) {
 			expect(matcher.test(p), p).toBe(false);
 		}
 	});
 	it('matches page routes', () => {
-		for (const p of ['/', '/swaps', '/fr/swaps', '/en', '/launchpad/0xabc']) {
+		for (const p of ['/', '/swaps', '/fr/swaps', '/en', '/launchpad/0xabc', '/kusd', '/lend', '/fr/kusd']) {
 			expect(matcher.test(p), p).toBe(true);
 		}
 	});

@@ -34,6 +34,7 @@ vi.mock('@/components/onramp', () => ({
 }));
 
 import { AppShell } from '../AppShell';
+import { NAV } from '../nav';
 
 function renderShell(locale: Locale = 'en', pathname = '/') {
 	mockPathname = locale === 'fr' ? (pathname === '/' ? '/fr' : `/fr${pathname}`) : pathname;
@@ -68,9 +69,9 @@ describe('AppShell', () => {
 		expect(screen.getByRole('heading', { level: 1 }).textContent).toBe(en.pages.launchpad.title);
 	});
 
-	it('shows a Soon pill on exactly the three Coming Soon items', () => {
+	it('shows a Soon pill on exactly the Coming Soon items', () => {
 		renderShell();
-		expect(within(screen.getByRole('navigation')).getAllByText(en.shell.soon)).toHaveLength(3);
+		expect(within(screen.getByRole('navigation')).getAllByText(en.shell.soon)).toHaveLength(NAV.filter((item) => item.soon).length);
 	});
 
 	it('opens and closes the mobile drawer', () => {

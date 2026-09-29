@@ -504,7 +504,7 @@ export default function V3ManageModal({ isOpen, onClose, position, onUpdate, ini
                         <div className="space-y-4">
                             <div className="flex justify-between">
                                 <span className="text-sm font-medium text-cream">{m.removeAmount}</span>
-                                <span className="text-sm font-medium text-gold">{fmt.pct(percentToRemove / 100, 0)}</span>
+                                <span className="text-sm font-medium text-gold">{fmt.pct(percentToRemove, 0)}</span>
                             </div>
                             <Slider
                                 min={0}
@@ -523,7 +523,7 @@ export default function V3ManageModal({ isOpen, onClose, position, onUpdate, ini
                                         onClick={() => setPercentToRemove(pct)}
                                         className="flex-1 text-xs"
                                     >
-                                        {fmt.pct(pct / 100, 0)}
+                                        {fmt.pct(pct, 0)}
                                     </Button>
                                 ))}
                             </div>

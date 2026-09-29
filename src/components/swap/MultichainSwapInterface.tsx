@@ -23,6 +23,7 @@ import { KALYCHAIN_MIN_PRIORITY_FEE_WEI, isKalyChainFamily } from '@/config/gas'
 
 // Custom hooks
 import { useMultichainTokenBalance } from '@/hooks/useMultichainTokenBalance';
+import { quotedAmountDisplay } from '@/utils/swapDisplay';
 import { useTokenLists } from '@/hooks/useTokenLists';
 import { useV3Swap } from '@/hooks/useV3Swap';
 import { useTokenUsdPrices, usdPriceOf } from '@/hooks/useTokenUsdPrices';
@@ -504,7 +505,8 @@ export default function MultichainSwapInterface({
         route: quote.route // Include pre-calculated route from quote
       };
 
-      // Execute swap using DEX service with proper client injection
+      // Execute swap using DEX service with proper client injection. Resolves only once the
+      // swap is mined and succeeded (a revert throws), so everything below reflects a real swap.
       const txHash = await dexExecuteSwap(swapParams);
       setCurrentTransactionHash(txHash);
 
@@ -521,7 +523,7 @@ export default function MultichainSwapInterface({
         slippage: swapState.slippage,
         priceImpact: (quote.priceImpact || 0).toString(),
         userAddress: address,
-        status: 'pending'
+        status: 'confirmed'
       });
 
       setCurrentStep('complete');
@@ -723,7 +725,7 @@ export default function MultichainSwapInterface({
               inputMode="decimal"
               placeholder="0.0"
               aria-label={dict.swap.youPay}
-              value={swapState.fromAmount}
+              value={lastEdited === 'to' ? quotedAmountDisplay(swapState.fromAmount) : swapState.fromAmount}
               onChange={(e) => {
                 // Only allow numbers and decimal point
                 handleFromAmountChange(e.target.value.replace(/[^0-9.]/g, ''));
@@ -800,7 +802,7 @@ export default function MultichainSwapInterface({
                 inputMode="decimal"
                 placeholder="0.0"
                 aria-label={dict.swap.youReceive}
-                value={swapState.toAmount}
+                value={lastEdited === 'from' ? quotedAmountDisplay(swapState.toAmount) : swapState.toAmount}
                 onChange={(e) => {
                   // Only allow numbers and decimal point
                   handleToAmountChange(e.target.value.replace(/[^0-9.]/g, ''));

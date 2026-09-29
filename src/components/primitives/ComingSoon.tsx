@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { useDict, useLocaleHref } from '@/i18n/hooks';
 import { Pill } from './Pill';
 
-export type ComingSoonKey = 'kusd' | 'lend' | 'card';
+export type ComingSoonKey = 'card';
 
 export function ComingSoon({ pageKey }: { pageKey: ComingSoonKey }) {
 	const dict = useDict();

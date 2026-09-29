@@ -30,6 +30,20 @@ export function routeHops(
 	return [first, ...middle, last];
 }
 
+/**
+ * A quoted amount shortened for the swap form: at most `maxDecimals` decimals, or that many
+ * significant digits below 1 (a 0.0000123 quote keeps its digits), trailing zeros dropped.
+ * Truncates, never rounds up. Only the field's text changes — the full-precision quote stays in
+ * state and is what the transaction uses.
+ */
+export function quotedAmountDisplay(amount: string, maxDecimals = 6): string {
+	const [whole, fraction = ''] = amount.split('.');
+	if (!fraction) return amount;
+	const firstDigit = /^0*$/.test(whole) ? fraction.search(/[1-9]/) : 0;
+	const kept = firstDigit < 0 ? '' : fraction.slice(0, firstDigit + maxDecimals).replace(/0+$/, '');
+	return kept ? `${whole}.${kept}` : whole;
+}
+
 /** Which side a pool swap sold: `token0Amount` carries a leading "-" when token0 went into the pool. */
 export function swapDirection(swap: FormattedSwap): { from: string; to: string; amount: number } {
 	const soldToken0 = swap.token0Amount.startsWith('-');

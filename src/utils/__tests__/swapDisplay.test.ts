@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { pairBaseToken, pairOrder, relativeTime, routeHops, swapDirection, symbolForAddress } from '../swapDisplay';
+import { pairBaseToken, pairOrder, quotedAmountDisplay, relativeTime, routeHops, swapDirection, symbolForAddress } from '../swapDisplay';
 import { getEffectiveAddress } from '@/utils/tokens';
 import { CHAIN_IDS } from '@/config/chains';
 import type { Token } from '@/config/dex/types';
@@ -148,5 +148,29 @@ describe('symbolForAddress', () => {
 		expect(symbolForAddress('0x0000000000000000000000000000000000000dead', tokens)).toBe('Token');
 		expect(symbolForAddress(undefined, tokens)).toBe('Token');
 		expect(symbolForAddress('0xaf88d065e77c8cC2239327C5EDb3A432268e5831', [])).toBe('Token');
+	});
+});
+
+describe('quotedAmountDisplay', () => {
+	// The boss's 2026-09-28 USDT → KUSD quote filled the "You receive" field with all 18 decimals.
+	it('cuts an 18-decimal quote to 6 decimals without rounding up', () => {
+		expect(quotedAmountDisplay('250.130021934812345678')).toBe('250.130021');
+		expect(quotedAmountDisplay('0.999999999999999999')).toBe('0.999999');
+	});
+
+	it('keeps 6 significant digits below 1 so tiny quotes do not collapse to 0', () => {
+		expect(quotedAmountDisplay('0.000012345678901234')).toBe('0.0000123456');
+	});
+
+	it('drops trailing zeros and a bare decimal point', () => {
+		expect(quotedAmountDisplay('500.100000000000000000')).toBe('500.1');
+		expect(quotedAmountDisplay('500.000000000000000000')).toBe('500');
+		expect(quotedAmountDisplay('0.000000000000000000')).toBe('0');
+	});
+
+	it('leaves whole numbers and empty input alone, and honours a custom precision', () => {
+		expect(quotedAmountDisplay('1000')).toBe('1000');
+		expect(quotedAmountDisplay('')).toBe('');
+		expect(quotedAmountDisplay('3.14159265', 2)).toBe('3.14');
 	});
 });

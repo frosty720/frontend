@@ -61,8 +61,12 @@ describe('KalyChain gas floor', () => {
 	});
 });
 
-/** Every way this codebase can put a transaction on chain through viem, wagmi or thirdweb. */
-const WRITE_CALL = /\b(writeContract|writeContractAsync|sendTransaction|sendTransactionAsync|deployContract)\s*\(/g;
+/**
+ * Every way this codebase can put a transaction on chain through viem, wagmi or thirdweb —
+ * including a viem contract instance's `.write.<fn>(`, which is how the swap approval slipped
+ * through without the floor until 2026-09-29 (MetaMask then signed it underpriced).
+ */
+const WRITE_CALL = /\b(writeContract|writeContractAsync|sendTransaction|sendTransactionAsync|deployContract|write\.[A-Za-z_$][\w$]*)\s*\(/g;
 
 const FEE_SPREAD = /\.\.\.\s*kalyFeeOverrides\(/;
 
@@ -165,6 +169,13 @@ describe('the write-call matcher', () => {
 			'src/sample.ts:3 sendTransactionAsync(...)',
 			'src/sample.ts:4 deployContract(...)',
 		]);
+	});
+
+	it('flags a contract instance write (getContract(...).write.fn) without the fee spread', () => {
+		expect(scan(`const hash = await tokenContract.write.approve([spender, amount])`)).toEqual([
+			'src/sample.ts:1 write.approve(...)',
+		]);
+		expect(scan(`await tokenContract.write.approve([spender, amount], { ...kalyFeeOverrides(chainId) })`)).toEqual([]);
 	});
 
 	it('accepts a spread anywhere inside the call object, past nested parens and strings', () => {

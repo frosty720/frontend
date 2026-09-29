@@ -14,7 +14,7 @@ vi.mock('next/link', () => ({
 
 import { ComingSoon } from '../ComingSoon';
 
-const KEYS = ['kusd', 'lend', 'card'] as const;
+const KEYS = ['card'] as const;
 
 describe('ComingSoon', () => {
 	afterEach(cleanup);

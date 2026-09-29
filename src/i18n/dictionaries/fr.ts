@@ -10,6 +10,8 @@ import onramp from './fr/onramp';
 import yields from './fr/yields';
 import vaultDetails from './fr/vaultDetails';
 import vaultApp from './fr/vaultApp';
+import kusd from './fr/kusd';
+import lend from './fr/lend';
 import errors from './fr/errors';
 
 const fr: Dictionary = {
@@ -38,12 +40,12 @@ const fr: Dictionary = {
 		swap: { title: 'Swap', subtitle: 'Échangez n’importe quel actif en un clic sur KalyChain, Arbitrum, BSC ou Polygon — via les pools de chaque réseau.' },
 		bridge: { title: 'Bridge', subtitle: 'Transférez vos jetons entre KalyChain, Arbitrum, BSC et Polygon via les routes Hyperlane.' },
 		vaults: { title: 'Vaults', subtitle: 'Des NFT productifs adossés à la liquidité du protocole, qui partagent chaque récompense de bloc — un revenu passif on-chain.' },
-		kusd: { title: 'Acheter / Vendre KUSD', subtitle: 'Achetez ou vendez le stablecoin KUSD (1:1 USD) par mobile money, carte ou crypto. Règlement instantané sur KalyChain.' },
+		kusd: { title: 'Acheter / Vendre KUSD', subtitle: 'Achetez ou vendez le stablecoin KUSD (1:1 USD) par mobile money, carte ou crypto — réglé sur KalyChain.' },
 		pools: { title: 'Pools de liquidité', subtitle: 'Fournissez de la liquidité et gagnez des frais de trading sur chaque swap.' },
 		farm: { title: 'Farms', subtitle: 'Stakez vos positions LP pour gagner des récompenses KMT en plus des frais de trading.' },
 		stake: { title: 'Staking', subtitle: 'Stakez du KMT et gagnez un rendement réel, distribué à chaque bloc.' },
 		launchpad: { title: 'Launchpad', subtitle: 'Accédez en avant-première aux nouveaux projets construits sur KalyChain. Ventes de jetons équitables et transparentes.' },
-		lend: { title: 'Prêt & Emprunt', subtitle: 'Prêtez vos actifs pour gagner des intérêts, ou empruntez contre votre collatéral — sur-collatéralisé et non-custodial.' },
+		lend: { title: 'Prêt & Emprunt', subtitle: 'Empruntez du KUSD contre votre collatéral — sur-collatéralisé et non-custodial — et achetez des garanties liquidées aux enchères.' },
 		card: { title: 'Carte KUSD', subtitle: 'Dépensez vos KUSD partout. Une carte adossée à votre solde on-chain, sans compte bancaire.' },
 		notFound: { title: 'Page introuvable', subtitle: 'Rien n’existe à cette adresse' },
 	},
@@ -328,14 +330,6 @@ const fr: Dictionary = {
 	},
 
 	comingSoon: {
-		kusd: {
-			title: 'Acheter / Vendre KUSD',
-			body: 'Achetez et vendez le stablecoin KUSD (1:1 USD) par mobile money, carte ou crypto, avec règlement instantané sur KalyChain. La rampe est en cours d’intégration à KalySwap.',
-		},
-		lend: {
-			title: 'Prêt & Emprunt',
-			body: 'Prêtez vos actifs pour gagner des intérêts, ou empruntez contre votre collatéral — sur-collatéralisé et non-custodial. Bientôt sur KalySwap.',
-		},
 		card: {
 			title: 'Carte KUSD',
 			body: 'Dépensez vos KUSD partout dans le monde avec une carte adossée à votre solde on-chain, sans compte bancaire. Bientôt sur KalySwap.',
@@ -367,6 +361,8 @@ const fr: Dictionary = {
 	yields,
 	vaultDetails,
 	vaultApp,
+	kusd,
+	lend,
 	errors,
 };
 

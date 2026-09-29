@@ -56,6 +56,15 @@ export const KALYCHAIN_TOKENS: Token[] = [
     symbol: 'DAI',
     logoURI: '/tokens/dai.png'
   },
+  // KUSD (native KalyChain stablecoin; kalychain-ops/files/kmt-3890/addresses.json → kusd.core.Kusd)
+  {
+    chainId: CHAIN_IDS.KALYCHAIN,
+    address: '0xFDb3307a16442ed5A7C040AE1600a3B3D3C8e7D9',
+    decimals: 18,
+    name: 'KUSD Stablecoin',
+    symbol: 'KUSD',
+    logoURI: '/tokens/kusd.png'
+  },
   // Majors (bridged via Hyperlane)
   {
     chainId: CHAIN_IDS.KALYCHAIN,

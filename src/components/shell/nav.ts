@@ -41,12 +41,12 @@ export const NAV: readonly NavItem[] = [
 	{ key: 'swap', href: '/swaps', icon: ArrowLeftRight },
 	{ key: 'bridge', href: '/bridge', icon: Shuffle },
 	{ key: 'vaults', href: '/vaults', icon: Vault },
-	{ key: 'kusd', href: '/kusd', icon: ShoppingBag, soon: true },
+	{ key: 'kusd', href: '/kusd', icon: ShoppingBag },
 	{ key: 'pools', href: '/pools', icon: Layers },
 	{ key: 'farm', href: '/farm', icon: Sprout },
 	{ key: 'stake', href: '/stake', icon: Coins },
 	{ key: 'launchpad', href: '/launchpad', icon: Rocket },
-	{ key: 'lend', href: '/lend', icon: HandCoins, soon: true },
+	{ key: 'lend', href: '/lend', icon: HandCoins },
 	{ key: 'card', href: '/card', icon: CreditCard, soon: true },
 ];
 
