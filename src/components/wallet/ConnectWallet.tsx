@@ -10,6 +10,7 @@ import { Wallet } from 'lucide-react'
 import { thirdwebClient, allWallets, twKalychain, thirdwebChains } from '@/config/thirdweb'
 import { CHAIN_IDS } from '@/config/chains'
 import { KALYCHAIN_TOKENS } from '@/config/dex/tokens/kalychain'
+import { KUSD_TOKEN } from '@/config/kusd'
 import { BSC_TOKENS } from '@/config/dex/tokens/bsc'
 import { ARBITRUM_TOKENS } from '@/config/dex/tokens/arbitrum'
 import { useDict } from '@/i18n/hooks'
@@ -28,8 +29,14 @@ const toThirdwebTokens = (tokens: typeof KALYCHAIN_TOKENS, chainId: number) =>
     .filter(t => t.chainId === chainId && !t.isNative)
     .map(t => ({ address: t.address, name: t.name, symbol: t.symbol, icon: t.logoURI || undefined }))
 
-const supportedTokens: Record<number, Array<{ address: string; name: string; symbol: string; icon?: string }>> = {
-  [CHAIN_IDS.KALYCHAIN]: toThirdwebTokens(KALYCHAIN_TOKENS, CHAIN_IDS.KALYCHAIN),
+// KUSD first on KalyChain (right under native KMT, which thirdweb always lists on top): the panel
+// shows about five rows with no visible scrollbar, so anything lower goes unseen.
+const isKusd = (t: { address: string }) => t.address.toLowerCase() === KUSD_TOKEN.address.toLowerCase()
+const kusdFirst = <T extends { address: string }>(tokens: T[]) =>
+  [...tokens.filter(isKusd), ...tokens.filter(t => !isKusd(t))]
+
+export const supportedTokens: Record<number, Array<{ address: string; name: string; symbol: string; icon?: string }>> = {
+  [CHAIN_IDS.KALYCHAIN]: kusdFirst(toThirdwebTokens(KALYCHAIN_TOKENS, CHAIN_IDS.KALYCHAIN)),
   [CHAIN_IDS.BSC]: toThirdwebTokens(BSC_TOKENS, CHAIN_IDS.BSC),
   [CHAIN_IDS.ARBITRUM]: toThirdwebTokens(ARBITRUM_TOKENS, CHAIN_IDS.ARBITRUM),
 }

@@ -183,3 +183,24 @@
 		text-wrap: balance;
 	}
 }
+
+/*
+ * thirdweb hides the scrollbar on every scroll area in its wallet modal (e.g. View Assets, which
+ * shows ~5 tokens), so users never learn there is more below. Show a thin one wherever the
+ * content overflows. Unlayered with the extra `html` so it outranks thirdweb's own runtime
+ * (emotion) rule: `.css-x[data-scrolly='true']`.
+ */
+html .tw-modal [data-scrolly='true'] {
+	scrollbar-width: thin;
+	scrollbar-color: var(--muted-foreground) transparent;
+}
+
+html .tw-modal [data-scrolly='true']::-webkit-scrollbar {
+	display: block;
+	width: 6px;
+}
+
+html .tw-modal [data-scrolly='true']::-webkit-scrollbar-thumb {
+	background: var(--muted-foreground);
+	border-radius: 8px;
+}
