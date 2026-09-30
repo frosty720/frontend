@@ -18,6 +18,7 @@ import { TransactionRevertedError } from '@/utils/transactions';
 const BUYER = '0x1111111111111111111111111111111111111111';
 const REFERRER = '0x2222222222222222222222222222222222222222';
 const USDT = VAULT_STABLES[0];
+const KUSD = VAULT_STABLES[1];
 const BASIC: VaultTier = { index: 1, name: 'Basic', priceUsd: 100, aprPct: 40, capBps: 20_000, active: true };
 
 const toast = { success: vi.fn(), error: vi.fn() };
@@ -27,16 +28,19 @@ const refetchAllowance = vi.fn(async () => undefined);
 let account: string | undefined = BUYER;
 let allowance: bigint | undefined = 0n;
 let balance: bigint | undefined = 1_000_000_000n;
+let kusdAllowance: bigint | undefined = 0n;
+let kusdBalance: bigint | undefined = 0n;
 
 vi.mock('wagmi', () => ({ useAccount: () => ({ address: account }) }));
 vi.mock('@/components/ui/toast', () => ({ useToast: () => toast }));
 vi.mock('@/components/primitives/ConnectPrompt', () => ({ ConnectPrompt: ({ body }: { body?: string }) => <div>connect-stub {body}</div> }));
 vi.mock('@/hooks/vaults/useVaultStats', () => ({ useVaultFeeSplit: () => ({ data: undefined }) }));
 vi.mock('@/hooks/vaults/usePurchaseVault', () => ({
-	useVaultStableState: () => ({
-		allowance: { data: allowance, isLoading: false, refetch: refetchAllowance },
-		balance: { data: balance },
-	}),
+	// Each stable has its own balance and allowance, as the real hook reads them per token.
+	useVaultStableState: (_owner: unknown, stable: string) =>
+		stable === KUSD.address
+			? { allowance: { data: kusdAllowance, isLoading: false, refetch: refetchAllowance }, balance: { data: kusdBalance } }
+			: { allowance: { data: allowance, isLoading: false, refetch: refetchAllowance }, balance: { data: balance } },
 	useApproveVaultStable: () => approve,
 	usePurchaseVault: () => purchase,
 }));
@@ -60,6 +64,8 @@ describe('BuyVaultDialog', () => {
 		account = BUYER;
 		allowance = 0n;
 		balance = 1_000_000_000n;
+		kusdAllowance = 0n;
+		kusdBalance = 0n;
 		approve.mockReset();
 		approve.mockImplementation(async () => '0xapprove');
 		purchase.mockReset();
@@ -142,6 +148,40 @@ describe('BuyVaultDialog', () => {
 		await waitFor(() => expect(toast.error).toHaveBeenCalledWith(en.vaultApp.buy.failed, 'Vault purchase failed: the transaction was reverted on-chain.'));
 		expect(screen.queryByText(en.vaultApp.buy.successTitle)).toBeNull();
 		expect(button('Buy Basic vault').disabled).toBe(false);
+	});
+
+	it('offers USDT and KUSD, with USDT selected by default', () => {
+		renderDialog();
+		const radios = screen.getAllByRole('radio');
+		expect(radios.map((r) => r.textContent)).toEqual(['USDT', 'KUSD']);
+		expect(screen.getByRole('radio', { name: 'USDT' }).getAttribute('aria-checked')).toBe('true');
+		expect(screen.getByRole('radio', { name: 'KUSD' }).getAttribute('aria-checked')).toBe('false');
+	});
+
+	it('pays with KUSD: approves the price in 18 decimals, then buys with KUSD', async () => {
+		kusdBalance = 100n * 10n ** 18n;
+		renderDialog({ referrer: REFERRER });
+		fireEvent.click(screen.getByRole('radio', { name: 'KUSD' }));
+		expect(screen.getByRole('radio', { name: 'KUSD' }).getAttribute('aria-checked')).toBe('true');
+		fireEvent.click(button('Approve KUSD'));
+		await waitFor(() => expect(refetchAllowance).toHaveBeenCalled());
+		expect(approve).toHaveBeenCalledWith(KUSD.address, 100n * 10n ** 18n);
+		cleanup();
+		kusdAllowance = 100n * 10n ** 18n;
+		renderDialog({ referrer: REFERRER });
+		fireEvent.click(screen.getByRole('radio', { name: 'KUSD' }));
+		fireEvent.click(button('Buy Basic vault'));
+		await waitFor(() => expect(screen.getByText(en.vaultApp.buy.successTitle)).toBeTruthy());
+		expect(purchase).toHaveBeenCalledWith({ tier: 1, stable: KUSD.address, referrer: REFERRER });
+	});
+
+	it('checks the KUSD balance, not the USDT one, once KUSD is picked', () => {
+		kusdBalance = 100n * 10n ** 18n - 1n;
+		renderDialog();
+		expect(button('Approve USDT').disabled).toBe(false);
+		fireEvent.click(screen.getByRole('radio', { name: 'KUSD' }));
+		expect(screen.getByText('Not enough KUSD: this vault costs $100.')).toBeTruthy();
+		expect(button('Approve KUSD').disabled).toBe(true);
 	});
 
 	it('asks to connect a wallet first', () => {

@@ -1,4 +1,5 @@
 import { MAINNET_CONTRACTS } from '@/config/contracts';
+import { KUSD_TOKEN } from '@/config/kusd';
 
 /** Vault contracts on KalyChain 3890 (kalychain-ops/files/kmt-3890/addresses.json → vaults). */
 export const VAULT_MANAGER_ADDRESS = '0xDA2A7a2D504949896e709F546B6Bc06C2E7c5982' as const;
@@ -17,9 +18,10 @@ export interface VaultStable {
 	pool: `0x${string}`;
 }
 
-/** Stables the VaultManager accepts (`stables(addr).enabled`) — USDT only, as in the Vaults dApp. */
+/** Stables the VaultManager accepts (`stables(addr).enabled`), same list as the Vaults dApp. USDT is the default. */
 export const VAULT_STABLES: readonly VaultStable[] = [
 	{ symbol: 'USDT', address: MAINNET_CONTRACTS.USDT as `0x${string}`, decimals: 6, pool: '0xa9Ac6D3c75A883Cc5D6EfE7EbB973c68174bA61F' },
+	{ symbol: KUSD_TOKEN.symbol, address: KUSD_TOKEN.address, decimals: KUSD_TOKEN.decimals, pool: '0xA30691A687008a167FaD34b2e3c64A21F56Bea85' },
 ];
 
 /** Purchases sign with a 10-minute deadline, like the Vaults dApp. */
