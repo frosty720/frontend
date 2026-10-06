@@ -18,7 +18,7 @@ import CashoutPanel from './CashoutPanel';
 import PsmSwapPanel from './PsmSwapPanel';
 
 export type BuyMethod = 'local' | 'usdt';
-type SellMethod = 'usdt' | 'yellowCard';
+type SellMethod = 'usdt' | 'mobileMoney';
 type Side = 'buy' | 'sell';
 
 /**
@@ -26,7 +26,7 @@ type Side = 'buy' | 'sell';
  * the right the reserves, the ways to pay, and the non-custodial notice.
  *
  * Buying takes local currency (Yellow Card) or USDT (the PSM, 1:1). Selling is KUSD → USDT through the
- * PSM, either kept on KalyChain or cashed out over the bridge to the user's Yellow Card address on Polygon.
+ * PSM on KalyChain, or KUSD → mobile money: the same swap, then the bridge straight to a Yellow Card payout.
  */
 export default function BuySellKusd({ initialDepositId, initialMethod = 'local' }: { initialDepositId?: string; initialMethod?: BuyMethod }) {
 	const dict = useDict();
@@ -89,7 +89,7 @@ export default function BuySellKusd({ initialDepositId, initialMethod = 'local' 
 				{side === 'sell' && (
 					<div className="mt-4 flex flex-wrap items-center gap-2">
 						<span className="text-[12px] font-semibold uppercase tracking-[0.1em] text-muted-deep">{t.receiveAs}</span>
-						{(['usdt', 'yellowCard'] as const).map((m) => (
+						{(['usdt', 'mobileMoney'] as const).map((m) => (
 							<button
 								key={m}
 								type="button"
@@ -109,7 +109,7 @@ export default function BuySellKusd({ initialDepositId, initialMethod = 'local' 
 
 				<div className="mt-5">
 					{side === 'sell' ? (
-						sellMethod === 'yellowCard' ? (
+						sellMethod === 'mobileMoney' ? (
 							<CashoutPanel onBusyChange={setCashoutBusy} />
 						) : (
 							<>

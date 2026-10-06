@@ -44,7 +44,7 @@ describe('BuySellKusd', () => {
 			</DictionaryProvider>,
 		);
 		fireEvent.click(screen.getByRole('tab', { name: t.sell }));
-		fireEvent.click(screen.getByRole('button', { name: t.sellMethods.yellowCard }));
+		fireEvent.click(screen.getByRole('button', { name: t.sellMethods.mobileMoney }));
 		fireEvent.click(screen.getByRole('button', { name: 'start cash-out' }));
 		expect(tabDisabled(t.buy)).toBe(true);
 		expect(isDisabled(t.sellMethods.usdt)).toBe(true);

@@ -35,6 +35,7 @@ const errors: typeof en = {
 	noBridgeRoute: 'Aucune route de {origin} vers {destination}',
 	bridgeReverted: 'Transaction rejetée sur {chain} : {hash}',
 	insufficientCollateral: 'Collatéral insuffisant sur la chaîne de destination pour ce transfert',
+	cashoutPayoutStale: 'Ce retrait a trop attendu votre portefeuille, les USDT n’ont donc pas été envoyés. Ils sont dans votre portefeuille : envoyez-les vers un nouveau paiement ci-dessous.',
 	positionNotFound: 'Position introuvable',
 	tickRangeRequired: 'Choisissez une fourchette de prix pour créer la position',
 	identicalTokens: 'Les deux jetons sont le même actif (KMT et wKMT comptent pour un). Choisissez un autre jeton.',
