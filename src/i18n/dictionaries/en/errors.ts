@@ -33,6 +33,7 @@ const errors = {
 	noBridgeRoute: 'No route found from {origin} to {destination}',
 	bridgeReverted: 'Transaction reverted on {chain}: {hash}',
 	insufficientCollateral: 'Insufficient collateral on destination chain for transfer',
+	cashoutPayoutStale: 'This cash-out waited too long for your wallet, so the USDT was not sent. It is in your wallet: send it to a fresh payout below.',
 	positionNotFound: 'Position not found',
 	tickRangeRequired: 'Tick range required for minting',
 	identicalTokens: 'Both tokens are the same asset (KMT and wKMT count as one). Pick another token.',

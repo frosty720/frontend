@@ -15,8 +15,16 @@ import {
 	isEvmAddress,
 	isInternationalPhone,
 	isRampDepositId,
+	isRampWithdrawalId,
+	isTerminalWithdrawalState,
+	RAMP_WITHDRAWAL_STATES,
+	createRampWithdrawal,
+	fetchRampWithdrawal,
+	fetchRampWithdrawQuote,
+	fetchRampWithdrawChannels,
 	isTerminalDepositState,
 	isValidLocalAmount,
+	isValidUsdAmount,
 	makeIdempotencyKey,
 	normalizePhoneForCountry,
 	paymentMethods,
@@ -346,5 +354,66 @@ describe('isTerminalDepositState', () => {
 	});
 	it('keeps polling on in-flight states', () => {
 		for (const s of ['created', 'awaiting_payment', 'fiat_confirmed', 'paying']) expect(isTerminalDepositState(s)).toBe(false);
+	});
+});
+
+describe('cash-out input checks', () => {
+	it('accepts USD amounts with at most 6 decimals (the payout is 6-decimal USDT)', () => {
+		expect(isValidUsdAmount('25')).toBe(true);
+		expect(isValidUsdAmount('25.123456')).toBe(true);
+		expect(isValidUsdAmount('25.1234567')).toBe(false);
+		expect(isValidUsdAmount('0')).toBe(false);
+		expect(isValidUsdAmount('-1')).toBe(false);
+		expect(isValidUsdAmount('1e3')).toBe(false);
+		expect(isValidUsdAmount('')).toBe(false);
+	});
+	it('accepts only keeper-shaped withdrawal ids', () => {
+		expect(isRampWithdrawalId('6f1c2d3e-4a5b-6c7d')).toBe(true);
+		expect(isRampWithdrawalId('../admin')).toBe(false);
+		expect(isRampWithdrawalId('short')).toBe(false);
+	});
+});
+
+describe('mobile-money cash-out client', () => {
+	afterEach(() => {
+		vi.unstubAllGlobals();
+	});
+
+	it('stops polling only once the payout is final', () => {
+		expect(RAMP_WITHDRAWAL_STATES.filter(isTerminalWithdrawalState)).toEqual(['paid', 'failed', 'expired', 'failed_create']);
+	});
+
+	it('creates, reads, quotes and lists through the ramp proxy', async () => {
+		const fetchMock = vi.fn(async (_input: string | URL | Request, _init?: RequestInit) => new Response(JSON.stringify({ corridors: [] }), { status: 200 }));
+		vi.stubGlobal('fetch', fetchMock);
+		await createRampWithdrawal({
+			idempotencyKey: 'k',
+			userWallet: '0x' + '1'.repeat(40),
+			usdAmount: '25',
+			channelId: 'c',
+			country: 'CI',
+			currency: 'XOF',
+			networkId: 'n',
+			momoNumber: '+2250701234567',
+			accountName: 'A',
+			sender: { name: 'A', country: 'CI' },
+		});
+		await fetchRampWithdrawal('wd-00000001');
+		await fetchRampWithdrawQuote('CI', 'XOF', '25');
+		expect((await fetchRampWithdrawChannels()).corridors).toEqual([]);
+		expect(fetchMock.mock.calls.map((call) => String(call[0]))).toEqual([
+			'/ramp-api/withdrawals',
+			'/ramp-api/withdrawals/wd-00000001',
+			'/ramp-api/withdraw-quote?country=CI&currency=XOF&usd=25',
+			'/ramp-api/withdraw-channels',
+		]);
+		expect(fetchMock.mock.calls[0][1]?.method).toBe('POST');
+	});
+
+	it("explains the keeper's cash-out refusals as definitive (not unknown) outcomes", async () => {
+		for (const key of ['daily_cap', 'unknown_corridor'] as const) {
+			vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ error: key }), { status: 422 })));
+			await expect(fetchRampWithdrawal('wd-00000001')).rejects.toMatchObject({ key, outcomeUnknown: false });
+		}
 	});
 });

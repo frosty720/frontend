@@ -281,6 +281,17 @@ export function isRampDepositId(id: string): boolean {
 	return /^[a-zA-Z0-9-]{8,64}$/.test(id);
 }
 
+/** Withdrawal ids the keeper issues (UUIDs), and the only shape the status proxy forwards. */
+export function isRampWithdrawalId(id: string): boolean {
+	return /^[a-zA-Z0-9-]{8,64}$/.test(id);
+}
+
+/** A USD amount the keeper accepts for a cash-out: positive, at most 6 decimals (the payout is USDT). */
+export function isValidUsdAmount(value: string): boolean {
+	const v = value.trim();
+	return /^\d+(\.\d{1,6})?$/.test(v) && Number(v) > 0;
+}
+
 // ── Browser client for /ramp-api/* ──────────────────────────────────────────
 
 /** Keeper and Yellow Card error keys the buy form explains (dictionary kusd.buy.errors). */
@@ -293,6 +304,8 @@ export const RAMP_ERROR_KEYS = [
 	'paused',
 	'validation',
 	'not_found',
+	'daily_cap',
+	'unknown_corridor',
 ] as const;
 
 export type RampErrorKey = (typeof RAMP_ERROR_KEYS)[number];
@@ -376,4 +389,80 @@ export async function createRampDeposit(input: CreateRampDepositInput): Promise<
 
 export async function fetchRampDeposit(depositId: string): Promise<RampDeposit> {
 	return jsonOrThrow(await fetch(`/ramp-api/deposits/${encodeURIComponent(depositId)}`));
+}
+
+// ── Mobile-money cash-out (keeper /api/withdraw*) ───────────────────────────
+
+/** fiat-bridge-keeper src/core/withdrawals.ts WithdrawalState — the keeper's code is the authority. */
+export const RAMP_WITHDRAWAL_STATES = ['created', 'awaiting_funds', 'paid', 'failed', 'expired', 'failed_create'] as const;
+
+export type RampWithdrawalState = (typeof RAMP_WITHDRAWAL_STATES)[number];
+
+/** Polling stops here. failed / expired: Yellow Card returns any USDT it received to the seller on Polygon. */
+export function isTerminalWithdrawalState(state: string): boolean {
+	return ['paid', 'failed', 'expired', 'failed_create'].includes(state);
+}
+
+export interface RampWithdrawal {
+	withdrawalId: string;
+	state: RampWithdrawalState | string;
+	/** Yellow Card's Polygon deposit address for this payout: the bridge sends the USDT here. */
+	depositAddress: string | null;
+	/** The payout in USD (= the USDT to send, exactly). */
+	usdAmount: string;
+	localAmount: string | null;
+	currency: string;
+	expiresAt: string | null;
+}
+
+export interface RampWithdrawChannelsResponse {
+	corridors: RampCorridor[];
+	/** The keeper's USD floor/ceiling per cash-out. */
+	minUsd?: string;
+	maxUsd?: string;
+	stale?: boolean;
+}
+
+export interface RampWithdrawQuote {
+	usd: string;
+	rate: number;
+	feeLocal: number;
+	receiveLocal: number;
+	currency: string;
+}
+
+export interface CreateRampWithdrawalInput {
+	idempotencyKey: string;
+	userWallet: string;
+	usdAmount: string;
+	channelId: string;
+	country: string;
+	currency: string;
+	networkId: string;
+	momoNumber: string;
+	accountName: string;
+	sender: RampCustomer;
+}
+
+export async function fetchRampWithdrawChannels(): Promise<RampWithdrawChannelsResponse> {
+	const body = await jsonOrThrow<RampWithdrawChannelsResponse>(await fetch('/ramp-api/withdraw-channels'));
+	return { ...body, corridors: body.corridors ?? [] };
+}
+
+export async function fetchRampWithdrawQuote(country: string, currency: string, usd: string): Promise<RampWithdrawQuote> {
+	return jsonOrThrow(await fetch(`/ramp-api/withdraw-quote?${new URLSearchParams({ country, currency, usd })}`));
+}
+
+export async function createRampWithdrawal(input: CreateRampWithdrawalInput): Promise<RampWithdrawal> {
+	return jsonOrThrow(
+		await fetch('/ramp-api/withdrawals', {
+			method: 'POST',
+			headers: { 'content-type': 'application/json' },
+			body: JSON.stringify(input),
+		}),
+	);
+}
+
+export async function fetchRampWithdrawal(withdrawalId: string): Promise<RampWithdrawal> {
+	return jsonOrThrow(await fetch(`/ramp-api/withdrawals/${encodeURIComponent(withdrawalId)}`));
 }

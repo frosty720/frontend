@@ -9,6 +9,10 @@ import { GET as channels } from '../channels/route';
 import { GET as quote } from '../quote/route';
 import { POST as createDeposit } from '../deposits/route';
 import { GET as getDeposit } from '../deposits/[id]/route';
+import { GET as withdrawChannels } from '../withdraw-channels/route';
+import { GET as withdrawQuote } from '../withdraw-quote/route';
+import { POST as createWithdrawal } from '../withdrawals/route';
+import { GET as getWithdrawal } from '../withdrawals/[id]/route';
 
 const KEY = 'test-keeper-key-0123456789';
 const KEEPER = 'https://keeper.test';
@@ -139,5 +143,57 @@ describe('deposit status', () => {
 	it('forwards a keeper deposit id', async () => {
 		await get('fe2fea2f-1c2d-4e5f');
 		expect(lastCall()[0]).toBe(`${KEEPER}/api/deposits/fe2fea2f-1c2d-4e5f`);
+	});
+});
+
+describe('mobile-money cash-out', () => {
+	it('forwards the payout corridors', async () => {
+		await withdrawChannels();
+		expect(lastCall()[0]).toBe(`${KEEPER}/api/withdraw-channels`);
+	});
+
+	it('quotes only with country, currency and a ≤6-decimal USD amount, forwarding nothing else', async () => {
+		expect((await withdrawQuote(req('/ramp-api/withdraw-quote?country=CI&currency=XOF'))).status).toBe(400);
+		expect((await withdrawQuote(req('/ramp-api/withdraw-quote?country=CI&currency=XOF&usd=1.1234567'))).status).toBe(400);
+		expect(keeper).not.toHaveBeenCalled();
+		await withdrawQuote(req('/ramp-api/withdraw-quote?country=CI&currency=XOF&usd=25&evil=1'));
+		expect(lastCall()[0]).toBe(`${KEEPER}/api/withdraw-quote?country=CI&currency=XOF&usd=25`);
+	});
+
+	it('rejects malformed withdrawals before reaching the keeper', async () => {
+		const post = (body: string) => createWithdrawal(req('/ramp-api/withdrawals', { method: 'POST', body }));
+		for (const body of [
+			'{nope',
+			'null',
+			'[]',
+			JSON.stringify({ userWallet: '0x123', usdAmount: '25' }),
+			JSON.stringify({ userWallet: WALLET, usdAmount: '-1' }),
+			JSON.stringify({ userWallet: WALLET, usdAmount: '1.1234567' }),
+		]) {
+			expect((await post(body)).status, body).toBe(400);
+		}
+		expect(keeper).not.toHaveBeenCalled();
+	});
+
+	it('forwards a valid withdrawal unchanged as a POST, and an unreachable keeper as an unknown outcome', async () => {
+		const body = { idempotencyKey: 'ui-ff409dbd-1', userWallet: WALLET, usdAmount: '25', channelId: 'wd1' };
+		await createWithdrawal(req('/ramp-api/withdrawals', { method: 'POST', body: JSON.stringify(body) }));
+		const [url, init] = lastCall();
+		expect(url).toBe(`${KEEPER}/api/withdrawals`);
+		expect(init.method).toBe('POST');
+		expect(JSON.parse(String(init.body))).toEqual(body);
+
+		keeper.mockRejectedValueOnce(new TypeError('fetch failed'));
+		const res = await createWithdrawal(req('/ramp-api/withdrawals', { method: 'POST', body: JSON.stringify(body) }));
+		expect(res.status).toBe(504);
+		expect(await res.json()).toEqual({ error: 'keeper_unreachable' });
+	});
+
+	it('checks the withdrawal id before forwarding a status poll', async () => {
+		const get = (id: string) => getWithdrawal(req(`/ramp-api/withdrawals/${id}`), { params: Promise.resolve({ id }) });
+		for (const id of ['..%2Fadmin', 'short']) expect((await get(id)).status, id).toBe(400);
+		expect(keeper).not.toHaveBeenCalled();
+		await get('6f1c2d3e-4a5b-6c7d');
+		expect(lastCall()[0]).toBe(`${KEEPER}/api/withdrawals/6f1c2d3e-4a5b-6c7d`);
 	});
 });

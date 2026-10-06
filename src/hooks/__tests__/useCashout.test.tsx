@@ -67,6 +67,15 @@ afterEach(() => {
 });
 
 describe('useCashout', () => {
+	it('strands the USDT, without sending the bridge, when the bridge-step callback throws (a payout that waited too long)', async () => {
+		const { result } = renderHook(() => useCashout(), { wrapper });
+		const onStep = vi.fn((_index: number, _total: number, step: KusdStep) => {
+			if (step.action === 'bridgeTransfer') throw new Error('payout too old');
+		});
+		await expect(result.current.cashout({ plan, recipient: YC, kusdAllowance: 0n }, onStep)).rejects.toBeInstanceOf(CashoutStrandedError);
+		expect(send).not.toHaveBeenCalled();
+	});
+
 	it('sends nothing when the Polygon side holds less USDT than the cash-out before the swap', async () => {
 		polygonRead.mockResolvedValue(59n * USDT);
 		const { result } = renderHook(() => useCashout(), { wrapper });
