@@ -7,9 +7,12 @@
 import { decodeFunctionData } from 'viem';
 import { describe, expect, it } from 'vitest';
 import { proxyActionsDsrAbi } from '@/config/abis/kusd';
-import { KUSD_CORE, KUSD_ILKS, KUSD_PROXY, KUSD_TOKEN } from '@/config/kusd';
+import { KUSD_CORE, KUSD_ILKS, KUSD_PROXY, KUSD_PSM, KUSD_TOKEN } from '@/config/kusd';
 import {
 	borrowSteps,
+	bridgeToPolygonStep,
+	cashoutSteps,
+	cashoutSwapSteps,
 	collateralDepositSteps,
 	collateralWithdrawSteps,
 	flopBidSteps,
@@ -102,5 +105,34 @@ describe('auction plans', () => {
 		const steps = flopBidSteps(OWNER, 3n, 900n, 1_000n * RAY * 10n ** 18n + 1n, { internalKusdWad: 0n, flopperHoped: true, allowanceToKusdJoin: 10n ** 30n });
 		expect(calls(steps)).toEqual([`${KUSD_CORE.kusdJoin}.join`, `${KUSD_CORE.flopper}.dent`]);
 		expect(steps[0].write.args).toEqual([OWNER, 1_000n * 10n ** 18n + 1n]);
+	});
+});
+
+describe('cash-out plan', () => {
+	const YC = '0x3333333333333333333333333333333333333333';
+	const plan = { gemAmt: 60_000_000n, cost: 60n * 10n ** 18n };
+
+	it('approves exactly the KUSD cost to the PSM, buys USDT to the owner, then bridges that same USDT', () => {
+		const steps = cashoutSteps(OWNER, plan, YC, 0n, 0n);
+		expect(calls(steps)).toEqual([`${KUSD_TOKEN.address}.approve`, `${KUSD_PSM.address}.buyGem`, `${KUSD_PSM.gem.address}.transferRemote`]);
+		expect(steps[0].write.args).toEqual([KUSD_PSM.address, plan.cost]);
+		expect(steps[1].write.args).toEqual([OWNER, plan.gemAmt]);
+		expect(steps[2].write.args?.[2]).toBe(plan.gemAmt);
+	});
+
+	it('splits off the swap half (approve + buyGem, no bridge) so the bridge can be re-checked and sent on its own', () => {
+		expect(calls(cashoutSwapSteps(OWNER, plan, 0n))).toEqual([`${KUSD_TOKEN.address}.approve`, `${KUSD_PSM.address}.buyGem`]);
+		expect(calls(cashoutSwapSteps(OWNER, plan, plan.cost))).toEqual([`${KUSD_PSM.address}.buyGem`]);
+	});
+
+	it('skips the approval when the allowance already covers the cost', () => {
+		expect(calls(cashoutSteps(OWNER, plan, YC, plan.cost, 0n))).toEqual([`${KUSD_PSM.address}.buyGem`, `${KUSD_PSM.gem.address}.transferRemote`]);
+	});
+
+	it('sends to Polygon (domain 137) with the Yellow Card address left-padded to bytes32 and the quoted fee attached', () => {
+		const step = bridgeToPolygonStep(YC, plan.gemAmt, 7n);
+		expect(step.write.args).toEqual([137, `0x000000000000000000000000${YC.slice(2)}`, plan.gemAmt]);
+		expect(step.write.value).toBe(7n);
+		expect(step.action).toBe('bridgeTransfer');
 	});
 });

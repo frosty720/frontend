@@ -86,6 +86,7 @@ const errors: typeof en = {
 		auctionClaim: "Réclamation d'enchère",
 		wrap: 'Wrap',
 		unwrap: 'Unwrap',
+		bridgeTransfer: 'Transfert via le pont',
 	},
 
 	bridgeStages: {

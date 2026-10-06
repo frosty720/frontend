@@ -14,26 +14,32 @@ import { paymentMethods } from '@/lib/ramp';
 import { cn } from '@/lib/utils';
 import { showAmount } from './amounts';
 import BuyKusdPanel from './BuyKusdPanel';
+import CashoutPanel from './CashoutPanel';
 import PsmSwapPanel from './PsmSwapPanel';
 
 export type BuyMethod = 'local' | 'usdt';
+type SellMethod = 'usdt' | 'yellowCard';
 type Side = 'buy' | 'sell';
 
 /**
  * Buy / Sell KUSD, laid out like the boss's KalySwap design mock: a Buy/Sell card on the left, and on
  * the right the reserves, the ways to pay, and the non-custodial notice.
  *
- * Buying takes local currency (Yellow Card) or USDT (the PSM, 1:1). Selling is the PSM's KUSD → USDT
- * leg only: the Yellow Card keeper pays out, it does not take KUSD in.
+ * Buying takes local currency (Yellow Card) or USDT (the PSM, 1:1). Selling is KUSD → USDT through the
+ * PSM, either kept on KalyChain or cashed out over the bridge to the user's Yellow Card address on Polygon.
  */
 export default function BuySellKusd({ initialDepositId, initialMethod = 'local' }: { initialDepositId?: string; initialMethod?: BuyMethod }) {
 	const dict = useDict();
 	const t = dict.kusd.buySell;
 	const [side, setSide] = useState<Side>('buy');
 	const [method, setMethod] = useState<BuyMethod>(initialMethod);
+	const [sellMethod, setSellMethod] = useState<SellMethod>('usdt');
+	/** A cash-out in flight: switching away would unmount its panel and lose its status. */
+	const [cashoutBusy, setCashoutBusy] = useState(false);
 	const [cardOpen, setCardOpen] = useState(false);
 
 	const payLocal = () => {
+		if (cashoutBusy) return;
 		setSide('buy');
 		setMethod('local');
 	};
@@ -48,9 +54,10 @@ export default function BuySellKusd({ initialDepositId, initialMethod = 'local' 
 							type="button"
 							role="tab"
 							aria-selected={side === s}
+							disabled={cashoutBusy}
 							onClick={() => setSide(s)}
 							className={cn(
-								'rounded-lg py-2.5 text-sm font-bold transition-colors',
+								'rounded-lg py-2.5 text-sm font-bold transition-colors disabled:cursor-not-allowed disabled:opacity-60',
 								side === s ? 'bg-gradient-to-br from-gold-light to-gold text-on-gold' : 'text-muted-foreground hover:text-cream',
 							)}
 						>
@@ -79,12 +86,37 @@ export default function BuySellKusd({ initialDepositId, initialMethod = 'local' 
 					</div>
 				)}
 
+				{side === 'sell' && (
+					<div className="mt-4 flex flex-wrap items-center gap-2">
+						<span className="text-[12px] font-semibold uppercase tracking-[0.1em] text-muted-deep">{t.receiveAs}</span>
+						{(['usdt', 'yellowCard'] as const).map((m) => (
+							<button
+								key={m}
+								type="button"
+								aria-pressed={sellMethod === m}
+								disabled={cashoutBusy}
+								onClick={() => setSellMethod(m)}
+								className={cn(
+									'rounded-lg border px-3 py-1.5 text-[13px] font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-60',
+									sellMethod === m ? 'border-gold bg-gold-soft text-gold' : 'border-line bg-surface-hi text-cream hover:bg-surface-alt',
+								)}
+							>
+								{t.sellMethods[m]}
+							</button>
+						))}
+					</div>
+				)}
+
 				<div className="mt-5">
 					{side === 'sell' ? (
-						<>
-							<PsmSwapPanel key="sell-kusd" direction="buy" />
-							<p className="mt-4 text-[12.5px] text-muted-foreground">{t.sellNote}</p>
-						</>
+						sellMethod === 'yellowCard' ? (
+							<CashoutPanel onBusyChange={setCashoutBusy} />
+						) : (
+							<>
+								<PsmSwapPanel key="sell-kusd" direction="buy" />
+								<p className="mt-4 text-[12.5px] text-muted-foreground">{t.sellNote}</p>
+							</>
+						)
 					) : method === 'usdt' ? (
 						<PsmSwapPanel key="buy-kusd" direction="sell" />
 					) : (

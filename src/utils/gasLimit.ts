@@ -68,6 +68,12 @@ export const KUSD_APPROVE_GAS: GasBounds = { floor: 100_000n, fallback: 100_000n
 /** KssLitePsm.sellGem 77,240 / buyGem 60,562. */
 export const PSM_SWAP_GAS: GasBounds = { floor: 120_000n, fallback: 200_000n };
 
+/**
+ * USDT warp route transferRemote from KalyChain (burns the synthetic, dispatches to Polygon):
+ * 119,549 on 3890 (tx 0x38978052…, 2026-08); the fork test re-measures it under this floor.
+ */
+export const BRIDGE_TRANSFER_REMOTE_GAS: GasBounds = { floor: 180_000n, fallback: 250_000n };
+
 /** ProxyRegistry.build (deploys the user's DSProxy): 762,676. */
 export const SAVINGS_PROXY_BUILD_GAS: GasBounds = { floor: 1_100_000n, fallback: 1_200_000n };
 

@@ -85,6 +85,7 @@ const errors = {
 		auctionClaim: 'Auction claim',
 		wrap: 'Wrap',
 		unwrap: 'Unwrap',
+		bridgeTransfer: 'Bridge transfer',
 	},
 
 	/** Bridge failures by the transfer stage they happened in (keys are `TransferStatus` values). */

@@ -3,7 +3,8 @@
  * in which order. Hooks run these plans (hooks/kusd/useKusdSteps.ts); the 3890 fork test runs the
  * very same plans against real contracts, so what is tested is what ships.
  */
-import { encodeFunctionData, erc20Abi, type Abi } from 'viem';
+import { encodeFunctionData, erc20Abi, pad, type Abi } from 'viem';
+import { warpRouteAbi } from '@/config/abis/hyperlane';
 import {
 	clipperAbi,
 	dsProxyAbi,
@@ -17,10 +18,11 @@ import {
 	sklcAbi,
 	vatAbi,
 } from '@/config/abis/kusd';
-import { KUSD_CORE, KUSD_PROXY, KUSD_PSM, KUSD_TOKEN, SKLC_TOKEN, type KusdIlk } from '@/config/kusd';
+import { KUSD_CASHOUT, KUSD_CORE, KUSD_PROXY, KUSD_PSM, KUSD_TOKEN, SKLC_TOKEN, type KusdIlk } from '@/config/kusd';
 import {
 	AUCTION_BID_GAS,
 	AUCTION_DEAL_GAS,
+	BRIDGE_TRANSFER_REMOTE_GAS,
 	CLIP_TAKE_GAS,
 	GEM_JOIN_GAS,
 	KUSD_APPROVE_GAS,
@@ -34,6 +36,7 @@ import {
 	type GasBounds,
 } from './gasLimit';
 import { toWad } from './kusd';
+import type { CashoutPlan } from './kusdCashout';
 import type { TxAction } from './transactions';
 
 /** One KUSD-protocol write on KalyChain. */
@@ -70,6 +73,38 @@ export function psmSwapStep(direction: 'sell' | 'buy', owner: `0x${string}`, gem
 		bounds: PSM_SWAP_GAS,
 		action: 'psmSwap',
 	};
+}
+
+// ── Cash-out to Yellow Card ─────────────────────────────────────────────────
+
+/**
+ * Send `gemAmt` USDT from KalyChain to `recipient` on Polygon over the USDT warp route. USDT on
+ * KalyChain is the route's synthetic, so transferRemote burns it from the sender (no approval);
+ * the Polygon router releases real USDT to `recipient` once the message is relayed. `fee` is the
+ * route's quoteGasPayment(137), read live (0 today).
+ */
+export function bridgeToPolygonStep(recipient: `0x${string}`, gemAmt: bigint, fee: bigint): KusdStep {
+	return {
+		write: {
+			address: KUSD_PSM.gem.address,
+			abi: warpRouteAbi,
+			functionName: 'transferRemote',
+			args: [KUSD_CASHOUT.destinationDomain, pad(recipient, { size: 32 }), gemAmt],
+			value: fee,
+		},
+		bounds: BRIDGE_TRANSFER_REMOTE_GAS,
+		action: 'bridgeTransfer',
+	};
+}
+
+/** The swap half of a cash-out: KUSD → USDT at the PSM, into the owner's wallet (exact approval first if needed). */
+export function cashoutSwapSteps(owner: `0x${string}`, plan: CashoutPlan, kusdAllowance: bigint): KusdStep[] {
+	return [...approveIfNeeded(KUSD_TOKEN.address, KUSD_PSM.address, plan.cost, kusdAllowance), psmSwapStep('buy', owner, plan.gemAmt)];
+}
+
+/** Cash-out: KUSD → USDT at the PSM to the owner's wallet, then that USDT to the Yellow Card address on Polygon. */
+export function cashoutSteps(owner: `0x${string}`, plan: CashoutPlan, recipient: `0x${string}`, kusdAllowance: bigint, fee: bigint): KusdStep[] {
+	return [...cashoutSwapSteps(owner, plan, kusdAllowance), bridgeToPolygonStep(recipient, plan.gemAmt, fee)];
 }
 
 // ── Savings (Pot through the user's DSProxy + KssProxyActionsDsr) ───────────

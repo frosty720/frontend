@@ -58,6 +58,25 @@ describe('useKusdWriter', () => {
 		expect(writeContractAsync.mock.calls[1][0].gas).toBe(300_000n);
 	});
 
+	it('reports the hash as soon as the wallet broadcasts, before waiting for the receipt', async () => {
+		const seen: string[] = [];
+		waitForTransactionReceipt.mockImplementationOnce(async () => {
+			seen.push('receipt');
+			return { status: 'success' };
+		});
+		const send = renderHook(() => useKusdWriter()).result.current;
+		await send(psmSwapStep('buy', OWNER, 1n), (hash) => seen.push(hash));
+		expect(seen).toEqual(['0xhash', 'receipt']);
+	});
+
+	it('reports no hash when the wallet never broadcasts', async () => {
+		writeContractAsync.mockRejectedValueOnce(new Error('User rejected the request.'));
+		const onHash = vi.fn();
+		const send = renderHook(() => useKusdWriter()).result.current;
+		await expect(send(psmSwapStep('buy', OWNER, 1n), onHash)).rejects.toThrow();
+		expect(onHash).not.toHaveBeenCalled();
+	});
+
 	it('falls back to the pinned limit when estimation fails', async () => {
 		estimateContractGas.mockRejectedValueOnce(new Error('execution reverted'));
 		const send = renderHook(() => useKusdWriter()).result.current;

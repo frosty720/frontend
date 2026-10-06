@@ -19,17 +19,23 @@ import {
 	createWalletClient,
 	encodeAbiParameters,
 	erc20Abi,
+	getAddress,
+	hexToBigInt,
 	http,
 	keccak256,
+	pad,
 	parseAbi,
+	parseEventLogs,
+	slice,
 	toHex,
 	type Abi,
 	type Address,
 } from 'viem';
+import { mailboxAbi, warpRouteAbi } from '@/config/abis/hyperlane';
 import { clipperAbi, jugAbi, potAbi, proxyRegistryAbi, spotterAbi, vatAbi } from '@/config/abis/kusd';
 import { CHAIN_IDS } from '@/config/chains';
 import { kalyFeeOverrides } from '@/config/gas';
-import { KUSD_CORE, KUSD_ILKS, KUSD_PROXY, KUSD_PSM, KUSD_TOKEN, SKLC_TOKEN, ilkBytes32 } from '@/config/kusd';
+import { KUSD_CASHOUT, KUSD_CORE, KUSD_ILKS, KUSD_PROXY, KUSD_PSM, KUSD_TOKEN, SKLC_TOKEN, ilkBytes32 } from '@/config/kusd';
 import { resolveGasLimit } from '../gasLimit';
 import {
 	availableToDraw,
@@ -52,6 +58,7 @@ import {
 import {
 	borrowSteps,
 	buildProxyStep,
+	cashoutSteps,
 	collateralDepositSteps,
 	collateralWithdrawSteps,
 	gemExitStep,
@@ -67,6 +74,7 @@ import {
 	wrapStep,
 	type KusdStep,
 } from '../kusdPlans';
+import { dispatchedMessageId, planCashout } from '../kusdCashout';
 
 const RPC = process.env.KUSD_FORK_RPC;
 const DEPLOYER: Address = '0xaE51f2EfE70e57b994BE8F7f97C4dC824c51802a'; // ward on the Vat and Spotter
@@ -205,6 +213,46 @@ describe.skipIf(!RPC)('KUSD plans on a 3890 fork', () => {
 		await run(ALICE, [approveStep(KUSD_TOKEN.address, KUSD_PSM.address, cost), psmSwapStep('buy', ALICE, gems)]);
 		expect((await balanceOf(KUSD_PSM.gem.address, ALICE)) - usdt1).toBe(gems);
 		expect(kusd1 - (await balanceOf(KUSD_TOKEN.address, ALICE))).toBe(cost);
+	});
+
+	it('cash-out: swaps KUSD for USDT, then burns exactly that USDT into a Polygon message for the Yellow Card address', async () => {
+		const ERIN: Address = '0x00000000000000000000000000000000000e7175';
+		const YC_POLYGON = `0x${'0'.repeat(32)}ca50a7e0` as Address;
+		const usdtSupply = () => pub.readContract({ address: KUSD_PSM.gem.address, abi: erc20Abi, functionName: 'totalSupply' });
+
+		// The Mailbox the route dispatches through, read the way the hook reads it.
+		const mailbox = await pub.readContract({ address: KUSD_PSM.gem.address, abi: warpRouteAbi, functionName: 'mailbox' });
+
+		// ERIN gets KUSD the way a user does: USDT into the PSM.
+		await test.setBalance({ address: ERIN, value: 1_000n * WAD });
+		await setTokenBalance(KUSD_PSM.gem.address, ERIN, 100n * USDT);
+		await run(ERIN, [approveStep(KUSD_PSM.gem.address, KUSD_PSM.address, 100n * USDT), psmSwapStep('sell', ERIN, 100n * USDT)]);
+
+		const tout = await pub.readContract({ address: KUSD_PSM.address, abi: parseAbi(['function tout() view returns (uint256)']), functionName: 'tout' });
+		const plan = planCashout(60n * WAD + 5n, tout)!; // the 5 wei beyond 6 decimals are not spent
+		expect(plan.gemAmt).toBe(60n * USDT);
+		const fee = await pub.readContract({ address: KUSD_PSM.gem.address, abi: warpRouteAbi, functionName: 'quoteGasPayment', args: [KUSD_CASHOUT.destinationDomain] });
+		const kusd0 = await balanceOf(KUSD_TOKEN.address, ERIN);
+		const supply0 = await usdtSupply();
+
+		const steps = cashoutSteps(ERIN, plan, YC_POLYGON, await allowance(KUSD_TOKEN.address, ERIN, KUSD_PSM.address), fee);
+		let receipt: Awaited<ReturnType<typeof send>> | undefined;
+		for (const step of steps) receipt = await send(ERIN, step);
+
+		expect(kusd0 - (await balanceOf(KUSD_TOKEN.address, ERIN))).toBe(plan.cost);
+		expect(await balanceOf(KUSD_PSM.gem.address, ERIN)).toBe(0n); // the swapped USDT all left for Polygon
+		expect(supply0 - (await usdtSupply())).toBe(plan.gemAmt); // burned on KalyChain
+		expect(dispatchedMessageId(receipt!.logs, mailbox)).not.toBeNull();
+
+		const [dispatch] = parseEventLogs({ abi: mailboxAbi, eventName: 'Dispatch', logs: receipt!.logs });
+		expect(getAddress(dispatch.address)).toBe(getAddress(mailbox));
+		expect(dispatch.args.destination).toBe(KUSD_CASHOUT.destinationDomain);
+		expect(dispatch.args.recipient.toLowerCase()).toBe(pad(KUSD_CASHOUT.polygonRouter, { size: 32 }).toLowerCase());
+		// Hyperlane message: version 1 | nonce 4 | origin 4 | sender 32 | destination 4 | recipient 32 | body.
+		// Body = TokenMessage: recipient bytes32 | amount uint256 — this is where the USDT will be released.
+		const body = slice(dispatch.args.message, 77);
+		expect(slice(body, 0, 32).toLowerCase()).toBe(pad(YC_POLYGON, { size: 32 }).toLowerCase());
+		expect(hexToBigInt(slice(body, 32, 64))).toBe(plan.gemAmt);
 	});
 
 	it('savings: builds the proxy, deposits, withdraws part, then withdraws everything', async () => {

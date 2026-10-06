@@ -49,6 +49,21 @@ export const KUSD_PSM = {
 	gem: { symbol: 'USDT', address: MAINNET_CONTRACTS.USDT as `0x${string}`, decimals: 6 } satisfies StableToken,
 } as const;
 
+/**
+ * Cash-out to Yellow Card: USDT on KalyChain (KUSD_PSM.gem, itself the Hyperlane synthetic of the
+ * USDT route) goes over the route to Polygon, where the collateral router releases real USDT to the
+ * user's Yellow Card deposit address. The router's USDT balance is the most that can be cashed out
+ * right now. Mirrors config/bridge/warpRoutes.ts — src/config/__tests__/kusdCashout.test.ts keeps
+ * them in sync. The KalyChain Mailbox is read from the route's mailbox() at send time, not pinned here
+ * (its address is 3888's old WKLC, which src/config/__tests__/no-3888.test.ts keeps out of code).
+ */
+export const KUSD_CASHOUT = {
+	destinationDomain: 137,
+	polygonRouter: '0x2f7c83FC82A0e39A997c262e5BAB13176C275104',
+	polygonUsdt: '0xc2132D05D31c914a87C6611C10748AEb04B58e8F',
+	polygonMailbox: '0x5d934f4e2f797775e53561bB72aca21ba36B96BB',
+} as const;
+
 /** DSProxy stack for the savings rate: Pot.join/exit run through the user's proxy (KssProxyActionsDsr). */
 export const KUSD_PROXY = {
 	registry: '0x3ab9f329Dd96EcDbe21be3cF45786beb4216E66c',

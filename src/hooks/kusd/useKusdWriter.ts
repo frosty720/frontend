@@ -9,7 +9,8 @@ import { resolveGasLimit } from '@/utils/gasLimit';
 import type { KusdStep } from '@/utils/kusdPlans';
 import { assertTxSucceeded } from '@/utils/transactions';
 
-export type KusdSend = (step: KusdStep) => Promise<`0x${string}`>;
+/** `onHash` hears the hash as soon as the wallet broadcasts — before the receipt wait, which can still fail. */
+export type KusdSend = (step: KusdStep, onHash?: (hash: `0x${string}`) => void) => Promise<`0x${string}`>;
 
 /**
  * Sends one KUSD-protocol step the way every KalySwap write must go out: live gas estimate plus
@@ -22,11 +23,12 @@ export function useKusdWriter(): KusdSend {
 	const publicClient = usePublicClient({ chainId: CHAIN_IDS.KALYCHAIN });
 
 	return useCallback<KusdSend>(
-		async ({ write, bounds, action }) => {
+		async ({ write, bounds, action }, onHash) => {
 			if (!address) throw new UserError('walletNotConnected');
 			if (!publicClient) throw new UserError('rpcUnavailable');
 			const gas = await resolveGasLimit(() => publicClient.estimateContractGas({ ...write, account: address }), bounds);
 			const hash = await writeContractAsync({ ...write, gas, chainId: CHAIN_IDS.KALYCHAIN, ...kalyFeeOverrides(CHAIN_IDS.KALYCHAIN) });
+			onHash?.(hash);
 			await assertTxSucceeded(publicClient, hash, action);
 			return hash;
 		},
