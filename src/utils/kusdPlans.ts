@@ -81,7 +81,8 @@ export function psmSwapStep(direction: 'sell' | 'buy', owner: `0x${string}`, gem
  * Send `gemAmt` USDT from KalyChain to `recipient` on Polygon over the USDT warp route. USDT on
  * KalyChain is the route's synthetic, so transferRemote burns it from the sender (no approval);
  * the Polygon router releases real USDT to `recipient` once the message is relayed. `fee` is the
- * route's quoteGasPayment(137), read live (0 today).
+ * route's quoteGasPayment(137), read live (0 today). A zero fee sends no `value` at all: thirdweb
+ * wallets sign viem's "0x0" into a transaction the node cannot decode ("Failed to decode transaction").
  */
 export function bridgeToPolygonStep(recipient: `0x${string}`, gemAmt: bigint, fee: bigint): KusdStep {
 	return {
@@ -90,7 +91,7 @@ export function bridgeToPolygonStep(recipient: `0x${string}`, gemAmt: bigint, fe
 			abi: warpRouteAbi,
 			functionName: 'transferRemote',
 			args: [KUSD_CASHOUT.destinationDomain, pad(recipient, { size: 32 }), gemAmt],
-			value: fee,
+			...(fee > 0n ? { value: fee } : {}),
 		},
 		bounds: BRIDGE_TRANSFER_REMOTE_GAS,
 		action: 'bridgeTransfer',

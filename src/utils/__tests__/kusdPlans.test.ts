@@ -135,4 +135,9 @@ describe('cash-out plan', () => {
 		expect(step.write.value).toBe(7n);
 		expect(step.action).toBe('bridgeTransfer');
 	});
+
+	it('leaves value out entirely when the route charges no fee (thirdweb wallets sign a zero value as an undecodable transaction)', () => {
+		const step = bridgeToPolygonStep(YC, plan.gemAmt, 0n);
+		expect('value' in step.write).toBe(false);
+	});
 });
