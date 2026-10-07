@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { erc20Abi } from 'viem';
+import { erc20Abi, type PublicClient } from 'viem';
 import { useAccount, usePublicClient } from 'wagmi';
 import { mailboxAbi, warpRouteAbi } from '@/config/abis/hyperlane';
 import { CHAIN_IDS } from '@/config/chains';
@@ -37,14 +37,30 @@ export interface CashoutArgs {
 	kusdAllowance: bigint;
 }
 
-/** USDT held by the Polygon side of the route: the most that can be cashed out right now. One eth_call a minute. */
+/**
+ * USDT held by the Polygon side of the route: the most that can be cashed out right now. Our server
+ * route reads it through the paid RPC (cached there); if the route is down or answers something that
+ * is not a balance, the browser's own Polygon RPC answers.
+ */
+export async function readCollateral(polygon: Pick<PublicClient, 'readContract'> | undefined): Promise<bigint> {
+	try {
+		const res = await fetch('/ramp-api/cashout-capacity');
+		const body = (await res.json()) as { collateral?: unknown };
+		if (res.ok && typeof body.collateral === 'string' && /^\d+$/.test(body.collateral)) return BigInt(body.collateral);
+	} catch {
+		// the browser RPC answers below
+	}
+	if (!polygon) throw new UserError('rpcUnavailable');
+	return polygon.readContract({ address: KUSD_CASHOUT.polygonUsdt, abi: erc20Abi, functionName: 'balanceOf', args: [KUSD_CASHOUT.polygonRouter] });
+}
+
+/** The cash-out limit for the form (never shown, only enforced). Refreshed every minute. */
 export function usePolygonCollateral() {
 	const client = usePublicClient({ chainId: CHAIN_IDS.POLYGON });
 	return useQuery({
 		queryKey: ['kusdCashoutCollateral'],
-		enabled: Boolean(client),
 		refetchInterval: 60_000,
-		queryFn: () => client!.readContract({ address: KUSD_CASHOUT.polygonUsdt, abi: erc20Abi, functionName: 'balanceOf', args: [KUSD_CASHOUT.polygonRouter] }),
+		queryFn: () => readCollateral(client),
 	});
 }
 
@@ -72,9 +88,9 @@ export function useCashout() {
 	 */
 	const preflight = useCallback(
 		async (gemAmt: bigint): Promise<{ fee: bigint; mailbox: `0x${string}` }> => {
-			if (!kaly || !polygon) throw new UserError('rpcUnavailable');
+			if (!kaly) throw new UserError('rpcUnavailable');
 			const [collateral, fee, mailbox] = await Promise.all([
-				polygon.readContract({ address: KUSD_CASHOUT.polygonUsdt, abi: erc20Abi, functionName: 'balanceOf', args: [KUSD_CASHOUT.polygonRouter] }),
+				readCollateral(polygon),
 				kaly.readContract({ address: KUSD_PSM.gem.address, abi: warpRouteAbi, functionName: 'quoteGasPayment', args: [KUSD_CASHOUT.destinationDomain] }),
 				kaly.readContract({ address: KUSD_PSM.gem.address, abi: warpRouteAbi, functionName: 'mailbox' }),
 			]);

@@ -149,7 +149,8 @@ function thirdwebRpc(chainId: number): string {
 const PUBLIC_RPC_FALLBACK: Record<number, string> = {
   [CHAIN_IDS.ARBITRUM]: 'https://arb1.arbitrum.io/rpc',
   [CHAIN_IDS.BSC]: 'https://bsc-dataseed.binance.org',
-  [CHAIN_IDS.POLYGON]: 'https://polygon-rpc.com',
+  // polygon-rpc.com refuses keyless requests since 2026-10-07 (401 "API key disabled").
+  [CHAIN_IDS.POLYGON]: 'https://polygon-bor-rpc.publicnode.com',
 };
 
 export const RPC_URLS: Record<number, string> = {
