@@ -25,6 +25,7 @@ const WAD = 10n ** 18n;
 let collateral: bigint | undefined;
 let gemBalance = 0n;
 let tout = 0n;
+let kusdBalance = 500n * WAD;
 const cashout = vi.fn();
 const resumeBridge = vi.fn();
 const toastError = vi.fn();
@@ -36,7 +37,7 @@ vi.mock('@/components/wallet/ClientOnlyConnectWallet', () => ({ ClientOnlyConnec
 vi.mock('@/hooks/kusd/usePsm', () => ({
 	PSM_HALTED: 2n ** 256n - 1n,
 	usePsmState: () => ({ data: { tin: 0n, tout, kusdCash: 10_000n * WAD, pocketGem: 1_419n * USDT } }),
-	usePsmWallet: () => ({ data: { gemBalance, gemAllowance: 0n, kusdBalance: 500n * WAD, kusdAllowance: 0n } }),
+	usePsmWallet: () => ({ data: { gemBalance, gemAllowance: 0n, kusdBalance, kusdAllowance: 0n } }),
 }));
 vi.mock('@/hooks/kusd/useCashout', () => ({
 	usePolygonCollateral: () => ({ data: collateral }),
@@ -102,6 +103,7 @@ beforeEach(() => {
 	collateral = 194n * USDT;
 	gemBalance = 0n;
 	tout = 0n;
+	kusdBalance = 500n * WAD;
 	cashout.mockReset();
 	resumeBridge.mockReset();
 	toastError.mockReset();
@@ -162,11 +164,21 @@ describe('CashoutPanel', () => {
 		expect(screen.queryByText(/Senegal/)).toBeNull();
 	});
 
-	it('blocks a cash-out above the USDT on the Polygon side, and names the limit', () => {
+	it('blocks a cash-out above what Polygon can release, without ever showing the limit', () => {
 		renderPanel();
 		typeAmount('200');
-		expect(screen.getByRole('alert').textContent).toContain('194');
+		expect(screen.getByRole('alert').textContent).toBe(t.overLimit);
 		expect(button().disabled).toBe(true);
+		expect(screen.queryByText(/194/)).toBeNull();
+	});
+
+	it('says the same, without the number, when the PSM cannot pay it out', () => {
+		collateral = 2_000n * USDT;
+		kusdBalance = 2_000n * WAD;
+		renderPanel();
+		typeAmount('1500'); // the PSM pocket holds 1,419 USDT
+		expect(screen.getByRole('alert').textContent).toBe(t.overLimit);
+		expect(screen.queryByText(/1,419/)).toBeNull();
 	});
 
 	it('refuses an amount under the keeper\'s minimum', async () => {
@@ -187,20 +199,20 @@ describe('CashoutPanel', () => {
 		expect(cashout.mock.calls[0][0]).toMatchObject({ plan: { gemAmt: 10_120_000n, cost: 10_120_000_000_000_000_000n } });
 	});
 
-	it('names the Polygon limit rounded down, so typing the number shown goes through', async () => {
+	it('lets through anything up to the limit, to the cent', async () => {
 		collateral = 386_099_040n; // 386.09904 USDT (wallet holds 500 KUSD)
 		renderPanel();
-		await fill('400');
-		expect(screen.getByRole('alert').textContent).toContain('386.09 USDT');
+		await fill('386.10');
+		expect(screen.getByRole('alert')).toBeTruthy();
 		typeAmount('386.09');
 		expect(screen.queryByRole('alert')).toBeNull();
 		expect(button().disabled).toBe(false);
 	});
 
-	it('Max fills the most that can go out now: the smaller of the KUSD balance and the Polygon limit', () => {
+	it('Max fills the wallet balance, so it never reveals the limit', () => {
 		renderPanel();
 		fireEvent.click(screen.getByRole('button', { name: t.max }));
-		expect((screen.getByLabelText(t.amount) as HTMLInputElement).value).toBe('194'); // balance 500 KUSD, limit 194 USDT
+		expect((screen.getByLabelText(t.amount) as HTMLInputElement).value).toBe('500'); // balance 500 KUSD, limit 194 USDT
 	});
 
 	it('shows the PSM fee, and none when it is zero', () => {
