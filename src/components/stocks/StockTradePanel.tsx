@@ -38,8 +38,9 @@ import {
 import type { TradeStage } from '@/lib/stocksTrade';
 import { cn } from '@/lib/utils';
 import StockDeposit from './StockDeposit';
+import StockWithdraw from './StockWithdraw';
 
-/** Buy an asset with USDG or ETH, or sell it for either, on Robinhood Chain — or deposit either from another chain. */
+/** Buy an asset with USDG or ETH, or sell it for either, on Robinhood Chain — or move either in from, or out to, another chain. */
 export default function StockTradePanel({
 	asset,
 	quote,
@@ -56,7 +57,7 @@ export default function StockTradePanel({
 	const { address, chainId } = useAccount();
 	const { switchChain } = useWallet();
 	const trade = useStockTrade();
-	const [tab, setTab] = useState<TradeSide | 'deposit'>('buy');
+	const [tab, setTab] = useState<TradeSide | 'deposit' | 'withdraw'>('buy');
 	const side: TradeSide = tab === 'sell' ? 'sell' : 'buy';
 	const [currency, setCurrency] = useState<StockCurrency>('USDG');
 	const [input, setInput] = useState('');
@@ -165,8 +166,8 @@ export default function StockTradePanel({
 				{reference !== null && <div className="text-lg font-semibold tabular-nums">{fmt.usd(reference, { decimals: usdDecimals(reference) })}</div>}
 			</div>
 
-			<div role="tablist" aria-label={t.sideLabel} className="grid grid-cols-3 gap-1 rounded-xl bg-surface-alt p-1">
-				{(['buy', 'sell', 'deposit'] as const).map((s) => (
+			<div role="tablist" aria-label={t.sideLabel} className="grid grid-cols-4 gap-1 rounded-xl bg-surface-alt p-1">
+				{(['buy', 'sell', 'deposit', 'withdraw'] as const).map((s) => (
 					<button
 						key={s}
 						type="button"
@@ -185,7 +186,7 @@ export default function StockTradePanel({
 			</div>
 
 			<div className="mt-4 flex flex-wrap items-center gap-2">
-				<span className="text-[12px] font-semibold uppercase tracking-[0.1em] text-muted-deep">{tab === 'buy' ? t.payWith : t.receiveIn}</span>
+				<span className="text-[12px] font-semibold uppercase tracking-[0.1em] text-muted-deep">{tab === 'buy' ? t.payWith : tab === 'withdraw' ? t.send : t.receiveIn}</span>
 				{(Object.keys(STOCK_CURRENCIES) as StockCurrency[]).map((c) => (
 					<button
 						key={c}
@@ -205,6 +206,8 @@ export default function StockTradePanel({
 
 			{tab === 'deposit' ? (
 				<StockDeposit currency={currency} />
+			) : tab === 'withdraw' ? (
+				<StockWithdraw key={currency} currency={currency} balances={balances} />
 			) : (
 				<>
 					<div className="mt-4 rounded-xl border border-line bg-surface-alt p-4">

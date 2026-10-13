@@ -69,3 +69,46 @@ export const STOCK_SLIPPAGE_BPS = 50;
  */
 export const STOCK_GROUPS = ['stock', 'index', 'commodity', 'pToken', 'crypto', 'meme', 'other'] as const;
 export type StockGroup = (typeof STOCK_GROUPS)[number];
+
+/**
+ * Withdrawals out of Robinhood Chain go through Relay: thirdweb's bridge only delivers TO 4663 ("The
+ * bridge contract has not been deployed on chain 4663", 2026-10-13). Relay allows browser calls
+ * (`access-control-allow-origin: *`), so there is no proxy.
+ */
+export const RELAY_API_URL = 'https://api.relay.link';
+/** Relay's address for a chain's native token. */
+export const RELAY_NATIVE_TOKEN = '0x0000000000000000000000000000000000000000';
+/**
+ * KalySwap's fee on a withdrawal, in basis points, sent with every quote (`appFees`). Relay keeps it as
+ * a USDC balance for this address, claimed later by signing with it (POST /app-fees/{address}/claim).
+ */
+export const RELAY_FEE_BPS = 70;
+export const RELAY_FEE_RECIPIENT = '0x12BA3F424d630A583BdBCa56b0c1A0a7C1d7D66e';
+/** How long to wait for Relay to report the destination fill before calling the outcome unknown. */
+export const WITHDRAW_STATUS_TIMEOUT_MS = 10 * 60_000;
+
+export interface WithdrawDestination {
+	chainId: number;
+	chain: string;
+	token: `0x${string}`;
+	symbol: string;
+	decimals: number;
+}
+
+/** Where each currency can be withdrawn to. Every route was quoted live through Relay on 2026-10-13. */
+export const WITHDRAW_DESTINATIONS: Record<StockCurrency, readonly WithdrawDestination[]> = {
+	USDG: [
+		{ chainId: 42161, chain: 'Arbitrum', token: '0xaf88d065e77c8cC2239327C5EDb3A432268e5831', symbol: 'USDC', decimals: 6 },
+		{ chainId: 42161, chain: 'Arbitrum', token: '0xFd086bC7CD5C481DCC9C85ebE478A1C0b69FCbb9', symbol: 'USDT', decimals: 6 },
+		{ chainId: 8453, chain: 'Base', token: '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913', symbol: 'USDC', decimals: 6 },
+		{ chainId: 137, chain: 'Polygon', token: '0xc2132D05D31c914a87C6611C10748AEb04B58e8F', symbol: 'USDT', decimals: 6 },
+		{ chainId: 137, chain: 'Polygon', token: '0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359', symbol: 'USDC', decimals: 6 },
+		{ chainId: 56, chain: 'BSC', token: '0x55d398326f99059fF775485246999027B3197955', symbol: 'USDT', decimals: 18 },
+		{ chainId: 10, chain: 'Optimism', token: '0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85', symbol: 'USDC', decimals: 6 },
+	],
+	ETH: [
+		{ chainId: 42161, chain: 'Arbitrum', token: RELAY_NATIVE_TOKEN, symbol: 'ETH', decimals: 18 },
+		{ chainId: 8453, chain: 'Base', token: RELAY_NATIVE_TOKEN, symbol: 'ETH', decimals: 18 },
+		{ chainId: 10, chain: 'Optimism', token: RELAY_NATIVE_TOKEN, symbol: 'ETH', decimals: 18 },
+	],
+};

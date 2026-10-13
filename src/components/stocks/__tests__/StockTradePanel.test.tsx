@@ -33,6 +33,7 @@ vi.mock('@/hooks/stocks/useStocks', () => ({
 }));
 
 vi.mock('../StockDeposit', () => ({ default: ({ currency }: { currency: string }) => <div>deposit widget for {currency}</div> }));
+vi.mock('../StockWithdraw', () => ({ default: ({ currency }: { currency: string }) => <div>withdraw form for {currency}</div> }));
 
 import StockTradePanel from '../StockTradePanel';
 
@@ -252,5 +253,17 @@ describe('StockTradePanel — Deposit tab', () => {
 		fireEvent.click(screen.getByRole('tab', { name: t.buy }));
 		expect(screen.queryByText(/deposit widget/)).toBeNull();
 		expect(screen.getByLabelText(t.youPay)).toBeTruthy();
+	});
+});
+
+describe('StockTradePanel — Withdraw tab', () => {
+	it('swaps the trade form for the withdraw form, labels the currency as what is sent, and follows the chips', () => {
+		renderPanel();
+		fireEvent.click(screen.getByRole('tab', { name: t.withdraw }));
+		expect(screen.getByText('withdraw form for USDG')).toBeTruthy();
+		expect(screen.getByText(t.send)).toBeTruthy();
+		expect(screen.queryByLabelText(t.youPay)).toBeNull();
+		fireEvent.click(screen.getByRole('button', { name: 'ETH' }));
+		expect(screen.getByText('withdraw form for ETH')).toBeTruthy();
 	});
 });

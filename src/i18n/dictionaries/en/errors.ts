@@ -47,6 +47,12 @@ const errors = {
 	stocksBelowMinimum: 'This trade is below Arcus’s minimum size. Try a larger amount.',
 	stocksUnsafeQuote: 'Arcus returned a trade we could not verify, so nothing was sent.',
 	stocksOutcomeUnknown: 'We could not confirm whether your trade went through. Check your balances before trying again.',
+	withdrawUnavailable: 'Withdrawals are unreachable right now. Please try again in a moment.',
+	withdrawNoRoute: 'Relay cannot send this withdrawal. {detail}',
+	withdrawUnsafe: 'Relay returned a transfer we could not verify, so nothing was sent.',
+	withdrawRefunded: 'The withdrawal could not be delivered, so Relay refunded it to your wallet on Robinhood Chain.',
+	withdrawFailed: 'Relay reported the withdrawal as failed. Check your balances, and keep this transaction for support: {hash}',
+	withdrawPending: 'Your withdrawal was sent but has not arrived on {chain} yet. Check your balance there before trying again.',
 
 	/** Names for `assertTxSucceeded(client, hash, action)` — shown as "{action} failed: …". */
 	actions: {
@@ -94,6 +100,8 @@ const errors = {
 		unwrap: 'Unwrap',
 		bridgeTransfer: 'Bridge transfer',
 		stockTrade: 'Stock trade',
+		withdrawApproval: 'Withdrawal approval',
+		withdraw: 'Withdrawal',
 	},
 
 	/** Bridge failures by the transfer stage they happened in (keys are `TransferStatus` values). */
