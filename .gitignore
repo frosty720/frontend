@@ -47,3 +47,8 @@ Thumbs.db
 
 # TypeScript incremental build cache (should not be tracked)
 tsconfig.tsbuildinfo
+
+# Agent tooling (Claude Code, superpowers) — never committed or published
+.claude/
+.superpowers/
+docs/superpowers/
