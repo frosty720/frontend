@@ -10,7 +10,7 @@ const APP = join(__dirname, '..', '..', '..', 'app', '[locale]');
 describe('NAV', () => {
 	it('lists the sidebar in the agreed order', () => {
 		expect(NAV.map((i) => i.key)).toEqual([
-			'dashboard', 'swap', 'bridge', 'vaults', 'kusd', 'pools', 'farm', 'stake', 'launchpad', 'lend', 'card',
+			'dashboard', 'swap', 'stocks', 'bridge', 'vaults', 'kusd', 'pools', 'farm', 'stake', 'launchpad', 'lend', 'card',
 		]);
 	});
 
@@ -42,6 +42,7 @@ describe('activeNavKey', () => {
 	it('matches exact and nested paths', () => {
 		expect(activeNavKey('/')).toBe('dashboard');
 		expect(activeNavKey('/swaps')).toBe('swap');
+		expect(activeNavKey('/stocks')).toBe('stocks');
 		expect(activeNavKey('/pools/add')).toBe('pools');
 		expect(activeNavKey('/launchpad/0xabc')).toBe('launchpad');
 		expect(activeNavKey('/nope')).toBeNull();

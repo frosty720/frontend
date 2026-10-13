@@ -73,11 +73,18 @@ export const twPolygon = defineChain({
   rpc: RPC_URLS[CHAIN_IDS.POLYGON],
 })
 
+// Robinhood Chain (4663) is in thirdweb's public registry, so its name, icon and ETH symbol resolve by id.
+export const twRobinhood = defineChain({
+  id: CHAIN_IDS.ROBINHOOD,
+  rpc: RPC_URLS[CHAIN_IDS.ROBINHOOD],
+})
+
 export const thirdwebChains = [
   twKalychain,
   twArbitrum,
   twBsc,
   twPolygon,
+  twRobinhood,
 ]
 
 // ============================================================================

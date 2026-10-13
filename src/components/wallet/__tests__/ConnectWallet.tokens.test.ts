@@ -12,6 +12,7 @@ vi.mock('thirdweb/react', () => ({ ConnectButton: () => null, darkTheme: () => (
 vi.mock('@/config/thirdweb', () => ({ thirdwebClient: {}, allWallets: [], twKalychain: {}, thirdwebChains: [] }));
 vi.mock('@/hooks/useWallet', () => ({ useWallet: () => ({}) }));
 vi.mock('@/i18n/hooks', () => ({ useDict: () => ({}) }));
+vi.mock('@/hooks/stocks/useStocks', () => ({ useHeldStockTokens: () => [] }));
 
 import { supportedTokens } from '../ConnectWallet';
 
@@ -31,6 +32,10 @@ describe('ConnectWallet supportedTokens', () => {
 		).map((t) => t.symbol);
 		expect(expected.length).toBeGreaterThan(0);
 		expect(kaly.slice(1).map((t) => t.symbol)).toEqual(expected);
+	});
+
+	it('starts Robinhood Chain empty — filled with the wallet\'s holdings at runtime — but present, so thirdweb does not query its token service', () => {
+		expect(supportedTokens[CHAIN_IDS.ROBINHOOD]).toEqual([]);
 	});
 
 	it('does not add KUSD to the other chains', () => {

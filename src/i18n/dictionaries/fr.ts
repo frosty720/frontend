@@ -12,6 +12,7 @@ import vaultDetails from './fr/vaultDetails';
 import vaultApp from './fr/vaultApp';
 import kusd from './fr/kusd';
 import lend from './fr/lend';
+import stocks from './fr/stocks';
 import errors from './fr/errors';
 
 const fr: Dictionary = {
@@ -24,6 +25,7 @@ const fr: Dictionary = {
 	nav: {
 		dashboard: 'Tableau de bord',
 		swap: 'Swap',
+		stocks: 'Actions',
 		bridge: 'Bridge',
 		vaults: 'Vaults',
 		kusd: 'Acheter/Vendre KUSD',
@@ -38,6 +40,7 @@ const fr: Dictionary = {
 	pages: {
 		dashboard: { title: 'Tableau de bord', subtitle: 'Bienvenue — votre portefeuille en un coup d’œil' },
 		swap: { title: 'Swap', subtitle: 'Échangez n’importe quel actif en un clic sur KalyChain, Arbitrum, BSC ou Polygon — via les pools de chaque réseau.' },
+		stocks: { title: 'Actions', subtitle: 'Échangez des actions et ETF américains tokenisés 24h/24 sur Robinhood Chain — via Arcus, payés en USDG ou en ETH.' },
 		bridge: { title: 'Bridge', subtitle: 'Transférez vos jetons entre KalyChain, Arbitrum, BSC et Polygon via les routes Hyperlane.' },
 		vaults: { title: 'Vaults', subtitle: 'Des NFT productifs adossés à la liquidité du protocole, qui partagent chaque récompense de bloc — un revenu passif on-chain.' },
 		kusd: { title: 'Acheter / Vendre KUSD', subtitle: 'Achetez ou vendez le stablecoin KUSD (1:1 USD) par mobile money, carte ou crypto — réglé sur KalyChain.' },
@@ -363,6 +366,7 @@ const fr: Dictionary = {
 	vaultApp,
 	kusd,
 	lend,
+	stocks,
 	errors,
 };
 

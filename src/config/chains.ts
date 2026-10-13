@@ -28,6 +28,9 @@ export const CHAIN_IDS = {
   ARBITRUM: 42161,
   BSC: 56,
   POLYGON: 137,
+  // Robinhood Chain: an Arbitrum Orbit L2 (gas in ETH) where the tokenized stocks live. Only the
+  // Stocks page uses it — it is deliberately NOT a bridge chain, so funds never leave KalyChain for it.
+  ROBINHOOD: 4663,
 } as const;
 
 export type ChainIdValue = typeof CHAIN_IDS[keyof typeof CHAIN_IDS];
@@ -69,12 +72,41 @@ export const kalychain = defineChain({
   iconUrl: '/tokens/klc.png',
 })
 
-// Bridge-supported chains - Required for bridge functionality
+// Robinhood Chain. viem ships no definition for it (checked 2.51.3). Multicall3 is deployed at the
+// canonical address, so wagmi's batched reads work.
+const ROBINHOOD_PUBLIC_RPC = 'https://rpc.mainnet.chain.robinhood.com'
+const ROBINHOOD_EXPLORER_URL = 'https://robin.etherscan.io'
+
+export const robinhood = defineChain({
+  id: CHAIN_IDS.ROBINHOOD,
+  name: 'Robinhood Chain',
+  nativeCurrency: {
+    decimals: 18,
+    name: 'Ether',
+    symbol: 'ETH',
+  },
+  rpcUrls: {
+    default: { http: [ROBINHOOD_PUBLIC_RPC] },
+  },
+  blockExplorers: {
+    default: {
+      name: 'Robinhood Explorer',
+      url: ROBINHOOD_EXPLORER_URL,
+    },
+  },
+  contracts: {
+    multicall3: { address: '0xcA11bde05977b3631167028862bE2a173976CA11' },
+  },
+})
+
+// Chains the wallet can connect to. The bridge keeps its own list (config/bridge/config.ts), so a
+// chain here is not automatically a bridge chain.
 export const supportedChains = [
   kalychain,
   arbitrum,
   bsc,
   polygon,
+  robinhood,
 ] as const
 
 // Helper function to get chain by ID
@@ -120,6 +152,13 @@ export const CHAIN_CONFIG = {
     faucetUrl: null,
     bridgeUrl: null,
   },
+  [robinhood.id]: {
+    name: 'Robinhood Chain',
+    shortName: 'RH',
+    isTestnet: false,
+    faucetUrl: null,
+    bridgeUrl: null,
+  },
 } as const
 
 // Export types for TypeScript
@@ -132,7 +171,7 @@ export type ChainId = SupportedChain['id']
 
 /**
  * thirdweb RPC Edge URL for a given chain. thirdweb is our paid app-wide RPC
- * provider for external chains (Arbitrum, BSC). The browser-safe client ID
+ * provider for external chains (Arbitrum, BSC, Polygon, Robinhood). The browser-safe client ID
  * authenticates the request (domain-allowlisted in the thirdweb dashboard).
  *
  * NOTE: NowNodes is intentionally NOT used anywhere in this app. The standalone
@@ -151,6 +190,7 @@ const PUBLIC_RPC_FALLBACK: Record<number, string> = {
   [CHAIN_IDS.BSC]: 'https://bsc-dataseed.binance.org',
   // polygon-rpc.com refuses keyless requests since 2026-10-07 (401 "API key disabled").
   [CHAIN_IDS.POLYGON]: 'https://polygon-bor-rpc.publicnode.com',
+  [CHAIN_IDS.ROBINHOOD]: ROBINHOOD_PUBLIC_RPC,
 };
 
 export const RPC_URLS: Record<number, string> = {
@@ -158,6 +198,7 @@ export const RPC_URLS: Record<number, string> = {
   [CHAIN_IDS.ARBITRUM]: process.env.NEXT_PUBLIC_ARBITRUM_RPC_URL || thirdwebRpc(CHAIN_IDS.ARBITRUM) || PUBLIC_RPC_FALLBACK[CHAIN_IDS.ARBITRUM],
   [CHAIN_IDS.BSC]: process.env.NEXT_PUBLIC_BSC_RPC_URL || thirdwebRpc(CHAIN_IDS.BSC) || PUBLIC_RPC_FALLBACK[CHAIN_IDS.BSC],
   [CHAIN_IDS.POLYGON]: process.env.NEXT_PUBLIC_POLYGON_RPC_URL || thirdwebRpc(CHAIN_IDS.POLYGON) || PUBLIC_RPC_FALLBACK[CHAIN_IDS.POLYGON],
+  [CHAIN_IDS.ROBINHOOD]: process.env.NEXT_PUBLIC_ROBINHOOD_RPC_URL || thirdwebRpc(CHAIN_IDS.ROBINHOOD) || PUBLIC_RPC_FALLBACK[CHAIN_IDS.ROBINHOOD],
 };
 
 /**
@@ -183,6 +224,10 @@ export const RPC_URLS_ALL: Record<number, string[]> = {
   [CHAIN_IDS.POLYGON]: [
     process.env.NEXT_PUBLIC_POLYGON_RPC_URL || thirdwebRpc(CHAIN_IDS.POLYGON),
     PUBLIC_RPC_FALLBACK[CHAIN_IDS.POLYGON],
+  ].filter(Boolean),
+  [CHAIN_IDS.ROBINHOOD]: [
+    process.env.NEXT_PUBLIC_ROBINHOOD_RPC_URL || thirdwebRpc(CHAIN_IDS.ROBINHOOD),
+    PUBLIC_RPC_FALLBACK[CHAIN_IDS.ROBINHOOD],
   ].filter(Boolean),
 };
 
@@ -236,6 +281,15 @@ export const CHAIN_METADATA: Record<number, ChainMetadata> = {
     logo: '/tokens/pol.png',
     explorer: 'https://polygonscan.com',
     explorerApi: 'https://api.polygonscan.com/api',
+    isTestnet: false,
+  },
+  [CHAIN_IDS.ROBINHOOD]: {
+    name: 'Robinhood Chain',
+    shortName: 'RH',
+    symbol: 'ETH',
+    logo: '/tokens/eth.png',
+    explorer: ROBINHOOD_EXPLORER_URL,
+    explorerApi: 'https://api.etherscan.io/v2/api?chainid=4663',
     isTestnet: false,
   },
 };

@@ -16,7 +16,7 @@ describe('Thirdweb Configuration', () => {
   describe('chain definitions', () => {
     it('should define all chains with correct IDs', async () => {
       const {
-        twKalychain, twArbitrum, twBsc, twPolygon,
+        twKalychain, twArbitrum, twBsc, twPolygon, twRobinhood,
         thirdwebChains,
       } = await getThirdwebConfig()
 
@@ -24,10 +24,11 @@ describe('Thirdweb Configuration', () => {
       expect(twArbitrum.id).toBe(42161)
       expect(twBsc.id).toBe(56)
       expect(twPolygon.id).toBe(137)
+      expect(twRobinhood.id).toBe(4663)
 
-      expect(thirdwebChains).toHaveLength(4)
+      expect(thirdwebChains).toHaveLength(5)
       const chainIds = thirdwebChains.map(c => c.id)
-      expect(chainIds).toEqual([3890, 42161, 56, 137])
+      expect(chainIds).toEqual([3890, 42161, 56, 137, 4663])
     })
 
     // Regression: thirdweb resolves chain metadata from its public registry, which does not

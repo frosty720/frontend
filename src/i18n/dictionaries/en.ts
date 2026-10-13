@@ -11,6 +11,7 @@ import vaultDetails from './en/vaultDetails';
 import vaultApp from './en/vaultApp';
 import kusd from './en/kusd';
 import lend from './en/lend';
+import stocks from './en/stocks';
 import errors from './en/errors';
 
 /**
@@ -27,6 +28,7 @@ const en = {
 	nav: {
 		dashboard: 'Dashboard',
 		swap: 'Swap',
+		stocks: 'Stocks',
 		bridge: 'Bridge',
 		vaults: 'Vaults',
 		kusd: 'Buy/Sell KUSD',
@@ -41,6 +43,7 @@ const en = {
 	pages: {
 		dashboard: { title: 'Dashboard', subtitle: 'Welcome — your portfolio at a glance' },
 		swap: { title: 'Swap', subtitle: 'Swap any asset in one click on KalyChain, Arbitrum, BSC or Polygon — routed through each network’s own pools.' },
+		stocks: { title: 'Stocks', subtitle: 'Trade tokenized US stocks and ETFs 24/7 on Robinhood Chain — routed through Arcus, paid in USDG or ETH.' },
 		bridge: { title: 'Bridge', subtitle: 'Move tokens between KalyChain, Arbitrum, BSC and Polygon with Hyperlane warp routes.' },
 		vaults: { title: 'Vaults', subtitle: 'Productive NFTs backed by protocol-owned liquidity that share every block reward — passive income on-chain.' },
 		kusd: { title: 'Buy / Sell KUSD', subtitle: 'Buy or sell the KUSD stablecoin (1:1 USD) with mobile money, card or crypto — settled on KalyChain.' },
@@ -366,6 +369,7 @@ const en = {
 	vaultApp,
 	kusd,
 	lend,
+	stocks,
 	errors,
 };
 

@@ -15,6 +15,7 @@
     "test:ci": "SKIP_INTEGRATION=true vitest run --coverage"
   },
   "dependencies": {
+    "@arcus-xyz/arcus-spot-sdk": "^1.0.2",
     "@headlessui/react": "^2.2.2",
     "@heroicons/react": "^2.2.0",
     "@hookform/resolvers": "^5.1.1",
@@ -50,7 +51,7 @@
     "react-hook-form": "^7.56.4",
     "tailwind-merge": "^3.3.0",
     "thirdweb": "^5.119.3",
-    "viem": "^2.31.0",
+    "viem": "^2.51.3",
     "wagmi": "^2.15.6",
     "zod": "^3.25.3",
     "zustand": "^4.5.7"

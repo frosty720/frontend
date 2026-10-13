@@ -1,6 +1,8 @@
 'use client'
 
-import { ConnectButton, darkTheme } from 'thirdweb/react'
+import { useMemo } from 'react'
+import { ConnectButton, darkTheme, useActiveAccount, useActiveWalletChain } from 'thirdweb/react'
+import type { Hex } from 'viem'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -13,6 +15,7 @@ import { KALYCHAIN_TOKENS } from '@/config/dex/tokens/kalychain'
 import { KUSD_TOKEN } from '@/config/kusd'
 import { BSC_TOKENS } from '@/config/dex/tokens/bsc'
 import { ARBITRUM_TOKENS } from '@/config/dex/tokens/arbitrum'
+import { useHeldStockTokens } from '@/hooks/stocks/useStocks'
 import { useDict } from '@/i18n/hooks'
 
 interface ConnectWalletProps {
@@ -39,10 +42,13 @@ export const supportedTokens: Record<number, Array<{ address: string; name: stri
   [CHAIN_IDS.KALYCHAIN]: kusdFirst(toThirdwebTokens(KALYCHAIN_TOKENS, CHAIN_IDS.KALYCHAIN)),
   [CHAIN_IDS.BSC]: toThirdwebTokens(BSC_TOKENS, CHAIN_IDS.BSC),
   [CHAIN_IDS.ARBITRUM]: toThirdwebTokens(ARBITRUM_TOKENS, CHAIN_IDS.ARBITRUM),
+  // Filled at runtime with the Arcus-listed tokens the wallet holds (useHeldStockTokens). The entry
+  // must exist even when empty: without it thirdweb asks its token service, which has no Robinhood Chain.
+  [CHAIN_IDS.ROBINHOOD]: [],
 }
 
 // Custom theme matching KalySwap's brand palette
-const kalyswapTheme = darkTheme({
+export const kalyswapTheme = darkTheme({
   colors: {
     primaryButtonBg: 'linear-gradient(135deg, #FBBF24, #F59E0B)',
     primaryButtonText: '#1A1206',
@@ -72,6 +78,11 @@ const kalyswapTheme = darkTheme({
 
 export function ConnectWallet({ children, className }: ConnectWalletProps) {
   const dict = useDict()
+  const account = useActiveAccount()
+  const chain = useActiveWalletChain()
+  // Only read holdings while the wallet is on Robinhood Chain — the panel lists the active chain only.
+  const held = useHeldStockTokens(chain?.id === CHAIN_IDS.ROBINHOOD ? (account?.address as Hex | undefined) : undefined)
+  const tokens = useMemo(() => ({ ...supportedTokens, [CHAIN_IDS.ROBINHOOD]: held }), [held])
   return (
     <div className={className}>
       <ConnectButton
@@ -79,7 +90,7 @@ export function ConnectWallet({ children, className }: ConnectWalletProps) {
         wallets={allWallets}
         chains={thirdwebChains}
         theme={kalyswapTheme}
-        supportedTokens={supportedTokens}
+        supportedTokens={tokens}
         connectButton={{
           label: children ? undefined : dict.shell.connect,
           className: 'kalyswap-connect-btn',
