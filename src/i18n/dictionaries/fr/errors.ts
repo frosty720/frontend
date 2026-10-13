@@ -49,6 +49,12 @@ const errors: typeof en = {
 	stocksBelowMinimum: 'Cet ordre est inférieur à la taille minimale d’Arcus. Essayez un montant plus élevé.',
 	stocksUnsafeQuote: 'Arcus a renvoyé un ordre que nous n’avons pas pu vérifier, rien n’a été envoyé.',
 	stocksOutcomeUnknown: 'Impossible de confirmer si votre ordre est passé. Vérifiez vos soldes avant de réessayer.',
+	withdrawUnavailable: 'Les retraits sont injoignables pour le moment. Réessayez dans un instant.',
+	withdrawNoRoute: 'Relay ne peut pas effectuer ce retrait. {detail}',
+	withdrawUnsafe: 'Relay a renvoyé un transfert que nous n’avons pas pu vérifier, rien n’a été envoyé.',
+	withdrawRefunded: 'Le retrait n’a pas pu être livré : Relay l’a remboursé sur votre portefeuille Robinhood Chain.',
+	withdrawFailed: 'Relay indique que le retrait a échoué. Vérifiez vos soldes et gardez cette transaction pour le support : {hash}',
+	withdrawPending: 'Votre retrait est envoyé mais n’est pas encore arrivé sur {chain}. Vérifiez votre solde là-bas avant de réessayer.',
 
 	actions: {
 		swap: 'Swap',
@@ -95,6 +101,8 @@ const errors: typeof en = {
 		unwrap: 'Unwrap',
 		bridgeTransfer: 'Transfert via le pont',
 		stockTrade: 'Ordre sur action',
+		withdrawApproval: 'Approbation du retrait',
+		withdraw: 'Retrait',
 	},
 
 	bridgeStages: {

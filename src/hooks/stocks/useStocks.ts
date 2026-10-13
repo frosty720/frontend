@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { erc20Abi, type Hex, type PublicClient } from 'viem';
 import { useAccount, usePublicClient, useWalletClient } from 'wagmi';
-import { STOCKS_API_PATH, STOCKS_CHAIN_ID, USDG, type StockCurrency } from '@/config/stocks';
+import { STOCKS_API_PATH, STOCKS_CHAIN_ID, USDG, type StockCurrency, type WithdrawDestination } from '@/config/stocks';
 import {
 	pickPrice,
 	priceProblem,
@@ -18,6 +18,7 @@ import {
 	type TradeSide,
 } from '@/lib/stocks';
 import { executeStockTrade, type StockTradeRequest, type TradeStage } from '@/lib/stocksTrade';
+import { executeWithdraw, fetchWithdrawQuote, type WithdrawRequest, type WithdrawStage } from '@/lib/stocksWithdraw';
 import { wrapEth, type WrapMode } from '@/lib/stocksWrap';
 import { UserError } from '@/lib/userError';
 
@@ -218,6 +219,39 @@ export function useStockWrap() {
 			if (!publicClient) throw new UserError('rpcUnavailable');
 			try {
 				return await wrapEth(mode, amount, { publicClient, walletClient, account: address });
+			} finally {
+				void queryClient.invalidateQueries({ queryKey: ['stocks', 'balances'] });
+			}
+		},
+		[address, walletClient, publicClient, queryClient],
+	);
+}
+
+/** Relay's quote for the withdrawal the user has typed — shown before they commit; the withdrawal itself re-quotes. */
+export function useWithdrawQuote(currency: StockCurrency, destination: WithdrawDestination, amount: bigint | null, user: Hex | undefined) {
+	const debounced = useDebouncedValue(amount, 400);
+	return useQuery({
+		queryKey: ['stocks', 'withdrawQuote', currency, destination.chainId, destination.token, debounced?.toString(), user],
+		enabled: Boolean(user && debounced && debounced > 0n),
+		refetchInterval: 20_000,
+		retry: false,
+		queryFn: () => fetchWithdrawQuote({ currency, destination, amount: debounced!, user: user! }),
+	});
+}
+
+/** Withdraws from the connected wallet, which must be on Robinhood Chain, to the same address elsewhere. */
+export function useStockWithdraw() {
+	const { address } = useAccount();
+	const publicClient = usePublicClient({ chainId: STOCKS_CHAIN_ID });
+	const { data: walletClient } = useWalletClient({ chainId: STOCKS_CHAIN_ID });
+	const queryClient = useQueryClient();
+
+	return useCallback(
+		async (req: Omit<WithdrawRequest, 'user'>, onStage?: (stage: WithdrawStage) => void) => {
+			if (!address || !walletClient) throw new UserError('walletNotConnected');
+			if (!publicClient) throw new UserError('rpcUnavailable');
+			try {
+				return await executeWithdraw({ ...req, user: address }, { publicClient, walletClient, onStage });
 			} finally {
 				void queryClient.invalidateQueries({ queryKey: ['stocks', 'balances'] });
 			}
