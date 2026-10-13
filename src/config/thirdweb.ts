@@ -73,10 +73,14 @@ export const twPolygon = defineChain({
   rpc: RPC_URLS[CHAIN_IDS.POLYGON],
 })
 
-// Robinhood Chain (4663) is in thirdweb's public registry, so its name, icon and ETH symbol resolve by id.
+// Robinhood Chain (4663) is in thirdweb's public registry, so its name and ETH symbol resolve by id. The
+// registry's icon is Blockscout's light-theme feather (#1C180D), invisible on our dark UI and broken for
+// some users, so we supply Robinhood's own bright logo (from their token CDN), served from our site.
+// thirdweb only loads an absolute http(s) icon URL, hence the full address, as for KalyChain.
 export const twRobinhood = defineChain({
   id: CHAIN_IDS.ROBINHOOD,
   rpc: RPC_URLS[CHAIN_IDS.ROBINHOOD],
+  icon: { url: 'https://app.kalyswap.io/icons/robinhood.png', width: 180, height: 180, format: 'png' },
 })
 
 export const thirdwebChains = [

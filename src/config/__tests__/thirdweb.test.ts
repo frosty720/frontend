@@ -42,6 +42,17 @@ describe('Thirdweb Configuration', () => {
       // explorer host is env-driven (NEXT_PUBLIC_KALYCHAIN_EXPLORER_URL); only its presence is asserted
       expect(twKalychain.blockExplorers?.[0]?.url).toMatch(/^https:\/\//)
     })
+
+    // Regression: the registry's Robinhood icon is a near-black feather (invisible on the dark UI, and
+    // broken for some users). thirdweb only loads an absolute http(s) icon, and the file must ship.
+    it('gives Robinhood Chain our bundled bright logo, at an absolute URL thirdweb will load', async () => {
+      const { twRobinhood } = await getThirdwebConfig()
+      const { existsSync } = await import('node:fs')
+      const path = await import('node:path')
+
+      expect(twRobinhood.icon?.url).toBe('https://app.kalyswap.io/icons/robinhood.png')
+      expect(existsSync(path.join(process.cwd(), 'public', 'icons', 'robinhood.png'))).toBe(true)
+    })
   })
 
   describe('wallet configuration', () => {
