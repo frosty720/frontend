@@ -43,6 +43,12 @@ const errors: typeof en = {
 	projectNotFound: 'Projet introuvable',
 	invalidAddress: 'Format d’adresse de contrat invalide',
 	dataUnavailable: 'Données temporairement indisponibles. Réessayez dans un instant.',
+	stocksNoQuote: 'Personne ne peut exécuter cet ordre pour le moment. Essayez un montant plus petit, ou réessayez dans un instant.',
+	stocksUnavailable: 'Le trading d’actions est injoignable pour le moment. Réessayez dans un instant.',
+	stocksRejected: 'L’ordre a été refusé, rien n’a été envoyé. {detail}',
+	stocksBelowMinimum: 'Cet ordre est inférieur à la taille minimale d’Arcus. Essayez un montant plus élevé.',
+	stocksUnsafeQuote: 'Arcus a renvoyé un ordre que nous n’avons pas pu vérifier, rien n’a été envoyé.',
+	stocksOutcomeUnknown: 'Impossible de confirmer si votre ordre est passé. Vérifiez vos soldes avant de réessayer.',
 
 	actions: {
 		swap: 'Swap',
@@ -88,6 +94,7 @@ const errors: typeof en = {
 		wrap: 'Wrap',
 		unwrap: 'Unwrap',
 		bridgeTransfer: 'Transfert via le pont',
+		stockTrade: 'Ordre sur action',
 	},
 
 	bridgeStages: {

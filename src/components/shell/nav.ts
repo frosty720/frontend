@@ -1,5 +1,6 @@
 import {
 	ArrowLeftRight,
+	ChartCandlestick,
 	Coins,
 	CreditCard,
 	HandCoins,
@@ -16,6 +17,7 @@ import {
 export type NavKey =
 	| 'dashboard'
 	| 'swap'
+	| 'stocks'
 	| 'bridge'
 	| 'vaults'
 	| 'kusd'
@@ -39,6 +41,7 @@ export interface NavItem {
 export const NAV: readonly NavItem[] = [
 	{ key: 'dashboard', href: '/', icon: LayoutDashboard },
 	{ key: 'swap', href: '/swaps', icon: ArrowLeftRight },
+	{ key: 'stocks', href: '/stocks', icon: ChartCandlestick },
 	{ key: 'bridge', href: '/bridge', icon: Shuffle },
 	{ key: 'vaults', href: '/vaults', icon: Vault },
 	{ key: 'kusd', href: '/kusd', icon: ShoppingBag },

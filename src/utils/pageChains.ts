@@ -14,6 +14,9 @@ export const BRIDGE_CHAINS: readonly number[] = [CHAIN_IDS.KALYCHAIN, CHAIN_IDS.
 /** Chains with a DEX the swap page can quote and route on. */
 export const SWAP_CHAINS: readonly number[] = [CHAIN_IDS.KALYCHAIN, CHAIN_IDS.ARBITRUM, CHAIN_IDS.BSC, CHAIN_IDS.POLYGON];
 
+/** The stock tokens live only on Robinhood Chain. */
+export const STOCKS_CHAINS: readonly number[] = [CHAIN_IDS.ROBINHOOD];
+
 /**
  * The chains this page works on. Everything not listed here is KalyChain-only: vaults, pools, farm,
  * stake and the launchpad all read KalyChain contracts, and the dashboard summarises them.
@@ -21,6 +24,7 @@ export const SWAP_CHAINS: readonly number[] = [CHAIN_IDS.KALYCHAIN, CHAIN_IDS.AR
 export function chainsForPage(page: NavKey | null): readonly number[] {
 	if (page === 'bridge') return BRIDGE_CHAINS;
 	if (page === 'swap') return SWAP_CHAINS;
+	if (page === 'stocks') return STOCKS_CHAINS;
 	return [CHAIN_IDS.KALYCHAIN];
 }
 

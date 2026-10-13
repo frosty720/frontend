@@ -51,7 +51,7 @@ describe('dictionaries', () => {
 		for (const ns of ['meta', 'nav', 'pages', 'shell', 'common', 'dashboard', 'comingSoon', 'footer'] as const) {
 			expect(en[ns], ns).toBeDefined();
 		}
-		for (const key of ['dashboard', 'swap', 'bridge', 'vaults', 'kusd', 'pools', 'farm', 'stake', 'launchpad', 'lend', 'card'] as const) {
+		for (const key of ['dashboard', 'swap', 'stocks', 'bridge', 'vaults', 'kusd', 'pools', 'farm', 'stake', 'launchpad', 'lend', 'card'] as const) {
 			expect(en.nav[key], `nav.${key}`).toBeTruthy();
 			expect(en.pages[key].title, `pages.${key}`).toBeTruthy();
 		}

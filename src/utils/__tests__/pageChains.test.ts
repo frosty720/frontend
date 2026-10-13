@@ -23,6 +23,17 @@ describe('chainsForPage', () => {
 		}
 	});
 
+	it('runs the Stocks page on Robinhood Chain only', () => {
+		expect(chainsForPage('stocks')).toEqual([CHAIN_IDS.ROBINHOOD]);
+		expect(isChainOkForPage('stocks', CHAIN_IDS.ROBINHOOD)).toBe(true);
+		expect(isChainOkForPage('stocks', CHAIN_IDS.KALYCHAIN)).toBe(false);
+	});
+
+	it('never offers Robinhood Chain as a bridge or swap network, so funds stay on KalyChain', () => {
+		expect(chainsForPage('bridge')).not.toContain(CHAIN_IDS.ROBINHOOD);
+		expect(chainsForPage('swap')).not.toContain(CHAIN_IDS.ROBINHOOD);
+	});
+
 	it('treats an unknown or missing chain as not usable', () => {
 		expect(isChainOkForPage('swap', 1)).toBe(false);
 		expect(isChainOkForPage('bridge', undefined)).toBe(false);

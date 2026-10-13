@@ -14,7 +14,7 @@ export function middleware(request: NextRequest) {
 }
 
 export const config = {
-	// Skip API routes, the fiat-ramp proxy (app/ramp-api), the dev subgraph proxy (next.config.js
-	// rewrites), Next internals, and files.
-	matcher: ['/((?!api|ramp-api|subgraphs|_next|.*\\..*).*)'],
+	// Skip API routes, the fiat-ramp proxy (app/ramp-api), the Arcus/Robinhood proxy (app/stocks-api),
+	// the dev subgraph proxy (next.config.js rewrites), Next internals, and files.
+	matcher: ['/((?!api|ramp-api|stocks-api|subgraphs|_next|.*\\..*).*)'],
 };

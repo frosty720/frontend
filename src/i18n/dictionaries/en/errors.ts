@@ -41,6 +41,12 @@ const errors = {
 	projectNotFound: 'Project not found',
 	invalidAddress: 'Invalid contract address format',
 	dataUnavailable: 'Data is temporarily unavailable. Try again in a moment.',
+	stocksNoQuote: 'No one can fill this trade right now. Try a smaller amount, or try again in a moment.',
+	stocksUnavailable: 'Stock trading is unreachable right now. Please try again in a moment.',
+	stocksRejected: 'The trade was refused, so nothing was sent. {detail}',
+	stocksBelowMinimum: 'This trade is below Arcus’s minimum size. Try a larger amount.',
+	stocksUnsafeQuote: 'Arcus returned a trade we could not verify, so nothing was sent.',
+	stocksOutcomeUnknown: 'We could not confirm whether your trade went through. Check your balances before trying again.',
 
 	/** Names for `assertTxSucceeded(client, hash, action)` — shown as "{action} failed: …". */
 	actions: {
@@ -87,6 +93,7 @@ const errors = {
 		wrap: 'Wrap',
 		unwrap: 'Unwrap',
 		bridgeTransfer: 'Bridge transfer',
+		stockTrade: 'Stock trade',
 	},
 
 	/** Bridge failures by the transfer stage they happened in (keys are `TransferStatus` values). */

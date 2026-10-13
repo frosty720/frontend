@@ -48,11 +48,13 @@ describe('middleware matcher', () => {
 	// Next's matcher is path-to-regexp; the negative lookahead inside is a plain regex, so the
 	// middleware's own pattern, anchored, is what actually decides which paths reach it.
 	const matcher = new RegExp(`^${config.matcher[0]}$`);
-	it('skips API, the fiat-ramp proxy, subgraph proxy, Next internals and files', () => {
+	it('skips API, the fiat-ramp and stocks proxies, subgraph proxy, Next internals and files', () => {
 		for (const p of [
 			'/api/graphql',
 			'/ramp-api/channels',
 			'/ramp-api/deposits/0f1e2d3c-aaaa',
+			'/stocks-api/v1/quote',
+			'/stocks-api/market',
 			'/subgraphs/name/v3-subgraph-kmt',
 			'/_next/static/x.js',
 			'/favicon.ico',
@@ -62,7 +64,7 @@ describe('middleware matcher', () => {
 		}
 	});
 	it('matches page routes', () => {
-		for (const p of ['/', '/swaps', '/fr/swaps', '/en', '/launchpad/0xabc', '/kusd', '/lend', '/fr/kusd']) {
+		for (const p of ['/', '/swaps', '/fr/swaps', '/en', '/launchpad/0xabc', '/kusd', '/lend', '/fr/kusd', '/stocks', '/fr/stocks']) {
 			expect(matcher.test(p), p).toBe(true);
 		}
 	});
