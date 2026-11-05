@@ -154,7 +154,7 @@ async function fill(amount: string) {
 	fireEvent.change(screen.getByLabelText(b.name), { target: { value: 'Awa Koné' } });
 	fireEvent.change(screen.getByLabelText(b.phone), { target: { value: '0701234567' } });
 }
-const resumeButton = (amount: number) => screen.findByRole('button', { name: new RegExp(`Send ${amount} USDT to Yellow Card`) }) as Promise<HTMLButtonElement>;
+const resumeButton = (amount: number) => screen.findByRole('button', { name: new RegExp(`Send ${amount} USDT to our payout wallet`) }) as Promise<HTMLButtonElement>;
 
 describe('CashoutPanel', () => {
 	it('offers only payout corridors that have an operator', async () => {
@@ -383,7 +383,7 @@ describe('CashoutPanel', () => {
 		await fill('50');
 		fireEvent.click(button());
 		await waitFor(() => expect(toastError).toHaveBeenCalled());
-		expect(screen.queryByRole('button', { name: /Send 50 USDT to Yellow Card/ })).toBeNull();
+		expect(screen.queryByRole('button', { name: /Send 50 USDT to our payout wallet/ })).toBeNull();
 	});
 
 	it('sends one resume for a double click', async () => {
@@ -429,6 +429,32 @@ describe('CashoutPanel', () => {
 		await fill('50');
 		fireEvent.click(button());
 		expect(await screen.findByText(t.payout.failed)).toBeTruthy();
+	});
+
+	it('says the USDT went to our payout wallet and links that wallet, labelled as ours, until a transfer from it exists', async () => {
+		cashout.mockResolvedValue(sentTo(DEPOSIT));
+		renderPanel();
+		await fill('50');
+		fireEvent.click(button());
+		expect(await screen.findByText('Sent 50 USDT to our payout wallet')).toBeTruthy();
+		const link = await screen.findByRole('link', { name: /our payout wallet on PolygonScan/ });
+		expect(link.getAttribute('href')).toBe(`https://polygonscan.com/address/${DEPOSIT}`);
+		expect(screen.queryByText(/to Yellow Card/)).toBeNull();
+	});
+
+	it.each([
+		['the top-up to Yellow Card', { state: 'forwarded', topUpTxHash: `0x${'aa'.repeat(32)}`, refundTxHash: null }, /our payment to Yellow Card/, 'aa'],
+		['the refund to the seller', { state: 'failed', topUpTxHash: null, refundTxHash: `0x${'bb'.repeat(32)}` }, /your refund/, 'bb'],
+		['the refund when both exist', { state: 'failed', topUpTxHash: `0x${'aa'.repeat(32)}`, refundTxHash: `0x${'bb'.repeat(32)}` }, /your refund/, 'bb'],
+	])('links %s by its transaction once the keeper reports it, and not the wallet page', async (_label, status, name, byte) => {
+		cashout.mockResolvedValue(sentTo(DEPOSIT));
+		onStatus = () => json({ withdrawalId: 'wd-00000000', ...status });
+		renderPanel();
+		await fill('50');
+		fireEvent.click(button());
+		const link = await screen.findByRole('link', { name });
+		expect(link.getAttribute('href')).toBe(`https://polygonscan.com/tx/0x${byte.repeat(32)}`);
+		expect(screen.queryByRole('link', { name: /our payout wallet on PolygonScan/ })).toBeNull();
 	});
 
 	it('starts "New cash-out" from a blank form', async () => {
