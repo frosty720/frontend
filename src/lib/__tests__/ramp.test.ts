@@ -5,9 +5,12 @@
  * idempotency-key retry depends on.
  */
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { keccak256, toBytes } from 'viem';
+import { privateKeyToAccount } from 'viem/accounts';
 import {
 	amountWithinCorridorLimits,
 	buildDepositSource,
+	cashoutTypedData,
 	countryDisplayName,
 	dedupeNetworksByName,
 	fetchRampChannels,
@@ -397,6 +400,7 @@ describe('mobile-money cash-out client', () => {
 			momoNumber: '+2250701234567',
 			accountName: 'A',
 			sender: { name: 'A', country: 'CI' },
+			signature: '0xsig',
 		});
 		await fetchRampWithdrawal('wd-00000001');
 		await fetchRampWithdrawQuote('CI', 'XOF', '25');
@@ -415,5 +419,27 @@ describe('mobile-money cash-out client', () => {
 			vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ error: key }), { status: 422 })));
 			await expect(fetchRampWithdrawal('wd-00000001')).rejects.toMatchObject({ key, outcomeUnknown: false });
 		}
+	});
+});
+
+describe('cash-out signature', () => {
+	// The keeper's test vector (fiat-bridge-keeper test/cashoutSignature.test.ts): same throwaway key, request and
+	// signature. A change to the signed format on either side breaks one of the two tests.
+	it('signs the exact format the keeper checks', async () => {
+		const account = privateKeyToAccount(keccak256(toBytes('kusd cash-out test wallet')));
+		expect(account.address).toBe('0xA91aA6FEaBB547E39B161a2369c98Bf62d8eCadB');
+		const request = { idempotencyKey: 'wd-key-1', userWallet: account.address, usdAmount: '25', channelId: 'wd1', country: 'CI',
+			currency: 'XOF', networkId: 'mtn', momoNumber: '+2250701234567', accountName: 'Ada' };
+		expect(await account.signTypedData(cashoutTypedData(request))).toBe(
+			'0x83fa91a6a1a9af6dbb8c90bd2a3a039f90a20df97e4e7403083b3900b534ba462250fc86987f5b4a9c4f1b6c7adbb5c917701a76571560aabbd53332cbb598aa1b',
+		);
+	});
+
+	it('signs only what the keeper checks: the KYC sender is not part of it', () => {
+		const request = { idempotencyKey: 'k', userWallet: '0xA91aA6FEaBB547E39B161a2369c98Bf62d8eCadB', usdAmount: '1', channelId: 'c', country: 'CI',
+			currency: 'XOF', networkId: 'n', momoNumber: '+2250701234567', accountName: 'A', sender: { name: 'A', country: 'CI' } };
+		expect(Object.keys(cashoutTypedData(request).message)).toEqual([
+			'userWallet', 'usdAmount', 'country', 'currency', 'channelId', 'networkId', 'momoNumber', 'accountName', 'idempotencyKey',
+		]);
 	});
 });

@@ -5,7 +5,7 @@
   "scripts": {
     "dev": "portless kalyswap next dev",
     "build": "next build",
-    "start": "next start -p 3002",
+    "start": "next start -H localhost -p 3002",
     "lint": "next lint",
     "test": "vitest run",
     "test:unit": "SKIP_INTEGRATION=true vitest run",

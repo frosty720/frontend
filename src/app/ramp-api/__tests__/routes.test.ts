@@ -5,6 +5,10 @@
  */
 import { NextRequest } from 'next/server';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+
+// The incoming request's headers as nginx passed them (it sets X-Real-IP to the visitor's address).
+let incoming = new Headers();
+vi.mock('next/headers', () => ({ headers: async () => incoming }));
 import { GET as channels } from '../channels/route';
 import { GET as quote } from '../quote/route';
 import { POST as createDeposit } from '../deposits/route';
@@ -25,6 +29,7 @@ beforeEach(() => {
 	process.env.RAMP_KEEPER_URL = KEEPER;
 	keeper.mockClear();
 	vi.stubGlobal('fetch', keeper);
+	incoming = new Headers();
 });
 afterEach(() => {
 	vi.unstubAllGlobals();
@@ -44,6 +49,17 @@ describe('keeper forwarding', () => {
 		const [url, init] = lastCall();
 		expect(url).toBe(`${KEEPER}/api/channels`);
 		expect((init.headers as Record<string, string>).authorization).toBe(`Bearer ${KEY}`);
+	});
+
+	it('names the visitor nginx saw, so the keeper limits each visitor separately', async () => {
+		incoming = new Headers({ 'x-real-ip': '203.0.113.7' });
+		await channels();
+		expect((lastCall()[1].headers as Record<string, string>)['x-ramp-client-ip']).toBe('203.0.113.7');
+	});
+
+	it('names no visitor when nginx passed none', async () => {
+		await channels();
+		expect(lastCall()[1].headers as Record<string, string>).not.toHaveProperty('x-ramp-client-ip');
 	});
 
 	it('never puts the key in a response, even when the keeper errors', async () => {

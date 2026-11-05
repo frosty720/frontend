@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { ArrowDown, CheckCircle2, ExternalLink, Loader2, XCircle } from 'lucide-react';
 import { formatUnits, parseUnits } from 'viem';
-import { useAccount } from 'wagmi';
+import { useAccount, useSignTypedData } from 'wagmi';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -19,6 +19,7 @@ import { describeError } from '@/i18n/errorText';
 import { useDict, useFormat, useLocale } from '@/i18n/hooks';
 import { interpolate } from '@/i18n/interpolate';
 import {
+	cashoutTypedData,
 	COUNTRY_KYC_EXTRAS,
 	countryDisplayName,
 	createRampWithdrawal,
@@ -69,6 +70,7 @@ function cashoutErrorText(error: unknown, dict: Dictionary): string {
 	if (error instanceof RampApiError && !error.outcomeUnknown) {
 		if (error.key === 'paused') return dict.kusd.cashout.errors.paused;
 		if (error.key === 'not_found') return dict.kusd.cashout.errors.notFound;
+		if (error.raw === 'bad_signature') return dict.kusd.cashout.errors.badSignature;
 	}
 	return rampErrorText(error, dict);
 }
@@ -106,6 +108,7 @@ export default function CashoutPanel({ onBusyChange }: { onBusyChange?: (busy: b
 	const c = dict.kusd.cashout;
 	const b = dict.kusd.buy;
 	const { address } = useAccount();
+	const { signTypedDataAsync } = useSignTypedData();
 	const [input, setInput] = useState('');
 	const [corridorId, setCorridorId] = useState('');
 	const [networkId, setNetworkId] = useState('');
@@ -119,8 +122,9 @@ export default function CashoutPanel({ onBusyChange }: { onBusyChange?: (busy: b
 	const [pending, setPending] = useState(false);
 	const inFlight = useRef(false);
 	// One idempotency key per payout request: kept while the keeper's answer is unknown, dropped once it
-	// answers, and never reused for a different request (the keeper replays by key alone).
-	const idemKeyRef = useRef<{ key: string; fingerprint: string } | null>(null);
+	// answers, and never reused for a different request (the keeper replays by key alone). The wallet's
+	// signature of the request is kept with it, so a retry does not prompt again.
+	const idemKeyRef = useRef<{ key: string; fingerprint: string; signature?: string } | null>(null);
 	const quoteSeqRef = useRef(0);
 	const [sent, setSent] = useState<CashoutSent | null>(null);
 	const [withdrawal, setWithdrawal] = useState<RampWithdrawal | null>(null);
@@ -243,8 +247,16 @@ export default function CashoutPanel({ onBusyChange }: { onBusyChange?: (busy: b
 		// timeout gets a new key, or the keeper would answer with the payout for the old one.
 		const fingerprint = JSON.stringify(request);
 		if (idemKeyRef.current?.fingerprint !== fingerprint) idemKeyRef.current = { key: makeIdempotencyKey(owner), fingerprint };
+		const pending = idemKeyRef.current;
 		try {
-			const w = await createRampWithdrawal({ idempotencyKey: idemKeyRef.current.key, ...request });
+			// Only the wallet itself may say where its USDT is paid: the keeper refuses an unsigned cash-out.
+			pending.signature ??= await signTypedDataAsync(cashoutTypedData({ idempotencyKey: pending.key, ...request }));
+		} catch (error) {
+			setFormError(describeError(error, dict));
+			return null;
+		}
+		try {
+			const w = await createRampWithdrawal({ idempotencyKey: pending.key, ...request, signature: pending.signature });
 			if (w.state === 'created') throw new PayoutPendingError();
 			idemKeyRef.current = null; // answered: the next payout gets a fresh key
 			const recipient = w.depositAddress ? parseRecipient(w.depositAddress) : null;

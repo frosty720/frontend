@@ -226,6 +226,7 @@ const kusd = {
 		errors: {
 			paused: 'Cash-outs are temporarily paused. Please try again later.',
 			notFound: 'Cash-out not found.',
+			badSignature: 'Your wallet’s signature did not match this cash-out. Please try again.',
 		},
 	},
 
