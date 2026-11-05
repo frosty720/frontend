@@ -406,13 +406,17 @@ export function isTerminalWithdrawalState(state: string): boolean {
 export interface RampWithdrawal {
 	withdrawalId: string;
 	state: RampWithdrawalState | string;
-	/** Yellow Card's Polygon deposit address for this payout: the bridge sends the USDT here. */
+	/** Where the bridge sends the USDT: the keeper's Polygon treasury (our payout wallet), not Yellow Card. */
 	depositAddress: string | null;
 	/** The payout in USD (= the USDT to send, exactly). */
 	usdAmount: string;
 	localAmount: string | null;
 	currency: string;
 	expiresAt: string | null;
+	/** The treasury's transfer to our Yellow Card balance, once sent. */
+	topUpTxHash?: string | null;
+	/** The treasury's refund to the seller, once sent. */
+	refundTxHash?: string | null;
 }
 
 export interface RampWithdrawChannelsResponse {

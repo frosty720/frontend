@@ -334,6 +334,9 @@ export default function CashoutPanel({ onBusyChange }: { onBusyChange?: (busy: b
 			: lost
 				? c.payout[state as 'failed' | 'expired']
 				: interpolate(c.sent, { amount: showAmount(sent.gemAmt, GEM.decimals, fmt, 6) });
+		const polygonTx = payout?.refundTxHash ?? payout?.topUpTxHash;
+		const polygonHref = polygonTx ? getExplorerTxUrl(CHAIN_IDS.POLYGON, polygonTx) : getExplorerAddressUrl(CHAIN_IDS.POLYGON, sent.recipient);
+		const polygonLabel = payout?.refundTxHash ? c.viewRefund : payout?.topUpTxHash ? c.viewTopUp : c.viewPolygon;
 		return (
 			<div className="space-y-4">
 				<div className="flex items-start gap-3 rounded-xl border border-line bg-surface-alt p-4">
@@ -354,8 +357,8 @@ export default function CashoutPanel({ onBusyChange }: { onBusyChange?: (busy: b
 						{c.viewTx}
 						<ExternalLink className="size-3.5" aria-hidden />
 					</a>
-					<a href={getExplorerAddressUrl(CHAIN_IDS.POLYGON, sent.recipient)} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 text-gold hover:underline">
-						{c.viewPolygon}
+					<a href={polygonHref} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 text-gold hover:underline">
+						{polygonLabel}
 						<ExternalLink className="size-3.5" aria-hidden />
 					</a>
 				</div>
