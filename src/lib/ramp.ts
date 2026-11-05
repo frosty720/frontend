@@ -446,6 +446,51 @@ export interface CreateRampWithdrawalInput {
 	momoNumber: string;
 	accountName: string;
 	sender: RampCustomer;
+	/** EIP-712 signature of the request by userWallet (cashoutTypedData): the keeper refuses an unsigned cash-out. */
+	signature: string;
+}
+
+/**
+ * The cash-out request the seller's wallet signs. The keeper matches a bridge to a cash-out by wallet and
+ * amount, so it takes a cash-out only when that wallet signed it (fiat-bridge-keeper
+ * src/core/cashoutSignature.ts is the authority: keep the two identical). No chainId: the wallet can sign
+ * on any network.
+ */
+const CASHOUT_SIGNATURE_DOMAIN = { name: 'KUSD Cash-out', version: '1' } as const;
+const CASHOUT_SIGNATURE_TYPES = {
+	CashOut: [
+		{ name: 'userWallet', type: 'address' },
+		{ name: 'usdAmount', type: 'string' },
+		{ name: 'country', type: 'string' },
+		{ name: 'currency', type: 'string' },
+		{ name: 'channelId', type: 'string' },
+		{ name: 'networkId', type: 'string' },
+		{ name: 'momoNumber', type: 'string' },
+		{ name: 'accountName', type: 'string' },
+		{ name: 'idempotencyKey', type: 'string' },
+	],
+} as const;
+
+export type SignedCashoutFields = Omit<CreateRampWithdrawalInput, 'sender' | 'signature'>;
+
+/** The typed data to sign (wagmi signTypedData) for this request; anything else in `r` is left out. */
+export function cashoutTypedData(r: SignedCashoutFields) {
+	return {
+		domain: CASHOUT_SIGNATURE_DOMAIN,
+		types: CASHOUT_SIGNATURE_TYPES,
+		primaryType: 'CashOut' as const,
+		message: {
+			userWallet: r.userWallet as `0x${string}`,
+			usdAmount: r.usdAmount,
+			country: r.country,
+			currency: r.currency,
+			channelId: r.channelId,
+			networkId: r.networkId,
+			momoNumber: r.momoNumber,
+			accountName: r.accountName,
+			idempotencyKey: r.idempotencyKey,
+		},
+	};
 }
 
 export async function fetchRampWithdrawChannels(): Promise<RampWithdrawChannelsResponse> {

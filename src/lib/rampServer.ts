@@ -9,6 +9,7 @@
  *   RAMP_SITE_URL        this site's public origin, for Yellow Card's post-payment return link
  */
 
+import { headers } from 'next/headers';
 import { DEFAULT_LOCALE, isLocale } from '@/i18n/config';
 import { withLocale } from '@/i18n/locale-path';
 
@@ -37,6 +38,9 @@ export async function keeperFetch(path: string, init?: { method?: string; body?:
 	const apiKey = process.env.RAMP_KEEPER_API_KEY || '';
 	if (!apiKey) return { status: 503, body: { error: 'ramp not configured' } };
 	const base = process.env.RAMP_KEEPER_URL || DEFAULT_KEEPER_URL;
+	// The visitor as nginx saw them (it sets X-Real-IP to the connecting address): the keeper limits each
+	// visitor separately, so one visitor cannot use up the allowance every visitor of this site shares.
+	const visitor = (await headers()).get('x-real-ip');
 
 	let res: Response;
 	try {
@@ -44,6 +48,7 @@ export async function keeperFetch(path: string, init?: { method?: string; body?:
 			method: init?.method ?? 'GET',
 			headers: {
 				authorization: `Bearer ${apiKey}`,
+				...(visitor ? { 'x-ramp-client-ip': visitor } : {}),
 				...(init?.body !== undefined ? { 'content-type': 'application/json' } : {}),
 			},
 			body: init?.body !== undefined ? JSON.stringify(init.body) : undefined,

@@ -230,6 +230,7 @@ const kusd: typeof en = {
 		errors: {
 			paused: 'Les retraits sont temporairement suspendus. Veuillez réessayer plus tard.',
 			notFound: 'Retrait introuvable.',
+			badSignature: 'La signature de votre portefeuille ne correspond pas à ce retrait. Veuillez réessayer.',
 		},
 	},
 
