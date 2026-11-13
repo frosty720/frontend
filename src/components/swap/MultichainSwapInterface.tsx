@@ -24,6 +24,9 @@ import { KALYCHAIN_MIN_PRIORITY_FEE_WEI, isKalyChainFamily } from '@/config/gas'
 // Custom hooks
 import { useMultichainTokenBalance } from '@/hooks/useMultichainTokenBalance';
 import { quotedAmountDisplay } from '@/utils/swapDisplay';
+import { minimumOut } from '@/utils/slippage';
+import { TransactionRevertedError } from '@/utils/transactions';
+import { formatUnits, parseUnits } from 'viem';
 import { useTokenLists } from '@/hooks/useTokenLists';
 import { useV3Swap } from '@/hooks/useV3Swap';
 import { useTokenUsdPrices, usdPriceOf } from '@/hooks/useTokenUsdPrices';
@@ -242,6 +245,11 @@ export default function MultichainSwapInterface({
   const [showSettings, setShowSettings] = useState(false);
   const [currentStep, setCurrentStep] = useState<'idle' | 'approving' | 'swapping' | 'complete'>('idle');
   const [currentTransactionHash, setCurrentTransactionHash] = useState<string | null>(null);
+  // A swap that reached the network but whose confirmation could not be read (timeout, RPC error). It may
+  // still go through, so the form stays blocked until the user has checked it: resubmitting could pay twice.
+  const [unconfirmedHash, setUnconfirmedHash] = useState<string | null>(null);
+  // The send-time re-quote fell below what the user agreed to: nothing was sent, the new quote is shown.
+  const [priceMoved, setPriceMoved] = useState(false);
   const [quote, setQuote] = useState<QuoteResult | null>(null);
   const [isLoadingQuote, setIsLoadingQuote] = useState(false);
   const [quoteError, setQuoteError] = useState<string | null>(null);
@@ -411,11 +419,13 @@ export default function MultichainSwapInterface({
 
   // Handle amount input change
   const handleFromAmountChange = (value: string) => {
+    setPriceMoved(false);
     setLastEdited('from');
     setSwapState(prev => ({ ...prev, fromAmount: value }));
   };
 
   const handleToAmountChange = (value: string) => {
+    setPriceMoved(false);
     setLastEdited('to');
     setSwapState(prev => ({ ...prev, toAmount: value }));
   };
@@ -489,25 +499,43 @@ export default function MultichainSwapInterface({
     setIsSwapping(true);
     setCurrentStep('swapping');
 
+    setPriceMoved(false);
+    let broadcast: string | null = null;
     try {
-      // Calculate minimum amount out with slippage
-      const slippageMultiplier = (100 - parseFloat(swapState.slippage)) / 100;
-      const amountOutMin = (parseFloat(quote.amountOut) * slippageMultiplier).toString();
+      const fromToken = swapState.fromToken;
+      const toToken = swapState.toToken;
+      const slippageTolerance = parseFloat(swapState.slippage);
+      // What the user confirmed: the router must deliver at least this, whatever the price does meanwhile.
+      // Exact base-unit math: a float here turned tiny outputs into exponent strings parseUnits rejects.
+      const minOut = minimumOut(quote.amountOut, toToken.decimals, slippageTolerance);
+      // The quote on screen may be minutes old. Quote again; if the output fell below what was agreed,
+      // send nothing and show the new quote for a fresh confirmation.
+      const fresh = await dexGetQuote(fromToken, toToken, swapState.fromAmount);
+      if (parseUnits(fresh.amountOut, toToken.decimals) < minOut) {
+        setLastEdited('from');
+        setQuote(fresh);
+        setSwapState(prev => ({ ...prev, toAmount: fresh.amountOut }));
+        setCurrentStep('idle');
+        setPriceMoved(true);
+        return;
+      }
 
       const swapParams: SwapParams = {
-        tokenIn: swapState.fromToken,
-        tokenOut: swapState.toToken,
+        tokenIn: fromToken,
+        tokenOut: toToken,
         amountIn: swapState.fromAmount,
-        amountOutMin,
+        amountOutMin: formatUnits(minOut, toToken.decimals),
         to: address,
         deadline: parseInt(swapState.deadline),
-        slippageTolerance: parseFloat(swapState.slippage),
+        slippageTolerance,
         route: quote.route // Include pre-calculated route from quote
       };
 
       // Execute swap using DEX service with proper client injection. Resolves only once the
       // swap is mined and succeeded (a revert throws), so everything below reflects a real swap.
-      const txHash = await dexExecuteSwap(swapParams);
+      const txHash = await dexExecuteSwap(swapParams, (hash) => {
+        broadcast = hash;
+      });
       setCurrentTransactionHash(txHash);
 
       // Add transaction to tracking
@@ -540,11 +568,25 @@ export default function MultichainSwapInterface({
 
     } catch (error) {
       swapLogger.error('Swap error:', error);
-      handleError(error as Error);
+      // Sent but not confirmed (timeout, RPC error): keep the hash and block a second send of the same swap.
+      // A revert or a failure before sending moved nothing, so the form stays usable.
+      if (broadcast !== null && !(error instanceof TransactionRevertedError)) {
+        setUnconfirmedHash(broadcast);
+      } else {
+        handleError(error as Error);
+      }
       setCurrentStep('idle');
     } finally {
       setIsSwapping(false);
     }
+  };
+
+  // The user has checked the unconfirmed swap on the explorer: start over from an empty form.
+  const dismissUnconfirmed = () => {
+    setUnconfirmedHash(null);
+    setSwapState(prev => ({ ...prev, fromAmount: '', toAmount: '' }));
+    setQuote(null);
+    refreshBalances();
   };
 
   // Handle chain switch
@@ -576,6 +618,7 @@ export default function MultichainSwapInterface({
       parseFloat(swapState.fromAmount) > 0 &&
       quote &&
       !isSwapping &&
+      !unconfirmedHash &&
       !isLoadingQuote &&
       areTokensValidForChain(swapState.fromToken, swapState.toToken) &&
       !networkMismatch
@@ -588,6 +631,7 @@ export default function MultichainSwapInterface({
     swapState.fromAmount,
     quote,
     isSwapping,
+    unconfirmedHash,
     isLoadingQuote,
     networkMismatch
   ]);
@@ -923,6 +967,40 @@ export default function MultichainSwapInterface({
           )}
           {getSwapButtonText()}
         </Button>
+
+        {priceMoved && (
+          <p role="alert" className="flex items-start gap-2 rounded-xl border border-gold/25 bg-gold/10 p-3 text-sm font-semibold text-gold">
+            <AlertTriangle className="mt-0.5 size-4 shrink-0" />
+            <span>{dict.swap.priceChanged}</span>
+          </p>
+        )}
+
+        {/* Swap sent but not confirmed: it may still go through, so no second send until checked */}
+        {unconfirmedHash && (
+          <div role="alert" className="rounded-xl border border-gold/25 bg-gold/10 p-3">
+            <div className="flex items-start gap-2 text-sm font-semibold text-gold">
+              <AlertTriangle className="mt-0.5 size-4 shrink-0" />
+              <span>{dict.swap.unconfirmed}</span>
+            </div>
+            <div className="mt-2 flex flex-wrap items-center gap-2">
+              <div className="min-w-0 flex-1 break-all text-xs text-cream/80">
+                {unconfirmedHash.slice(0, 10)}...{unconfirmedHash.slice(-8)}
+              </div>
+              <a
+                href={getExplorerUrl(unconfirmedHash)}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center gap-1 whitespace-nowrap text-xs font-semibold text-gold transition-colors hover:text-cream"
+              >
+                <span>{dict.swap.view}</span>
+                <ExternalLink className="size-3" />
+              </a>
+            </div>
+            <Button type="button" variant="secondary" size="sm" className="mt-2" onClick={dismissUnconfirmed}>
+              {dict.swap.unconfirmedChecked}
+            </Button>
+          </div>
+        )}
 
         {/* Transaction Status */}
         {currentTransactionHash && (

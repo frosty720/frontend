@@ -63,6 +63,36 @@ describe('KalySwapV3Service Execution Logic', () => {
         );
     });
 
+    describe('minimum output sent to the router', () => {
+        const quoteAt = (amountOut: string) => {
+            vi.spyOn(service, 'getV3PoolAddress').mockImplementation(async (_a, _b, fee) => (fee === 3000 ? '0xPool' : null));
+            vi.spyOn(service, 'getMultiHopQuote').mockRejectedValue(new Error('no multi-hop route'));
+            vi.spyOn(service, 'getV3Quote').mockResolvedValue({ amountOut, priceImpact: 0, route: [], sqrtPriceX96After: 0n, initializedTicksCrossed: 0, gasEstimate: '0', fee: 3000 });
+            return vi.spyOn(service, 'executeV3Swap').mockResolvedValue('0xHash');
+        };
+        const swap = (amountOutMin: string) => service.executeSwap({
+            tokenIn: MOCK_TOKEN_A, tokenOut: MOCK_TOKEN_B, amountIn: '10', amountOutMin, slippageTolerance: 0.5, to: '0xUser', deadline: 20,
+        }, mockWalletClient);
+
+        it('never goes below the minimum the user agreed to when the price fell since the quote', async () => {
+            const execute = quoteAt('150');
+            await swap('160');
+            expect(execute.mock.calls[0][0].amountOutMinimum).toBe('160');
+        });
+
+        it('takes the fresh quote\'s minimum when it is higher than the agreed one', async () => {
+            const execute = quoteAt('150');
+            await swap('100');
+            expect(execute.mock.calls[0][0].amountOutMinimum).toBe('149.25');
+        });
+
+        it('keeps a tiny minimum exact instead of an exponent string', async () => {
+            const execute = quoteAt('0.0000001');
+            await swap('0');
+            expect(execute.mock.calls[0][0].amountOutMinimum).toBe('0.0000000995');
+        });
+    });
+
     it('should throw if all fee tiers fail', async () => {
         // Mock getV3PoolAddress to return null (no pools exist)
         const getV3PoolAddressSpy = vi.spyOn(service, 'getV3PoolAddress');

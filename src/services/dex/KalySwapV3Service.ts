@@ -15,6 +15,7 @@ import { getChainTransport, kalychain } from '@/config/chains';
 import { dexLogger as logger } from '@/lib/logger';
 import { kalyFeeOverrides } from '@/config/gas';
 import { UserError } from '@/lib/userError';
+import { minimumOut } from '@/utils/slippage';
 
 /**
  * KalySwap V3 Service for KalyChain
@@ -73,8 +74,13 @@ export class KalySwapV3Service extends BaseV3Service {
                 throw new UserError('noRoute');
             }
 
+            // The route is picked again at send time, but the router's minimum output is never lower than the
+            // `amountOutMin` the user agreed to: if the pool moved past it since the quote, the swap reverts
+            // instead of filling at the moved price. A fresh quote can only raise that floor.
             const { route, quote } = bestRoute;
-            const amountOutMinimum = this.getAmountOutMin(quote.amountOut, params.slippageTolerance);
+            const agreed = parseUnits(params.amountOutMin, params.tokenOut.decimals);
+            const fresh = minimumOut(quote.amountOut, params.tokenOut.decimals, params.slippageTolerance);
+            const amountOutMinimum = formatUnits(agreed > fresh ? agreed : fresh, params.tokenOut.decimals);
 
             // Single-hop: use exactInputSingle (existing path)
             if (route.tokenPath.length === 2) {
