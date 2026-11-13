@@ -74,6 +74,7 @@ const kusd = {
 		},
 		submit: 'Continue to payment',
 		submitting: 'Creating deposit…',
+		notYourDeposit: 'This payment isn’t for the connected wallet, so it isn’t shown. If someone sent you this link, don’t pay anything.',
 		invalid: {
 			country: 'Select your country first',
 			amount: 'Enter a valid amount',
@@ -97,6 +98,7 @@ const kusd = {
 			viaPrompt: '— approve the payment request your operator sends to your mobile money number.',
 			expires: 'Offer expires {time}.',
 			openPage: 'Open payment page',
+			receivingWallet: 'KUSD will be sent to:',
 			promptHint: 'Operators like MTN and Moov send an SMS or USSD prompt to your phone — approve it to complete the payment.',
 			status: 'Status:',
 			autoUpdate: 'updates automatically',

@@ -87,7 +87,10 @@ export default function BuyKusdPanel({ initialDepositId }: { initialDepositId?: 
 	const momoOperators = corridor?.channelType === 'momo' ? dedupeNetworksByName(corridor.networks) : [];
 
 	const [localAmount, setLocalAmount] = useState('');
-	const [userWallet, setUserWallet] = useState('');
+	// The payout wallet follows the connected account (still editable): after a switch or a sign-out it
+	// must not keep the previous wallet's address, or the KUSD would be bought for that wallet.
+	const [typedWallet, setTypedWallet] = useState<string | null>(null);
+	const userWallet = typedWallet ?? address ?? '';
 	const [payoutUsd, setPayoutUsd] = useState<string | null>(null);
 	const [customer, setCustomer] = useState<RampCustomer>({ name: '', country: '' });
 	const [momoPhone, setMomoPhone] = useState('');
@@ -95,17 +98,30 @@ export default function BuyKusdPanel({ initialDepositId }: { initialDepositId?: 
 
 	const [deposit, setDeposit] = useState<RampDeposit | null>(null);
 	// One idempotency key per purchase attempt: kept across retries whose outcome is unknown so
-	// the keeper can dedupe, discarded once the server answers definitively.
-	const idemKeyRef = useRef<string | null>(null);
+	// the keeper can dedupe, discarded once the server answers definitively. The key belongs to the
+	// request it was made for: a changed request (another wallet, amount or channel) needs a new one.
+	const idemKeyRef = useRef<{ key: string; fingerprint: string } | null>(null);
+	// The wallet the open order pays out to, shown on the pay screen (the field follows the connected wallet).
+	const [depositWallet, setDepositWallet] = useState('');
 	// Monotonic token so a slow stale quote response can't overwrite a newer one.
 	const quoteSeqRef = useRef(0);
 
+	// A ?deposit=<id> link shows its payment request only to the wallet it pays out to (the keeper's own
+	// userWallet, any letter case): a link someone else sent must never read as the customer's own order.
 	useEffect(() => {
 		if (!initialDepositId) return;
 		let cancelled = false;
 		fetchRampDeposit(initialDepositId)
 			.then((d) => {
 				if (cancelled) return;
+				const owner = typeof d.userWallet === 'string' ? d.userWallet.toLowerCase() : null;
+				if (!owner || !address || owner !== address.toLowerCase()) {
+					setDeposit(null);
+					setStep('form');
+					setError(b.notYourDeposit);
+					return;
+				}
+				setError('');
 				setDeposit(d);
 				setStep(isTerminalDepositState(String(d.state)) ? 'done' : 'pay');
 			})
@@ -115,7 +131,7 @@ export default function BuyKusdPanel({ initialDepositId }: { initialDepositId?: 
 		return () => {
 			cancelled = true;
 		};
-	}, [initialDepositId]);
+	}, [initialDepositId, address, b.notYourDeposit]);
 
 	// Keep the KYC country in sync with the selected corridor.
 	useEffect(() => {
@@ -127,11 +143,6 @@ export default function BuyKusdPanel({ initialDepositId }: { initialDepositId?: 
 		const ops = corridor?.channelType === 'momo' ? dedupeNetworksByName(corridor.networks) : [];
 		setMomoNetworkId(ops.length === 1 ? ops[0].id : '');
 	}, [corridor]);
-
-	// Autofill the payout wallet from the connected account (still editable).
-	useEffect(() => {
-		if (address && !userWallet) setUserWallet(address);
-	}, [address, userWallet]);
 
 	const limitsMessage = useCallback(
 		(c: RampCorridor): string => {
@@ -185,22 +196,25 @@ export default function BuyKusdPanel({ initialDepositId }: { initialDepositId?: 
 		if (contactPhone !== customer.phone) setCustomer((c) => ({ ...c, phone: contactPhone }));
 		if (payerPhone !== momoPhone) setMomoPhone(payerPhone);
 		setSubmitting(true);
-		// Reuse the attempt's key on retries so a lost response can't open a second Yellow Card receive.
-		if (!idemKeyRef.current) idemKeyRef.current = makeIdempotencyKey(userWallet);
+		const request = {
+			userWallet,
+			channelId: corridor.channelId,
+			currency: corridor.currency,
+			localAmount,
+			// The normalised phones, NOT the raw state — the setState calls above haven't landed yet.
+			customer: { ...customer, phone: contactPhone },
+			source: buildDepositSource(corridor.channelType, { phone: payerPhone, networkId: momoNetworkId }),
+			reason: 'other' as const,
+			locale,
+		};
+		// Reuse the attempt's key on retries of the SAME request so a lost response can't open a second
+		// Yellow Card receive; a changed request gets a new key, or the keeper would answer with the old one.
+		const fingerprint = JSON.stringify(request);
+		if (idemKeyRef.current?.fingerprint !== fingerprint) idemKeyRef.current = { key: makeIdempotencyKey(userWallet), fingerprint };
 		try {
-			const d = await createRampDeposit({
-				idempotencyKey: idemKeyRef.current,
-				userWallet,
-				channelId: corridor.channelId,
-				currency: corridor.currency,
-				localAmount,
-				// The normalised phones, NOT the raw state — the setState calls above haven't landed yet.
-				customer: { ...customer, phone: contactPhone },
-				source: buildDepositSource(corridor.channelType, { phone: payerPhone, networkId: momoNetworkId }),
-				reason: 'other',
-				locale,
-			});
+			const d = await createRampDeposit({ idempotencyKey: idemKeyRef.current.key, ...request });
 			idemKeyRef.current = null; // consumed — the next purchase gets a fresh key
+			setDepositWallet(userWallet);
 			setDeposit(d);
 			setStep('pay');
 		} catch (e) {
@@ -356,7 +370,10 @@ export default function BuyKusdPanel({ initialDepositId }: { initialDepositId?: 
 						<Input
 							id="ramp-wallet"
 							value={userWallet}
-							onChange={(e) => setUserWallet(e.target.value.trim())}
+							onChange={(e) => {
+								const value = e.target.value.trim();
+								setTypedWallet(value === '' ? null : value);
+							}}
 							placeholder="0x…"
 							className="border-line bg-surface-hi font-mono text-sm"
 						/>
@@ -404,7 +421,7 @@ export default function BuyKusdPanel({ initialDepositId }: { initialDepositId?: 
 			)}
 
 			{step === 'pay' && deposit && (
-				<PayStep deposit={deposit} corridor={corridor} localAmount={localAmount} />
+				<PayStep deposit={deposit} corridor={corridor} localAmount={localAmount} wallet={typeof deposit.userWallet === 'string' ? deposit.userWallet : depositWallet} />
 			)}
 
 			{step === 'done' && deposit && (
@@ -438,7 +455,7 @@ export default function BuyKusdPanel({ initialDepositId }: { initialDepositId?: 
 	);
 }
 
-function PayStep({ deposit, corridor, localAmount }: { deposit: RampDeposit; corridor: RampCorridor | null; localAmount: string }) {
+function PayStep({ deposit, corridor, localAmount, wallet }: { deposit: RampDeposit; corridor: RampCorridor | null; localAmount: string; wallet: string }) {
 	const dict = useDict();
 	const b = dict.kusd.buy;
 	const hasBankInfo = Boolean(deposit.bankInfo && Object.keys(deposit.bankInfo).length > 0);
@@ -455,6 +472,11 @@ function PayStep({ deposit, corridor, localAmount }: { deposit: RampDeposit; cor
 					<span className="font-semibold text-cream">{interpolate(b.pay.payExactly, { amount })}</span> {how}
 					{deposit.expiresAt && <> {interpolate(b.pay.expires, { time: new Date(deposit.expiresAt).toLocaleTimeString() })}</>}
 				</p>
+				{wallet && (
+					<p className="text-[12.5px] text-muted-foreground">
+						{b.pay.receivingWallet} <span className="break-all font-mono text-cream">{wallet}</span>
+					</p>
+				)}
 			</div>
 
 			{deposit.paymentUrl ? (
