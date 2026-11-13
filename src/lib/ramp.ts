@@ -254,6 +254,21 @@ export function isEvmAddress(value: string): boolean {
 	return /^0x[a-fA-F0-9]{40}$/.test(value.trim());
 }
 
+/** ISO 4217 currency code as the keeper and Yellow Card key it ("XOF"); the keeper's schema is length 3. */
+export function isCurrencyCode(value: string): boolean {
+	return /^[A-Z]{3}$/.test(value);
+}
+
+/** ISO 3166 alpha-2 country code ("CI"); the keeper's schema is length 2. */
+export function isCountryCode(value: string): boolean {
+	return /^[A-Z]{2}$/.test(value);
+}
+
+/** The corridor rails the keeper reports (RampCorridor.channelType). */
+export function isChannelType(value: string): value is RampCorridor['channelType'] {
+	return value === 'momo' || value === 'bank' || value === 'p2p';
+}
+
 /** Positive decimal amount string ("25000", "25000.50"). */
 export function isValidLocalAmount(value: string): boolean {
 	if (!/^\d+(\.\d+)?$/.test(value.trim())) return false;

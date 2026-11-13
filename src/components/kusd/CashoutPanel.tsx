@@ -338,13 +338,18 @@ export default function CashoutPanel({ onBusyChange }: { onBusyChange?: (busy: b
 		const payout = liveWithdrawal ?? withdrawal;
 		const state = String(payout?.state ?? 'awaiting_funds');
 		const paid = state === 'paid';
-		const lost = state === 'failed' || state === 'expired';
+		const lost = state === 'failed' || state === 'expired' || state === 'failed_create';
+		// Past the bridge, the keeper's state is the news (a refund must never read as "on its way");
+		// until then the bridge tracking line says where the USDT is.
+		const keeperLine = Object.hasOwn(c.state, state) ? c.state[state as keyof typeof c.state] : null;
 		const headline = paid
 			? payout?.localAmount && payout.currency
 				? interpolate(c.payout.paid, { amount: fmt.number(Number(payout.localAmount)), currency: payout.currency, number: momoNumber })
 				: interpolate(c.payout.paidNoAmount, { number: momoNumber })
 			: lost
-				? c.payout[state as 'failed' | 'expired']
+				? state === 'failed' && payout?.refundTxHash
+					? c.payout.refunded
+					: c.payout[state as 'failed' | 'expired' | 'failed_create']
 				: interpolate(c.sent, { amount: showAmount(sent.gemAmt, GEM.decimals, fmt, 6) });
 		const polygonTx = payout?.refundTxHash ?? payout?.topUpTxHash;
 		const polygonHref = polygonTx ? getExplorerTxUrl(CHAIN_IDS.POLYGON, polygonTx) : getExplorerAddressUrl(CHAIN_IDS.POLYGON, sent.recipient);
@@ -361,7 +366,7 @@ export default function CashoutPanel({ onBusyChange }: { onBusyChange?: (busy: b
 					)}
 					<div className="text-sm">
 						<p className="font-semibold">{headline}</p>
-						{!paid && !lost && <p className="mt-1 text-muted-foreground">{c.status[delivery]}</p>}
+						{!paid && !lost && <p className="mt-1 text-muted-foreground">{keeperLine ?? c.status[delivery]}</p>}
 					</div>
 				</div>
 				<div className="flex flex-col gap-2 text-[13px]">
