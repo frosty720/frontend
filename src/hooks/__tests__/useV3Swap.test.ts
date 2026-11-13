@@ -85,6 +85,22 @@ describe('useV3Swap.executeSwap', () => {
 		await expect(swap).resolves.toBe('0xswap');
 	});
 
+	it('hands over the swap hash before waiting for the receipt, so a failed wait never loses it', async () => {
+		waitForTransactionReceipt.mockRejectedValue(new Error('Timed out while waiting for transaction'));
+		const { executeSwap } = renderHook(() => useV3Swap(CHAIN_IDS.KALYCHAIN)).result.current;
+		const onBroadcast = vi.fn();
+		await expect(executeSwap(params(token('KUSD', KUSD)), onBroadcast)).rejects.toThrow('Timed out');
+		expect(onBroadcast).toHaveBeenCalledWith('0xswap');
+	});
+
+	it('hands over a wrap hash the same way', async () => {
+		waitForTransactionReceipt.mockRejectedValue(new Error('Timed out while waiting for transaction'));
+		const { executeSwap } = renderHook(() => useV3Swap(CHAIN_IDS.KALYCHAIN)).result.current;
+		const onBroadcast = vi.fn();
+		await expect(executeSwap(params(token('WKMT', WETH)), onBroadcast)).rejects.toThrow('Timed out');
+		expect(onBroadcast).toHaveBeenCalledWith('0xwrap');
+	});
+
 	it('throws TransactionRevertedError when the swap reverts on-chain', async () => {
 		waitForTransactionReceipt.mockResolvedValue({ status: 'reverted' });
 		const { executeSwap } = renderHook(() => useV3Swap(CHAIN_IDS.KALYCHAIN)).result.current;
@@ -115,10 +131,12 @@ describe('useV3Swap.approveToken', () => {
 	it('sends the router approval with the KalyChain 21 gwei fee floor and waits for it', async () => {
 		waitForTransactionReceipt.mockResolvedValue({ status: 'success' });
 		const { approveToken } = renderHook(() => useV3Swap(CHAIN_IDS.KALYCHAIN)).result.current;
-		await approveToken(token('USDT', '0x6318EcDbae6B469D39C38949eDC671f4bA8A6172'));
+		await approveToken(token('USDT', '0x6318EcDbae6B469D39C38949eDC671f4bA8A6172'), '12.5');
 
 		const request = writeContract.mock.calls[0][0];
 		expect(request.functionName).toBe('approve');
+		// Exactly the amount being swapped (18-decimal test token), never an unlimited allowance.
+		expect(request.args).toEqual(['0x2222222222222222222222222222222222222222', 12_500_000_000_000_000_000n]);
 		expect(request.maxPriorityFeePerGas).toBeGreaterThanOrEqual(KALYCHAIN_MIN_PRIORITY_FEE_WEI);
 		expect(waitForTransactionReceipt).toHaveBeenCalledWith({ hash: '0xwrap' });
 	});

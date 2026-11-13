@@ -4,7 +4,7 @@
  */
 
 import { usePublicClient, useWalletClient, useAccount } from 'wagmi';
-import { encodeFunctionData, parseUnits, getContract, maxUint256 } from 'viem';
+import { encodeFunctionData, parseUnits, getContract } from 'viem';
 import { Token, QuoteResult, ExactOutputQuoteResult, SwapParams } from '@/config/dex/types';
 import { getKalySwapV3Service } from '@/services/dex/KalySwapV3Service';
 import { V3QuoteResult } from '@/services/dex/IV3DexService';
@@ -31,10 +31,15 @@ interface UseV3SwapReturn {
     // Standard swap operations
     getQuote: (tokenIn: Token, tokenOut: Token, amountIn: string) => Promise<QuoteResult>;
     getQuoteExactOutput: (tokenIn: Token, tokenOut: Token, amountOut: string) => Promise<ExactOutputQuoteResult>;
-    /** Resolves with the hash only once the transaction is mined and succeeded; throws TransactionRevertedError if it reverted. */
-    executeSwap: (params: SwapParams) => Promise<string>;
+    /**
+     * Resolves with the hash only once the transaction is mined and succeeded; throws TransactionRevertedError if it reverted.
+     * `onBroadcast` runs as soon as the network has the swap, before the receipt wait, so a caller can tell a failure before
+     * sending from one after (the swap may still confirm) and never lose the hash.
+     */
+    executeSwap: (params: SwapParams, onBroadcast?: (hash: string) => void) => Promise<string>;
     checkApproval: (token: Token, amount: string) => Promise<boolean>;
-    approveToken: (token: Token, amount?: string) => Promise<string>;
+    /** Approves exactly `amount`, never an unlimited allowance. */
+    approveToken: (token: Token, amount: string) => Promise<string>;
 
     // V3-specific operations
     getV3Quote: (tokenIn: Token, tokenOut: Token, amountIn: string, fee?: number) => Promise<V3QuoteResult>;
@@ -245,7 +250,7 @@ export function useV3Swap(chainId: number = CHAIN_IDS.KALYCHAIN): UseV3SwapRetur
      */
     const approveToken = useCallback(async (
         token: Token,
-        amount?: string
+        amount: string
     ): Promise<string> => {
         try {
             if (!service) throw new UserError('v3Unavailable');
@@ -258,10 +263,8 @@ export function useV3Swap(chainId: number = CHAIN_IDS.KALYCHAIN): UseV3SwapRetur
 
             const routerAddress = service.getRouterAddress();
 
-            // Use max uint256 for unlimited approval if no amount specified
-            const approvalAmount = amount
-                ? parseUnits(amount, token.decimals)
-                : maxUint256;
+            // Exactly the amount being swapped, never an unlimited allowance.
+            const approvalAmount = parseUnits(amount, token.decimals);
 
             logger.debug(`V3: Approving ${token.symbol} for SwapRouter02...`);
 
@@ -294,7 +297,7 @@ export function useV3Swap(chainId: number = CHAIN_IDS.KALYCHAIN): UseV3SwapRetur
     /**
      * Execute a V3 swap
      */
-    const executeSwap = useCallback(async (params: SwapParams): Promise<string> => {
+    const executeSwap = useCallback(async (params: SwapParams, onBroadcast?: (hash: string) => void): Promise<string> => {
         try {
             setIsLoading(true);
             setError(null);
@@ -328,6 +331,7 @@ export function useV3Swap(chainId: number = CHAIN_IDS.KALYCHAIN): UseV3SwapRetur
                         value: amountWei,
                         gas: 100000n,
                     });
+                    onBroadcast?.(wrapHash);
                     await assertTxSucceeded(publicClient, wrapHash, 'swap');
                     return wrapHash;
                 } else {
@@ -342,6 +346,7 @@ export function useV3Swap(chainId: number = CHAIN_IDS.KALYCHAIN): UseV3SwapRetur
                         args: [amountWei],
                         gas: 100000n,
                     });
+                    onBroadcast?.(unwrapHash);
                     await assertTxSucceeded(publicClient, unwrapHash, 'swap');
                     return unwrapHash;
                 }
@@ -353,13 +358,14 @@ export function useV3Swap(chainId: number = CHAIN_IDS.KALYCHAIN): UseV3SwapRetur
 
                 if (!isApproved) {
                     logger.debug(`V3: Token not approved. Requesting approval for ${params.tokenIn.symbol}...`);
-                    await approveToken(params.tokenIn);
+                    await approveToken(params.tokenIn, params.amountIn);
                     logger.debug(`V3: Approval successful for ${params.tokenIn.symbol}`);
                 }
             }
 
             // Execute the swap
             const txHash = await service.executeSwap(params, walletClient);
+            onBroadcast?.(txHash);
 
             // The router call returns as soon as the wallet sends it. Success (and the balance
             // refresh that follows) must wait for the receipt, or a reverted swap reads as done.

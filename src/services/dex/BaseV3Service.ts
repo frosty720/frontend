@@ -3,6 +3,7 @@
  * Provides common V3 functionality like pool queries, quote fetching, and position management
  */
 
+import { minimumOutDecimal } from '@/utils/slippage';
 import { dexLogger as logger } from '@/lib/logger';
 import {
     IV3DexService,
@@ -112,10 +113,9 @@ export abstract class BaseV3Service implements IV3DexService {
         );
     }
 
+    /** Exact decimal math: a float here turned tiny outputs into exponent strings that parseUnits rejects. */
     getAmountOutMin(amountOut: string, slippageTolerance: number): string {
-        const amount = parseFloat(amountOut);
-        const minAmount = amount * (1 - slippageTolerance / 100);
-        return minAmount.toString();
+        return minimumOutDecimal(amountOut, slippageTolerance);
     }
 
     getFeeTiers(): number[] {

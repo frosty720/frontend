@@ -1,3 +1,4 @@
+import { minimumOutDecimal } from '@/utils/slippage';
 import { dexLogger } from '@/lib/logger';
 // Base DEX service with common functionality
 // This provides shared logic for all DEX implementations
@@ -121,10 +122,9 @@ export abstract class BaseDexService implements IDexService {
     );
   }
 
+  /** Exact decimal math: a float here turned tiny outputs into exponent strings that parseUnits rejects. */
   getAmountOutMin(amountOut: string, slippageTolerance: number): string {
-    const amount = parseFloat(amountOut);
-    const slippageMultiplier = (100 - slippageTolerance) / 100;
-    return (amount * slippageMultiplier).toString();
+    return minimumOutDecimal(amountOut, slippageTolerance);
   }
 
   // Common quote implementation using router contract

@@ -1,3 +1,4 @@
+import { parseUnits } from 'viem';
 
 import { describe, it, expect } from 'vitest';
 import { BaseV3Service } from '../BaseV3Service';
@@ -92,6 +93,12 @@ describe('V3 Service Math Utilities', () => {
             const slippage = 5; // 5%
             const min = service.getAmountOutMin(amountOut, slippage);
             expect(min).toBe('95');
+        });
+
+        it('keeps tiny outputs as plain decimals parseUnits accepts, never exponent strings', () => {
+            const min = service.getAmountOutMin('0.0000001', 0.5);
+            expect(min).toBe('0.0000000995');
+            expect(() => parseUnits(min, 18)).not.toThrow();
         });
 
         it('should handle string decimals', () => {
