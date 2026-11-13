@@ -27,7 +27,7 @@ describe('GET /ramp-api/cashout-capacity', () => {
 				return new Response(JSON.stringify({ jsonrpc: '2.0', id, result: encodeAbiParameters([{ type: 'uint256' }], [592_999_040n]) }), { status: 200 });
 			}),
 		);
-		const res = await (await route())();
+		const res = await (await route())(new Request('http://localhost/ramp-api/cashout-capacity'));
 		expect(res.status).toBe(200);
 		expect(await res.json()).toEqual({ collateral: '592999040' });
 	});
@@ -39,7 +39,7 @@ describe('GET /ramp-api/cashout-capacity', () => {
 				throw new TypeError(`fetch failed for ${RPC}`);
 			}),
 		);
-		const res = await (await route())();
+		const res = await (await route())(new Request('http://localhost/ramp-api/cashout-capacity'));
 		expect(res.status).toBe(503);
 		const text = await res.text();
 		expect(JSON.parse(text)).toEqual({ error: 'unavailable' });

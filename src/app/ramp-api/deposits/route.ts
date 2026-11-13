@@ -1,6 +1,7 @@
 import { type NextRequest, NextResponse } from 'next/server';
 import { isEvmAddress, isValidLocalAmount } from '@/lib/ramp';
 import { keeperFetch, rampReturnUrl } from '@/lib/rampServer';
+import { limitRampRequest } from '@/lib/rampRateLimit';
 
 export const dynamic = 'force-dynamic';
 
@@ -9,6 +10,8 @@ export const dynamic = 'force-dynamic';
  * re-validates everything authoritatively.
  */
 export async function POST(req: NextRequest) {
+	const limited = limitRampRequest(req);
+	if (limited) return limited;
 	let body: unknown;
 	try {
 		body = await req.json();
@@ -29,6 +32,8 @@ export async function POST(req: NextRequest) {
 	}
 	// The return page is chosen here from the buyer's locale, never taken from the browser.
 	const { locale, ...deposit } = fields;
-	const r = await keeperFetch('/api/deposits', { method: 'POST', body: { ...deposit, redirectUrl: rampReturnUrl(locale) } });
+	// Forward the values exactly as checked: the keeper's own checks don't trim.
+	const checked = { ...deposit, userWallet: fields.userWallet.trim(), localAmount: fields.localAmount.trim() };
+	const r = await keeperFetch('/api/deposits', { method: 'POST', body: { ...checked, redirectUrl: rampReturnUrl(locale) } });
 	return NextResponse.json(r.body, { status: r.status });
 }

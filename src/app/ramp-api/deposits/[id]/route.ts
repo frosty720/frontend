@@ -1,11 +1,14 @@
 import { type NextRequest, NextResponse } from 'next/server';
 import { isRampDepositId } from '@/lib/ramp';
 import { keeperFetch } from '@/lib/rampServer';
+import { limitRampRequest } from '@/lib/rampRateLimit';
 
 export const dynamic = 'force-dynamic';
 
 /** Deposit status, polled by the pay screen. */
-export async function GET(_req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
+export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
+	const limited = limitRampRequest(req);
+	if (limited) return limited;
 	const { id } = await ctx.params;
 	if (!isRampDepositId(id)) {
 		return NextResponse.json({ error: 'invalid id' }, { status: 400 });

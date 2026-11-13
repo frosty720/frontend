@@ -473,6 +473,36 @@ describe('CashoutPanel', () => {
 		expect(await screen.findByText(t.payout.failed)).toBeTruthy();
 	});
 
+	// #13: the status line knew 3 of the keeper's 12 states, so a refund read as "on its way".
+	it.each([
+		['refunding', { state: 'refunding' }, () => t.state.refunding],
+		['paying', { state: 'paying' }, () => t.state.paying],
+		['forwarded', { state: 'forwarded' }, () => t.state.forwarded],
+	])('says what the keeper is doing once the USDT is past the bridge (%s)', async (_label, status, text) => {
+		cashout.mockResolvedValue(sentTo(DEPOSIT));
+		onStatus = () => json({ withdrawalId: 'wd-00000000', ...status });
+		renderPanel();
+		await fill('50');
+		fireEvent.click(button());
+		expect(await screen.findByText(text())).toBeTruthy();
+		for (const line of Object.values(t.status)) expect(screen.queryByText(line)).toBeNull();
+	});
+
+	it('says the USDT was returned once the refund is sent, and that the payout never opened for failed_create', async () => {
+		cashout.mockResolvedValue(sentTo(DEPOSIT));
+		onStatus = () => json({ withdrawalId: 'wd-00000000', state: 'failed', refundTxHash: `0x${'bb'.repeat(32)}` });
+		renderPanel();
+		await fill('50');
+		fireEvent.click(button());
+		expect(await screen.findByText(t.payout.refunded)).toBeTruthy();
+		cleanup();
+		onStatus = () => json({ withdrawalId: 'wd-00000000', state: 'failed_create' });
+		renderPanel();
+		await fill('50');
+		fireEvent.click(button());
+		expect(await screen.findByText(t.payout.failed_create)).toBeTruthy();
+	});
+
 	it('says the USDT went to our payout wallet and links that wallet, labelled as ours, until a transfer from it exists', async () => {
 		cashout.mockResolvedValue(sentTo(DEPOSIT));
 		renderPanel();

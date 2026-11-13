@@ -17,6 +17,7 @@ import { GET as withdrawChannels } from '../withdraw-channels/route';
 import { GET as withdrawQuote } from '../withdraw-quote/route';
 import { POST as createWithdrawal } from '../withdrawals/route';
 import { GET as getWithdrawal } from '../withdrawals/[id]/route';
+import { resetRampRateLimit } from '@/lib/rampRateLimit';
 
 const KEY = 'test-keeper-key-0123456789';
 const KEEPER = 'https://keeper.test';
@@ -30,6 +31,7 @@ beforeEach(() => {
 	keeper.mockClear();
 	vi.stubGlobal('fetch', keeper);
 	incoming = new Headers();
+	resetRampRateLimit();
 });
 afterEach(() => {
 	vi.unstubAllGlobals();
@@ -43,7 +45,7 @@ const lastCall = () => keeper.mock.calls.at(-1) as [string, RequestInit];
 describe('keeper forwarding', () => {
 	it('attaches the bearer key server-side and passes status + body through', async () => {
 		keeper.mockResolvedValueOnce(new Response(JSON.stringify({ corridors: [{ channelId: 'c1' }] }), { status: 200 }));
-		const res = await channels();
+		const res = await channels(req('/ramp-api/channels'));
 		expect(res.status).toBe(200);
 		expect(await res.json()).toEqual({ corridors: [{ channelId: 'c1' }] });
 		const [url, init] = lastCall();
@@ -53,25 +55,42 @@ describe('keeper forwarding', () => {
 
 	it('names the visitor nginx saw, so the keeper limits each visitor separately', async () => {
 		incoming = new Headers({ 'x-real-ip': '203.0.113.7' });
-		await channels();
+		await channels(req('/ramp-api/channels'));
 		expect((lastCall()[1].headers as Record<string, string>)['x-ramp-client-ip']).toBe('203.0.113.7');
 	});
 
 	it('names no visitor when nginx passed none', async () => {
-		await channels();
+		await channels(req('/ramp-api/channels'));
 		expect(lastCall()[1].headers as Record<string, string>).not.toHaveProperty('x-ramp-client-ip');
 	});
 
-	it('never puts the key in a response, even when the keeper errors', async () => {
-		keeper.mockResolvedValueOnce(new Response(JSON.stringify({ error: 'unauthorized' }), { status: 401 }));
-		const res = await channels();
-		expect(res.status).toBe(401);
-		expect(JSON.stringify(await res.json())).not.toContain(KEY);
+	// #9: the old version could not fail (the mocked keeper reply never held the key). Here the keeper
+	// echoes the key in its headers and a cookie: none of it may reach the browser, on any route.
+	it('never puts the key in any response, whatever the keeper replies, and forwards no keeper header', async () => {
+		const calls: Array<[string, () => Promise<Response>]> = [
+			['channels', () => channels(req('/ramp-api/channels'))],
+			['quote', () => quote(req('/ramp-api/quote?currency=XOF&localAmount=5000'))],
+			['withdraw-channels', () => withdrawChannels(req('/ramp-api/withdraw-channels'))],
+			['withdraw-quote', () => withdrawQuote(req('/ramp-api/withdraw-quote?country=CI&currency=XOF&usd=25'))],
+			['deposit', () => getDeposit(req('/ramp-api/deposits/fe2fea2f-1c2d'), { params: Promise.resolve({ id: 'fe2fea2f-1c2d' }) })],
+			['withdrawal', () => getWithdrawal(req('/ramp-api/withdrawals/6f1c2d3e-4a5b'), { params: Promise.resolve({ id: '6f1c2d3e-4a5b' }) })],
+			['create deposit', () => createDeposit(req('/ramp-api/deposits', { method: 'POST', body: JSON.stringify({ userWallet: WALLET, localAmount: '5000' }) }))],
+			['create withdrawal', () => createWithdrawal(req('/ramp-api/withdrawals', { method: 'POST', body: JSON.stringify({ userWallet: WALLET, usdAmount: '25' }) }))],
+		];
+		for (const [name, call] of calls) {
+			keeper.mockResolvedValueOnce(new Response(JSON.stringify({ error: 'unauthorized' }), { status: 401, headers: { 'x-echo': `Bearer ${KEY}`, 'set-cookie': `k=${KEY}` } }));
+			const res = await call();
+			expect(res.status, name).toBe(401);
+			expect(JSON.stringify(await res.json()), name).not.toContain(KEY);
+			expect(JSON.stringify([...res.headers.entries()]), name).not.toContain(KEY);
+			expect(res.headers.get('set-cookie'), name).toBeNull();
+		}
+		expect(keeper).toHaveBeenCalledTimes(calls.length);
 	});
 
 	it('answers 503 without calling out when the key is not configured', async () => {
 		delete process.env.RAMP_KEEPER_API_KEY;
-		const res = await channels();
+		const res = await channels(req('/ramp-api/channels'));
 		expect(res.status).toBe(503);
 		expect(keeper).not.toHaveBeenCalled();
 	});
@@ -85,7 +104,7 @@ describe('keeper forwarding', () => {
 
 	it('maps a non-JSON keeper reply to a JSON error instead of crashing', async () => {
 		keeper.mockResolvedValueOnce(new Response('<html>502</html>', { status: 502 }));
-		const res = await channels();
+		const res = await channels(req('/ramp-api/channels'));
 		expect(res.status).toBe(502);
 		expect(await res.json()).toEqual({ error: 'bad keeper response' });
 	});
@@ -95,6 +114,24 @@ describe('quote', () => {
 	it('requires currency and localAmount', async () => {
 		expect((await quote(req('/ramp-api/quote?currency=XOF'))).status).toBe(400);
 		expect(keeper).not.toHaveBeenCalled();
+	});
+	// #8: every value reaches Yellow Card's fee config through the keeper, so junk stops here.
+	it('refuses a malformed currency, amount, country or channel type without calling the keeper', async () => {
+		for (const q of [
+			'currency=xof&localAmount=5000',
+			'currency=XOFF&localAmount=5000',
+			'currency=XOF&localAmount=abc',
+			'currency=XOF&localAmount=-5',
+			'currency=XOF&localAmount=5000&country=CIV',
+			'currency=XOF&localAmount=5000&country=ci',
+			'currency=XOF&localAmount=5000&channelType=card',
+		]) {
+			expect((await quote(req(`/ramp-api/quote?${q}`))).status, q).toBe(400);
+		}
+		expect(keeper).not.toHaveBeenCalled();
+		for (const channelType of ['momo', 'bank', 'p2p']) {
+			expect((await quote(req(`/ramp-api/quote?currency=XOF&localAmount=5000&country=CI&channelType=${channelType}`))).status, channelType).toBe(200);
+		}
 	});
 	it('forwards the corridor context', async () => {
 		await quote(req('/ramp-api/quote?currency=XOF&localAmount=6000&country=CI&channelType=momo&evil=1'));
@@ -111,6 +148,13 @@ describe('create deposit', () => {
 			expect((await post(body)).status, body).toBe(400);
 		}
 		expect(keeper).not.toHaveBeenCalled();
+	});
+	// #10: the checks trim, so the forwarded values must be the trimmed ones the keeper will accept.
+	it('forwards the wallet and amount exactly as checked, without surrounding spaces', async () => {
+		await post(JSON.stringify({ userWallet: `  ${WALLET} `, localAmount: ' 5000 ' }));
+		const sent = JSON.parse(String(lastCall()[1].body));
+		expect(sent.userWallet).toBe(WALLET);
+		expect(sent.localAmount).toBe('5000');
 	});
 	it('forwards a valid body as a POST', async () => {
 		const body = { idempotencyKey: 'ui-ff409dbd-1', userWallet: WALLET, localAmount: '5000', channelId: 'c1' };
@@ -164,13 +208,17 @@ describe('deposit status', () => {
 
 describe('mobile-money cash-out', () => {
 	it('forwards the payout corridors', async () => {
-		await withdrawChannels();
+		await withdrawChannels(req('/ramp-api/withdraw-channels'));
 		expect(lastCall()[0]).toBe(`${KEEPER}/api/withdraw-channels`);
 	});
 
 	it('quotes only with country, currency and a ≤6-decimal USD amount, forwarding nothing else', async () => {
 		expect((await withdrawQuote(req('/ramp-api/withdraw-quote?country=CI&currency=XOF'))).status).toBe(400);
 		expect((await withdrawQuote(req('/ramp-api/withdraw-quote?country=CI&currency=XOF&usd=1.1234567'))).status).toBe(400);
+		expect(keeper).not.toHaveBeenCalled();
+		for (const q of ['country=CIV&currency=XOF&usd=25', 'country=CI&currency=xof&usd=25']) {
+			expect((await withdrawQuote(req(`/ramp-api/withdraw-quote?${q}`))).status, q).toBe(400);
+		}
 		expect(keeper).not.toHaveBeenCalled();
 		await withdrawQuote(req('/ramp-api/withdraw-quote?country=CI&currency=XOF&usd=25&evil=1'));
 		expect(lastCall()[0]).toBe(`${KEEPER}/api/withdraw-quote?country=CI&currency=XOF&usd=25`);

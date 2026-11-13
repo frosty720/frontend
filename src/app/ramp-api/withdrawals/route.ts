@@ -1,6 +1,7 @@
 import { type NextRequest, NextResponse } from 'next/server';
 import { isEvmAddress, isValidUsdAmount } from '@/lib/ramp';
 import { keeperFetch } from '@/lib/rampServer';
+import { limitRampRequest } from '@/lib/rampRateLimit';
 
 export const dynamic = 'force-dynamic';
 
@@ -9,6 +10,8 @@ export const dynamic = 'force-dynamic';
  * 400s for obviously bad input); the keeper re-validates everything authoritatively.
  */
 export async function POST(req: NextRequest) {
+	const limited = limitRampRequest(req);
+	if (limited) return limited;
 	let body: unknown;
 	try {
 		body = await req.json();
