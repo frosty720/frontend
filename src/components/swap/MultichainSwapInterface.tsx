@@ -268,7 +268,6 @@ export default function MultichainSwapInterface({
     handleError,
     clearError,
     reset,
-    retry,
     validateSwap,
     executeWithErrorHandling,
     setRetryOperation
@@ -464,7 +463,14 @@ export default function MultichainSwapInterface({
   };
 
   // Execute swap
+  // An error card describes the swap it came from: changing the tokens or the amount retires it.
+  useEffect(() => {
+    clearError();
+  }, [swapState.fromToken, swapState.toToken, swapState.fromAmount, clearError]);
+
   const handleSwap = async () => {
+    // A new attempt replaces whatever the last one reported.
+    clearError();
     if (!chainId || !isChainSupported(chainId)) {
       handleError(new Error('Chain not supported for swapping'));
       return;
@@ -712,7 +718,9 @@ export default function MultichainSwapInterface({
         {hasError && error && (
           <ErrorDisplay
             error={error}
-            onRetry={retry}
+            // No retry operation is ever registered with the error hook, so its retry() did nothing and the
+            // card stayed forever. "Try Again" dismisses the card; the user presses Swap when ready.
+            onRetry={clearError}
             onReset={clearError}
             isRetrying={isRetrying}
           />
