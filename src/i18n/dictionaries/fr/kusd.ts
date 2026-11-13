@@ -76,6 +76,7 @@ const kusd: typeof en = {
 		},
 		submit: 'Continuer vers le paiement',
 		submitting: 'Création du dépôt…',
+		notYourDeposit: 'Ce paiement n’est pas lié au wallet connecté, il n’est donc pas affiché. Si quelqu’un vous a envoyé ce lien, ne payez rien.',
 		invalid: {
 			country: "Choisissez d'abord votre pays",
 			amount: 'Saisissez un montant valide',
@@ -101,6 +102,7 @@ const kusd: typeof en = {
 			viaPrompt: '— validez la demande de paiement que votre opérateur envoie à votre numéro mobile money.',
 			expires: "L'offre expire à {time}.",
 			openPage: 'Ouvrir la page de paiement',
+			receivingWallet: 'Les KUSD seront envoyés à :',
 			promptHint: 'Les opérateurs comme MTN et Moov envoient un SMS ou une invite USSD sur votre téléphone — validez-la pour finaliser le paiement.',
 			status: 'Statut :',
 			autoUpdate: 'mise à jour automatique',

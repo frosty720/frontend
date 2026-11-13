@@ -170,12 +170,131 @@ describe('BuyKusdPanel', () => {
 		expect(deposits).toHaveLength(0);
 	});
 
-	it('resumes a returned deposit (?deposit=) on its final screen with the payout link', async () => {
-		onStatus = () => json({ depositId: 'dep-00000001', state: 'paid', payoutTxHash: `0x${'ab'.repeat(32)}` });
+	it('resumes a returned deposit (?deposit=) on its final screen with the payout link, for the wallet it pays (any letter case)', async () => {
+		onStatus = () => json({ depositId: 'dep-00000001', state: 'paid', userWallet: WALLET.toLowerCase(), payoutTxHash: `0x${'ab'.repeat(32)}` });
 		renderPanel({ initialDepositId: 'dep-00000001' });
 		expect(await screen.findByText(en.kusd.buy.done.paid)).toBeTruthy();
 		expect(screen.getByText(en.kusd.buy.done.viewTx).closest('a')?.getAttribute('href')).toContain(`/tx/0x${'ab'.repeat(32)}`);
 		fireEvent.click(screen.getByRole('button', { name: en.kusd.buy.done.again }));
 		expect(replace).toHaveBeenCalledWith('/kusd');
+	});
+
+	it('resumes an open deposit on the pay screen, naming the wallet the KUSD goes to', async () => {
+		onStatus = () => json({ depositId: 'dep-00000001', state: 'awaiting_payment', userWallet: WALLET, fiatAmount: '5000', fiatCurrency: 'XOF' });
+		renderPanel({ initialDepositId: 'dep-00000001' });
+		expect(await screen.findByText(en.kusd.buy.pay.receivingWallet)).toBeTruthy();
+		expect(screen.getByText(WALLET)).toBeTruthy();
+	});
+
+	// #15: a crafted ?deposit= link must not get a customer to pay for someone else's KUSD.
+	it.each([
+		['another wallet\'s deposit', () => json({ depositId: 'dep-00000001', state: 'awaiting_payment', userWallet: '0x1111111111111111111111111111111111111111', fiatAmount: '5000', fiatCurrency: 'XOF' })],
+		['a deposit that names no wallet', () => json({ depositId: 'dep-00000001', state: 'awaiting_payment', fiatAmount: '5000', fiatCurrency: 'XOF' })],
+	])('a ?deposit= link for %s shows no payment request, only a warning, in both languages', async (_label, answer) => {
+		onStatus = answer;
+		renderPanel({ initialDepositId: 'dep-00000001' });
+		expect((await screen.findByRole('alert')).textContent).toContain(en.kusd.buy.notYourDeposit);
+		expect(screen.queryByText(/Pay exactly/)).toBeNull();
+		expect(screen.getByRole('button', { name: en.kusd.buy.submit })).toBeTruthy();
+		cleanup();
+		renderPanel({ initialDepositId: 'dep-00000001' }, fr, 'fr');
+		expect((await screen.findByRole('alert')).textContent).toContain('Ce paiement n’est pas lié au wallet connecté, il n’est donc pas affiché. Si quelqu’un vous a envoyé ce lien, ne payez rien.');
+	});
+
+	it('a ?deposit= link opened with no wallet connected is refused too', async () => {
+		account = undefined;
+		onStatus = () => json({ depositId: 'dep-00000001', state: 'awaiting_payment', userWallet: WALLET, fiatAmount: '5000', fiatCurrency: 'XOF' });
+		renderPanel({ initialDepositId: 'dep-00000001' });
+		expect((await screen.findByRole('alert')).textContent).toContain(en.kusd.buy.notYourDeposit);
+		expect(screen.queryByText(/Pay exactly/)).toBeNull();
+	});
+
+	it('an unknown or expired ?deposit= id just leaves the fresh form, with no warning', async () => {
+		onStatus = () => json({ error: 'not_found' }, 404);
+		renderPanel({ initialDepositId: 'dep-00000001' });
+		await screen.findByText(/Burkina Faso — XOF \(mobile money\)/);
+		await new Promise((r) => setTimeout(r, 20));
+		expect(screen.queryByRole('alert')).toBeNull();
+	});
+
+	// #12: the keeper replays by key, so a changed request must never reuse the old key.
+	it('a timeout, then a wallet switch, then a resubmit opens a NEW deposit for the new wallet, and the pay screen names it', async () => {
+		const OTHER = '0x1111111111111111111111111111111111111111';
+		onDeposit = () => json({ error: 'keeper_unreachable' }, 504);
+		const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+		const tree = () => (
+			<QueryClientProvider client={client}>
+				<DictionaryProvider dict={en} locale="en">
+					<BuyKusdPanel />
+				</DictionaryProvider>
+			</QueryClientProvider>
+		);
+		const view = render(tree());
+		await fillForm();
+		submit();
+		expect(await screen.findByText(en.kusd.buy.errors.network)).toBeTruthy();
+		account = OTHER;
+		view.rerender(tree());
+		await waitFor(() => expect((screen.getByLabelText(en.kusd.buy.wallet) as HTMLInputElement).value).toBe(OTHER));
+		onDeposit = () => json({ depositId: 'dep-00000002', state: 'awaiting_payment', fiatAmount: '5000', fiatCurrency: 'XOF' });
+		submit();
+		await screen.findByText(en.kusd.buy.pay.titleMomo);
+		expect(deposits).toHaveLength(2);
+		expect(deposits[1].idempotencyKey).not.toBe(deposits[0].idempotencyKey);
+		expect(deposits[1].userWallet).toBe(OTHER);
+		expect(screen.getByText(OTHER)).toBeTruthy();
+	});
+
+	it('a changed amount after a timeout also gets a new key, while an unchanged retry keeps it', async () => {
+		onDeposit = () => json({ error: 'keeper_unreachable' }, 504);
+		renderPanel();
+		await fillForm();
+		submit();
+		await screen.findByText(en.kusd.buy.errors.network);
+		submit();
+		await waitFor(() => expect(deposits).toHaveLength(2));
+		expect(deposits[1].idempotencyKey).toBe(deposits[0].idempotencyKey);
+		fireEvent.change(screen.getByLabelText(en.kusd.buy.amount), { target: { value: '6000' } });
+		submit();
+		await waitFor(() => expect(deposits).toHaveLength(3));
+		expect(deposits[2].idempotencyKey).not.toBe(deposits[0].idempotencyKey);
+	});
+
+	// #11: the payout wallet was filled once and then kept the first wallet's address after a switch.
+	describe('payout wallet', () => {
+		const OTHER = '0x1111111111111111111111111111111111111111';
+		function mount() {
+			const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+			const tree = () => (
+				<QueryClientProvider client={client}>
+					<DictionaryProvider dict={en} locale="en">
+						<BuyKusdPanel />
+					</DictionaryProvider>
+				</QueryClientProvider>
+			);
+			const view = render(tree());
+			return () => view.rerender(tree());
+		}
+		const walletField = () => screen.getByLabelText(en.kusd.buy.wallet) as HTMLInputElement;
+
+		it('is filled from the connected wallet, then follows a wallet switch and a sign-out', async () => {
+			const rerender = mount();
+			await waitFor(() => expect(walletField().value).toBe(WALLET));
+			account = OTHER;
+			rerender();
+			await waitFor(() => expect(walletField().value).toBe(OTHER));
+			account = undefined;
+			rerender();
+			await waitFor(() => expect(walletField().value).toBe(''));
+		});
+
+		it('keeps an address the buyer typed when the connected wallet changes', async () => {
+			const rerender = mount();
+			await waitFor(() => expect(walletField().value).toBe(WALLET));
+			fireEvent.change(walletField(), { target: { value: '0x2222222222222222222222222222222222222222' } });
+			account = OTHER;
+			rerender();
+			expect(walletField().value).toBe('0x2222222222222222222222222222222222222222');
+		});
 	});
 });
