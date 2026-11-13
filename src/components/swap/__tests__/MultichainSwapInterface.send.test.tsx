@@ -148,3 +148,37 @@ describe('MultichainSwapInterface send', () => {
 		expect(screen.queryByText(en.swap.unconfirmed)).toBeNull();
 	});
 });
+
+// The "Transaction Cancelled" card's Try Again did nothing and the card never went away (found 2026-11-13).
+describe('MultichainSwapInterface error card', () => {
+	const cancelled = () => screen.queryByText(en.errors.swap.USER_REJECTED.title);
+	async function rejectedOnce() {
+		executeSwap.mockRejectedValueOnce(new Error('user rejected the request'));
+		const button = await quotedForm();
+		await press(button);
+		expect(await screen.findByText(en.errors.swap.USER_REJECTED.title)).toBeTruthy();
+		return button;
+	}
+
+	it('Try Again dismisses the cancelled card', async () => {
+		await rejectedOnce();
+		await press(screen.getByRole('button', { name: en.errors.swap.USER_REJECTED.action }));
+		expect(cancelled()).toBeNull();
+	});
+
+	it('a new swap clears the old card', async () => {
+		const button = await rejectedOnce();
+		await waitFor(() => expect(button.disabled).toBe(false));
+		// The second swap stays in the wallet, so only the start of the new attempt can clear the card.
+		executeSwap.mockImplementationOnce(() => new Promise(() => {}));
+		await press(button);
+		await waitFor(() => expect(executeSwap).toHaveBeenCalledTimes(2));
+		await waitFor(() => expect(cancelled()).toBeNull());
+	});
+
+	it('changing the amount clears the old card', async () => {
+		await rejectedOnce();
+		fireEvent.change(screen.getByLabelText('You pay'), { target: { value: '11' } });
+		await waitFor(() => expect(cancelled()).toBeNull());
+	});
+});
