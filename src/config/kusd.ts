@@ -1,3 +1,4 @@
+import { getAddress, isAddress, zeroAddress } from 'viem';
 import { MAINNET_CONTRACTS } from '@/config/contracts';
 
 /**
@@ -63,6 +64,19 @@ export const KUSD_CASHOUT = {
 	polygonUsdt: '0xc2132D05D31c914a87C6611C10748AEb04B58e8F',
 	polygonMailbox: '0x5d934f4e2f797775e53561bB72aca21ba36B96BB',
 } as const;
+
+/**
+ * Where every cash-out's USDT must land on Polygon: the keeper's treasury wallet, which its answer names as
+ * `depositAddress` for every payout. Set in NEXT_PUBLIC_KUSD_CASHOUT_TREASURY (inlined at build time) and compared
+ * before anything is sent, so a tampered keeper answer can't redirect the money. Null when unset or not an
+ * address: cash-out then refuses to start.
+ */
+export function cashoutTreasury(): `0x${string}` | null {
+	const value = (process.env.NEXT_PUBLIC_KUSD_CASHOUT_TREASURY ?? '').trim();
+	if (!isAddress(value)) return null;
+	const address = getAddress(value);
+	return address === zeroAddress ? null : address;
+}
 
 /** DSProxy stack for the savings rate: Pot.join/exit run through the user's proxy (KssProxyActionsDsr). */
 export const KUSD_PROXY = {

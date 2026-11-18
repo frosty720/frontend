@@ -10,7 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { useToast } from '@/components/ui/toast';
 import { ClientOnlyConnectWallet } from '@/components/wallet/ClientOnlyConnectWallet';
 import { CHAIN_IDS, getExplorerAddressUrl, getExplorerTxUrl } from '@/config/chains';
-import { KUSD_PSM, KUSD_TOKEN } from '@/config/kusd';
+import { cashoutTreasury, KUSD_PSM, KUSD_TOKEN } from '@/config/kusd';
 import { useBridgeDelivery, useCashout, usePolygonCollateral, type CashoutSent } from '@/hooks/kusd/useCashout';
 import { PSM_HALTED, usePsmState, usePsmWallet } from '@/hooks/kusd/usePsm';
 import { useRampWithdrawal, useRampWithdrawChannels } from '@/hooks/kusd/useRampWithdraw';
@@ -19,6 +19,8 @@ import { describeError } from '@/i18n/errorText';
 import { useDict, useFormat, useLocale } from '@/i18n/hooks';
 import { interpolate } from '@/i18n/interpolate';
 import {
+	cashoutDeadline,
+	cashoutSignatureStale,
 	cashoutTypedData,
 	COUNTRY_KYC_EXTRAS,
 	countryDisplayName,
@@ -57,6 +59,9 @@ class UnexpectedPayoutError extends Error {}
 /** The keeper is still asking Yellow Card for the payout (a retry after a timeout): ask again with the same key. */
 class PayoutPendingError extends Error {}
 
+/** The keeper named a payout address that is not our pinned Polygon treasury: nothing may be sent there. */
+class WrongDestinationError extends Error {}
+
 /** The plan rounded down to whole cents of USDT, or null when that leaves nothing. */
 function toCents(plan: CashoutPlan, tout: bigint): CashoutPlan | null {
 	const gemAmt = plan.gemAmt - (plan.gemAmt % CENT_USDT);
@@ -67,10 +72,12 @@ function toCents(plan: CashoutPlan, tout: bigint): CashoutPlan | null {
 function cashoutErrorText(error: unknown, dict: Dictionary): string {
 	if (error instanceof UnexpectedPayoutError) return dict.kusd.cashout.badResponse;
 	if (error instanceof PayoutPendingError) return dict.kusd.cashout.payoutPending;
+	if (error instanceof WrongDestinationError) return dict.kusd.cashout.errors.wrongDestination;
 	if (error instanceof RampApiError && !error.outcomeUnknown) {
 		if (error.key === 'paused') return dict.kusd.cashout.errors.paused;
 		if (error.key === 'not_found') return dict.kusd.cashout.errors.notFound;
 		if (error.raw === 'bad_signature') return dict.kusd.cashout.errors.badSignature;
+		if (error.raw === 'signature_expired') return dict.kusd.cashout.errors.signatureExpired;
 	}
 	return rampErrorText(error, dict);
 }
@@ -123,8 +130,9 @@ export default function CashoutPanel({ onBusyChange }: { onBusyChange?: (busy: b
 	const inFlight = useRef(false);
 	// One idempotency key per payout request: kept while the keeper's answer is unknown, dropped once it
 	// answers, and never reused for a different request (the keeper replays by key alone). The wallet's
-	// signature of the request is kept with it, so a retry does not prompt again.
-	const idemKeyRef = useRef<{ key: string; fingerprint: string; signature?: string } | null>(null);
+	// signature of the request is kept with it and its deadline, so a retry does not prompt again until
+	// deadline - 60 s; after that it is signed again with a fresh deadline and the same key (cash-out v2).
+	const idemKeyRef = useRef<{ key: string; fingerprint: string; signed?: { signature: string; deadline: string } } | null>(null);
 	const quoteSeqRef = useRef(0);
 	const [sent, setSent] = useState<CashoutSent | null>(null);
 	const [withdrawal, setWithdrawal] = useState<RampWithdrawal | null>(null);
@@ -227,6 +235,12 @@ export default function CashoutPanel({ onBusyChange }: { onBusyChange?: (busy: b
 	 */
 	const openPayout = async (gemAmt: bigint, owner: `0x${string}`): Promise<OpenPayout | null> => {
 		setFormError('');
+		// The only place a cash-out may pay: checked before anything is signed, and against the keeper's answer below.
+		const treasury = cashoutTreasury();
+		if (!treasury) {
+			setFormError(c.errors.notConfigured);
+			return null;
+		}
 		const dest = destination();
 		if (typeof dest === 'string') {
 			setFormError(dest);
@@ -250,18 +264,23 @@ export default function CashoutPanel({ onBusyChange }: { onBusyChange?: (busy: b
 		const pending = idemKeyRef.current;
 		try {
 			// Only the wallet itself may say where its USDT is paid: the keeper refuses an unsigned cash-out.
-			pending.signature ??= await signTypedDataAsync(cashoutTypedData({ idempotencyKey: pending.key, ...request }));
+			if (!pending.signed || cashoutSignatureStale(pending.signed.deadline)) {
+				const deadline = cashoutDeadline();
+				const signature = await signTypedDataAsync(cashoutTypedData({ idempotencyKey: pending.key, ...request, deadline }));
+				pending.signed = { signature, deadline };
+			}
 		} catch (error) {
 			setFormError(describeError(error, dict));
 			return null;
 		}
 		try {
-			const w = await createRampWithdrawal({ idempotencyKey: pending.key, ...request, signature: pending.signature });
+			const w = await createRampWithdrawal({ idempotencyKey: pending.key, ...request, signature: pending.signed.signature, deadline: pending.signed.deadline });
 			if (w.state === 'created') throw new PayoutPendingError();
 			idemKeyRef.current = null; // answered: the next payout gets a fresh key
 			const recipient = w.depositAddress ? parseRecipient(w.depositAddress) : null;
 			const sameAmount = /^\d+(\.\d{1,6})?$/.test(w.usdAmount) && parseUnits(w.usdAmount, GEM.decimals) === gemAmt;
 			if (w.state !== 'awaiting_funds' || !recipient || !sameAmount || w.currency !== dest.corridor.currency) throw new UnexpectedPayoutError();
+			if (recipient !== treasury) throw new WrongDestinationError();
 			return { withdrawal: w, recipient, openedAt: performance.now() };
 		} catch (error) {
 			// A definitive rejection ends this attempt; an unknown outcome keeps the key for the retry.

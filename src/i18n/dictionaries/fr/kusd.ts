@@ -242,6 +242,9 @@ const kusd: typeof en = {
 			paused: 'Les retraits sont temporairement suspendus. Veuillez réessayer plus tard.',
 			notFound: 'Retrait introuvable.',
 			badSignature: 'La signature de votre portefeuille ne correspond pas à ce retrait. Veuillez réessayer.',
+			signatureExpired: 'La signature de votre portefeuille pour ce retrait a expiré. Veuillez réessayer.',
+			notConfigured: 'Le retrait n’est pas encore configuré sur ce site. Rien n’a été signé ni envoyé.',
+			wrongDestination: 'Le service de retrait a donné une adresse de paiement qui n’est pas la nôtre. Rien n’a été envoyé. Veuillez contacter le support.',
 		},
 	},
 

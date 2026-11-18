@@ -238,6 +238,9 @@ const kusd = {
 			paused: 'Cash-outs are temporarily paused. Please try again later.',
 			notFound: 'Cash-out not found.',
 			badSignature: 'Your wallet’s signature did not match this cash-out. Please try again.',
+			signatureExpired: 'Your wallet’s signature for this cash-out has expired. Please try again.',
+			notConfigured: 'Cash-out is not set up on this site yet. Nothing was signed or sent.',
+			wrongDestination: 'The cash-out service gave a payout address that is not ours. Nothing was sent. Please contact support.',
 		},
 	},
 

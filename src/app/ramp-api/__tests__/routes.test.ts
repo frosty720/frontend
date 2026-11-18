@@ -240,7 +240,8 @@ describe('mobile-money cash-out', () => {
 	});
 
 	it('forwards a valid withdrawal unchanged as a POST, and an unreachable keeper as an unknown outcome', async () => {
-		const body = { idempotencyKey: 'ui-ff409dbd-1', userWallet: WALLET, usdAmount: '25', channelId: 'wd1' };
+		// The v2 deadline goes through to the keeper, which checks it.
+		const body = { idempotencyKey: 'ui-ff409dbd-1', userWallet: WALLET, usdAmount: '25', channelId: 'wd1', deadline: '1767225600' };
 		await createWithdrawal(req('/ramp-api/withdrawals', { method: 'POST', body: JSON.stringify(body) }));
 		const [url, init] = lastCall();
 		expect(url).toBe(`${KEEPER}/api/withdrawals`);

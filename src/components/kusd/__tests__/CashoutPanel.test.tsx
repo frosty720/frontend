@@ -19,6 +19,10 @@ import { CashoutStrandedError } from '@/utils/kusdCashout';
 import { cashoutTypedData } from '@/lib/ramp';
 
 const WALLET = '0x1111111111111111111111111111111111111111';
+/** The keeper's status reply names the row's wallet in lower case (cash-out v2). */
+const OWNER = WALLET.toLowerCase();
+/** A whole second, in ms: the time the wallet is asked to sign in the deadline tests. */
+const T0 = 1_767_225_000_000;
 const DEPOSIT = '0x52908400098527886E0F7030069857D2E4169EE7';
 const DEPOSIT2 = '0x2222222222222222222222222222222222222222';
 const USDT = 10n ** 6n;
@@ -87,12 +91,17 @@ type CreateHandler = (body: Record<string, unknown>, n: number) => Response;
 let onCreate: CreateHandler;
 let onStatus: () => Response;
 const creates: Array<Record<string, unknown>> = [];
-const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status });
-/** The keeper's answer for the n-th create: an open payout for the amount asked, at DEPOSIT / DEPOSIT2 (lower-cased). */
+/** The Date header our proxy puts on every ramp response (null: none, as in most tests). */
+let serverDate: string | null = null;
+const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: serverDate ? { date: serverDate } : {} });
+/**
+ * The keeper's answer for the n-th create: an open payout for the amount asked, at DEPOSIT (lower-cased). The keeper
+ * always names its own Polygon treasury, which the tests pin as NEXT_PUBLIC_KUSD_CASHOUT_TREASURY.
+ */
 const payout = (body: Record<string, unknown>, n: number, over: Record<string, unknown> = {}) => ({
 	withdrawalId: `wd-0000000${n}`,
 	state: 'awaiting_funds',
-	depositAddress: [DEPOSIT, DEPOSIT2][n % 2].toLowerCase(),
+	depositAddress: DEPOSIT.toLowerCase(),
 	usdAmount: body.usdAmount,
 	localAmount: null,
 	currency: 'XOF',
@@ -103,6 +112,8 @@ const sentTo = (recipient: string, gemAmt = 50n * USDT) => ({ gemAmt, recipient,
 const rejected = () => new Error('User rejected the request.');
 
 beforeEach(() => {
+	serverDate = null;
+	vi.stubEnv('NEXT_PUBLIC_KUSD_CASHOUT_TREASURY', DEPOSIT);
 	collateral = 194n * USDT;
 	gemBalance = 0n;
 	tout = 0n;
@@ -114,7 +125,7 @@ beforeEach(() => {
 	toastError.mockReset();
 	creates.length = 0;
 	onCreate = (body, n) => json(payout(body, n), 201);
-	onStatus = () => json({ withdrawalId: 'wd-00000000', state: 'awaiting_funds' });
+	onStatus = () => json({ withdrawalId: 'wd-00000000', userWallet: OWNER, state: 'awaiting_funds' });
 	vi.stubGlobal(
 		'fetch',
 		vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
@@ -134,6 +145,7 @@ beforeEach(() => {
 afterEach(() => {
 	cleanup();
 	vi.unstubAllGlobals();
+	vi.unstubAllEnvs();
 });
 
 function renderPanel(onBusyChange?: (busy: boolean) => void) {
@@ -264,12 +276,99 @@ describe('CashoutPanel', () => {
 		fireEvent.click(button());
 		await waitFor(() => expect(cashout).toHaveBeenCalledTimes(1));
 		expect(signTypedDataAsync).toHaveBeenCalledTimes(1);
-		const { idempotencyKey, userWallet, usdAmount, channelId, country, currency, networkId, momoNumber, accountName } = creates[0];
+		const { idempotencyKey, userWallet, usdAmount, channelId, country, currency, networkId, momoNumber, accountName, deadline } = creates[0];
 		expect(signTypedDataAsync.mock.calls[0][0]).toEqual(
-			cashoutTypedData({ idempotencyKey, userWallet, usdAmount, channelId, country, currency, networkId, momoNumber, accountName } as Parameters<typeof cashoutTypedData>[0]),
+			cashoutTypedData({ idempotencyKey, userWallet, usdAmount, channelId, country, currency, networkId, momoNumber, accountName, deadline } as Parameters<typeof cashoutTypedData>[0]),
 		);
 		expect(signTypedDataAsync.mock.calls[0][0].message).toMatchObject({ userWallet: WALLET, usdAmount: '50', momoNumber: '+2250701234567' });
 		expect(creates[0].signature).toBe(SIGNATURE);
+	});
+
+	it('signs a deadline 10 minutes out (v2) and sends it with the payout request', async () => {
+		const clock = vi.spyOn(Date, 'now').mockReturnValue(T0);
+		try {
+			cashout.mockResolvedValue(sentTo(DEPOSIT));
+			renderPanel();
+			await fill('50');
+			fireEvent.click(button());
+			await waitFor(() => expect(cashout).toHaveBeenCalledTimes(1));
+			expect(signTypedDataAsync.mock.calls[0][0].domain.version).toBe('2');
+			expect(signTypedDataAsync.mock.calls[0][0].message.deadline).toBe(BigInt(T0 / 1000 + 600));
+			expect(creates[0].deadline).toBe(String(T0 / 1000 + 600));
+		} finally {
+			clock.mockRestore();
+		}
+	});
+
+	it.each([
+		['60 min slow', -60 * 60_000],
+		['10 min fast', 10 * 60_000],
+	])('signs serverNow + 600 (from the ramp responses\' Date header) when the PC clock is %s', async (_label, skew) => {
+		const clock = vi.spyOn(Date, 'now').mockReturnValue(T0 + skew);
+		try {
+			serverDate = new Date(T0).toUTCString();
+			cashout.mockResolvedValue(sentTo(DEPOSIT));
+			renderPanel();
+			await fill('50');
+			fireEvent.click(button());
+			await waitFor(() => expect(cashout).toHaveBeenCalledTimes(1));
+			expect(creates[0].deadline).toBe(String(T0 / 1000 + 600));
+			expect(signTypedDataAsync.mock.calls[0][0].message.deadline).toBe(BigInt(T0 / 1000 + 600));
+		} finally {
+			clock.mockRestore();
+		}
+	});
+
+	it('reuses the signature for a retry up to deadline - 60 s', async () => {
+		const clock = vi.spyOn(Date, 'now').mockReturnValue(T0);
+		try {
+			onCreate = () => json({ error: 'keeper_unreachable' }, 504);
+			renderPanel();
+			await fill('50');
+			fireEvent.click(button());
+			await screen.findByText(b.errors.network);
+			clock.mockReturnValue(T0 + 540_000); // exactly deadline - 60 s
+			fireEvent.click(button());
+			await waitFor(() => expect(creates).toHaveLength(2));
+			expect(signTypedDataAsync).toHaveBeenCalledTimes(1);
+			expect(creates[1].idempotencyKey).toBe(creates[0].idempotencyKey);
+			expect(creates[1].signature).toBe(creates[0].signature);
+			expect(creates[1].deadline).toBe(creates[0].deadline);
+		} finally {
+			clock.mockRestore();
+		}
+	});
+
+	it('signs again with a fresh deadline and the same key for a retry after deadline - 60 s', async () => {
+		const clock = vi.spyOn(Date, 'now').mockReturnValue(T0);
+		try {
+			const fresh = `0x${'ef'.repeat(65)}`;
+			onCreate = () => json({ error: 'keeper_unreachable' }, 504);
+			renderPanel();
+			await fill('50');
+			fireEvent.click(button());
+			await screen.findByText(b.errors.network);
+			signTypedDataAsync.mockResolvedValueOnce(fresh);
+			clock.mockReturnValue(T0 + 541_000);
+			fireEvent.click(button());
+			await waitFor(() => expect(creates).toHaveLength(2));
+			expect(signTypedDataAsync).toHaveBeenCalledTimes(2);
+			expect(creates[1].idempotencyKey).toBe(creates[0].idempotencyKey);
+			expect(signTypedDataAsync.mock.calls[1][0].message.idempotencyKey).toBe(creates[0].idempotencyKey);
+			expect(creates[1].deadline).toBe(String((T0 + 541_000) / 1000 + 600));
+			expect(creates[1].signature).toBe(fresh);
+		} finally {
+			clock.mockRestore();
+		}
+	});
+
+	it('says the signature expired, and sends nothing, when the keeper answers signature_expired', async () => {
+		onCreate = () => json({ error: 'signature_expired' }, 422);
+		renderPanel();
+		await fill('50');
+		fireEvent.click(button());
+		expect(await screen.findByText(t.errors.signatureExpired)).toBeTruthy();
+		expect(cashout).not.toHaveBeenCalled();
 	});
 
 	it('asks the keeper for nothing and sends nothing when the wallet refuses to sign', async () => {
@@ -303,6 +402,43 @@ describe('CashoutPanel', () => {
 		await fill('50');
 		fireEvent.click(button());
 		expect(await screen.findByText(t.badResponse)).toBeTruthy();
+		expect(cashout).not.toHaveBeenCalled();
+	});
+
+	it('never cashes out to any address but our pinned Polygon treasury', async () => {
+		onCreate = (body, n) => json(payout(body, n, { depositAddress: DEPOSIT2 }), 201);
+		renderPanel();
+		await fill('50');
+		fireEvent.click(button());
+		expect(await screen.findByText(t.errors.wrongDestination)).toBeTruthy();
+		expect(cashout).not.toHaveBeenCalled();
+	});
+
+	it('never resumes stranded USDT to any address but our pinned Polygon treasury', async () => {
+		gemBalance = 50n * USDT;
+		cashout.mockRejectedValue(new CashoutStrandedError(50n * USDT, DEPOSIT, rejected()));
+		renderPanel();
+		await fill('50');
+		fireEvent.click(button());
+		const resume = await resumeButton(50);
+		onCreate = (body, n) => json(payout(body, n, { depositAddress: DEPOSIT2 }), 201);
+		fireEvent.click(resume);
+		expect(await screen.findByText(t.errors.wrongDestination)).toBeTruthy();
+		expect(creates).toHaveLength(2);
+		expect(resumeBridge).not.toHaveBeenCalled();
+	});
+
+	it.each([
+		['unset', ''],
+		['not an address', '0x1234'],
+	])('says cash-out is not configured, and signs and sends nothing, when the treasury address is %s', async (_label, value) => {
+		vi.stubEnv('NEXT_PUBLIC_KUSD_CASHOUT_TREASURY', value);
+		renderPanel();
+		await fill('50');
+		fireEvent.click(button());
+		expect(await screen.findByText(t.errors.notConfigured)).toBeTruthy();
+		expect(signTypedDataAsync).not.toHaveBeenCalled();
+		expect(creates).toHaveLength(0);
 		expect(cashout).not.toHaveBeenCalled();
 	});
 
@@ -375,13 +511,13 @@ describe('CashoutPanel', () => {
 			}
 			return sentTo(DEPOSIT);
 		});
-		resumeBridge.mockResolvedValue(sentTo(DEPOSIT2));
+		resumeBridge.mockResolvedValue(sentTo(DEPOSIT));
 		renderPanel();
 		await fill('50');
 		fireEvent.click(button());
 		await waitFor(() => expect(toastError).toHaveBeenCalledWith(t.failed, en.errors.cashoutPayoutStale));
 		fireEvent.click(await resumeButton(50));
-		await waitFor(() => expect(resumeBridge).toHaveBeenCalledWith({ gemAmt: 50n * USDT, recipient: DEPOSIT2 }, expect.any(Function)));
+		await waitFor(() => expect(resumeBridge).toHaveBeenCalledWith({ gemAmt: 50n * USDT, recipient: DEPOSIT }, expect.any(Function)));
 	});
 
 	it('starts one cash-out for a double click', async () => {
@@ -398,12 +534,12 @@ describe('CashoutPanel', () => {
 	it('resumes stranded USDT into a fresh payout, and bridges it to that payout\'s address', async () => {
 		gemBalance = 50n * USDT;
 		cashout.mockRejectedValue(new CashoutStrandedError(50n * USDT, DEPOSIT, rejected()));
-		resumeBridge.mockResolvedValue(sentTo(DEPOSIT2));
+		resumeBridge.mockResolvedValue(sentTo(DEPOSIT));
 		renderPanel();
 		await fill('50');
 		fireEvent.click(button());
 		fireEvent.click(await resumeButton(50));
-		await waitFor(() => expect(resumeBridge).toHaveBeenCalledWith({ gemAmt: 50n * USDT, recipient: DEPOSIT2 }, expect.any(Function)));
+		await waitFor(() => expect(resumeBridge).toHaveBeenCalledWith({ gemAmt: 50n * USDT, recipient: DEPOSIT }, expect.any(Function)));
 		expect(creates).toHaveLength(2);
 		expect(creates[1].usdAmount).toBe('50');
 		expect(creates[1].idempotencyKey).not.toBe(creates[0].idempotencyKey);
@@ -457,7 +593,7 @@ describe('CashoutPanel', () => {
 
 	it('shows the payout as paid once Yellow Card reports it, with the local amount and the number', async () => {
 		cashout.mockResolvedValue(sentTo(DEPOSIT));
-		onStatus = () => json({ withdrawalId: 'wd-00000000', state: 'paid', localAmount: '23760', currency: 'XOF' });
+		onStatus = () => json({ withdrawalId: 'wd-00000000', userWallet: OWNER, state: 'paid', localAmount: '23760', currency: 'XOF' });
 		renderPanel();
 		await fill('50');
 		fireEvent.click(button());
@@ -466,7 +602,7 @@ describe('CashoutPanel', () => {
 
 	it('says the USDT goes back to the seller\'s Polygon address when the payout fails', async () => {
 		cashout.mockResolvedValue(sentTo(DEPOSIT));
-		onStatus = () => json({ withdrawalId: 'wd-00000000', state: 'failed' });
+		onStatus = () => json({ withdrawalId: 'wd-00000000', userWallet: OWNER, state: 'failed' });
 		renderPanel();
 		await fill('50');
 		fireEvent.click(button());
@@ -480,7 +616,7 @@ describe('CashoutPanel', () => {
 		['forwarded', { state: 'forwarded' }, () => t.state.forwarded],
 	])('says what the keeper is doing once the USDT is past the bridge (%s)', async (_label, status, text) => {
 		cashout.mockResolvedValue(sentTo(DEPOSIT));
-		onStatus = () => json({ withdrawalId: 'wd-00000000', ...status });
+		onStatus = () => json({ withdrawalId: 'wd-00000000', userWallet: OWNER, ...status });
 		renderPanel();
 		await fill('50');
 		fireEvent.click(button());
@@ -490,13 +626,13 @@ describe('CashoutPanel', () => {
 
 	it('says the USDT was returned once the refund is sent, and that the payout never opened for failed_create', async () => {
 		cashout.mockResolvedValue(sentTo(DEPOSIT));
-		onStatus = () => json({ withdrawalId: 'wd-00000000', state: 'failed', refundTxHash: `0x${'bb'.repeat(32)}` });
+		onStatus = () => json({ withdrawalId: 'wd-00000000', userWallet: OWNER, state: 'failed', refundTxHash: `0x${'bb'.repeat(32)}` });
 		renderPanel();
 		await fill('50');
 		fireEvent.click(button());
 		expect(await screen.findByText(t.payout.refunded)).toBeTruthy();
 		cleanup();
-		onStatus = () => json({ withdrawalId: 'wd-00000000', state: 'failed_create' });
+		onStatus = () => json({ withdrawalId: 'wd-00000000', userWallet: OWNER, state: 'failed_create' });
 		renderPanel();
 		await fill('50');
 		fireEvent.click(button());
@@ -520,7 +656,7 @@ describe('CashoutPanel', () => {
 		['the refund when both exist', { state: 'failed', topUpTxHash: `0x${'aa'.repeat(32)}`, refundTxHash: `0x${'bb'.repeat(32)}` }, /your refund/, 'bb'],
 	])('links %s by its transaction once the keeper reports it, and not the wallet page', async (_label, status, name, byte) => {
 		cashout.mockResolvedValue(sentTo(DEPOSIT));
-		onStatus = () => json({ withdrawalId: 'wd-00000000', ...status });
+		onStatus = () => json({ withdrawalId: 'wd-00000000', userWallet: OWNER, ...status });
 		renderPanel();
 		await fill('50');
 		fireEvent.click(button());
