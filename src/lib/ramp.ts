@@ -355,7 +355,30 @@ export class RampApiError extends Error {
 	}
 }
 
+/**
+ * The server's clock minus this PC's, in ms, from the Date header of our own latest ramp response (cash-out v2
+ * amendment): PC clocks drift, one by 48–68 min, and the keeper checks the cash-out deadline on its own clock.
+ */
+let serverClockOffsetMs = 0;
+
+/** Refreshes the offset from a ramp response; without a usable Date header it falls back to 0, and says so. */
+function noteServerClock(res: Response): void {
+	const serverMs = Date.parse(res.headers.get('date') ?? '');
+	if (Number.isNaN(serverMs)) {
+		serverClockOffsetMs = 0;
+		console.warn('ramp: no usable Date header on the ramp response; the cash-out deadline uses this computer\'s clock');
+		return;
+	}
+	serverClockOffsetMs = serverMs - Date.now();
+}
+
+/** Now on the server's clock (ms): the cash-out deadline and its retry rule use this, never the bare PC clock. */
+export function serverNow(): number {
+	return Date.now() + serverClockOffsetMs;
+}
+
 async function jsonOrThrow<T>(res: Response): Promise<T> {
+	noteServerClock(res);
 	const body = (await res.json().catch(() => ({}))) as { error?: string; code?: string };
 	if (!res.ok) {
 		const key = isRampErrorKey(body.code) ? body.code : isRampErrorKey(body.error) ? body.error : null;
@@ -463,6 +486,8 @@ export interface CreateRampWithdrawalInput {
 	sender: RampCustomer;
 	/** EIP-712 signature of the request by userWallet (cashoutTypedData): the keeper refuses an unsigned cash-out. */
 	signature: string;
+	/** The signed deadline: unix seconds as a decimal integer string. The keeper opens a new cash-out only up to it. */
+	deadline: string;
 }
 
 /**
@@ -471,7 +496,7 @@ export interface CreateRampWithdrawalInput {
  * src/core/cashoutSignature.ts is the authority: keep the two identical). No chainId: the wallet can sign
  * on any network.
  */
-const CASHOUT_SIGNATURE_DOMAIN = { name: 'KUSD Cash-out', version: '1' } as const;
+const CASHOUT_SIGNATURE_DOMAIN = { name: 'KUSD Cash-out', version: '2' } as const;
 const CASHOUT_SIGNATURE_TYPES = {
 	CashOut: [
 		{ name: 'userWallet', type: 'address' },
@@ -483,8 +508,24 @@ const CASHOUT_SIGNATURE_TYPES = {
 		{ name: 'momoNumber', type: 'string' },
 		{ name: 'accountName', type: 'string' },
 		{ name: 'idempotencyKey', type: 'string' },
+		{ name: 'deadline', type: 'uint256' },
 	],
 } as const;
+
+/** How long a cash-out signature is good for (cash-out v2 contract: now + 600 s). */
+const CASHOUT_SIGNATURE_TTL_S = 600;
+/** A retry later than this before the deadline asks the wallet for a fresh signature (same idempotency key). */
+const CASHOUT_RESIGN_MARGIN_S = 60;
+
+/** The deadline to sign now: unix seconds on the server's clock, `CASHOUT_SIGNATURE_TTL_S` out, as the decimal string the keeper takes. */
+export function cashoutDeadline(nowMs: number = serverNow()): string {
+	return String(Math.floor(nowMs / 1000) + CASHOUT_SIGNATURE_TTL_S);
+}
+
+/** True once a retry is past `deadline - 60 s` on the server's clock: the kept signature may expire at the keeper, so sign again. */
+export function cashoutSignatureStale(deadline: string, nowMs: number = serverNow()): boolean {
+	return Math.floor(nowMs / 1000) > Number(deadline) - CASHOUT_RESIGN_MARGIN_S;
+}
 
 export type SignedCashoutFields = Omit<CreateRampWithdrawalInput, 'sender' | 'signature'>;
 
@@ -504,6 +545,7 @@ export function cashoutTypedData(r: SignedCashoutFields) {
 			momoNumber: r.momoNumber,
 			accountName: r.accountName,
 			idempotencyKey: r.idempotencyKey,
+			deadline: BigInt(r.deadline),
 		},
 	};
 }
